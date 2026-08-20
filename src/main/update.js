@@ -1,296 +1,228 @@
-import { app, dialog, shell } from 'electron';
-import { CONFIG } from './config.js';
+import { app } from 'electron';
 
-export class UpdateManager {
-  constructor(options = {}) {
-    this.windowManager = options.windowManager || null;
-    this.iconPath = options.iconPath || undefined;
-    this.state = 'idle'; // idle | checking | available | downloading | downloaded | error
-    this.latestVersion = null;
-    this.downloadProgress = 0;
-    this.updaterInstance = null;
+function isNoReleaseError(err) {
+  const message = String(err?.message || err || '');
+  return (
+    err?.statusCode === 404 ||
+    message.includes('404') ||
+    message.includes('releases.atom') ||
+    message.includes('Cannot find latest') ||
+    message.includes('No published versions on GitHub')
+  );
+}
+
+function errorText(err) {
+  const message = String(err?.message || err || '');
+  if (/checksum|sha512|signature|integrity/i.test(message)) {
+    return '更新包校验失败，请稍后重试或前往发布页手动下载。';
+  }
+  if (/network|fetch|connect|timeout|ENOTFOUND|ECONN|ETIMEDOUT|ERR_/i.test(message)) {
+    return '网络连接异常，请检查网络后重试。';
+  }
+  const firstLine = message.split('\n')[0].trim();
+  if (firstLine && firstLine.length < 120) {
+    return '更新遇到异常: ' + firstLine;
+  }
+  return '更新遇到异常，请稍后重试。';
+}
+
+function asVersion(payload) {
+  const version = payload?.version;
+  return typeof version === 'string' && version.trim() !== '' ? version.trim() : null;
+}
+
+export class UpdateService {
+  constructor() {
+    this.currentVersion = app.getVersion();
+    this.latestVersion = this.currentVersion;
+    this.supported = app.isPackaged && process.platform === 'win32';
+    this.state = this.supported
+      ? { status: 'idle', currentVersion: this.currentVersion }
+      : { status: 'unsupported', currentVersion: this.currentVersion };
+    this.adapter = null;
+    this.adapterPromise = null;
+    this.checkPromise = null;
+    this.resolveCheck = null;
+    this.downloadPromise = null;
+    this.resolveDownload = null;
+    this.onStateChange = null;
   }
 
-  async getAutoUpdater() {
-    if (this.updaterInstance) {
-      return this.updaterInstance;
-    }
-
-    try {
-      const updaterModule = await import('electron-updater');
-      const autoUpdater = updaterModule.autoUpdater || updaterModule.default?.autoUpdater;
-      if (!autoUpdater) {
-        throw new Error('未能初始化 electron-updater 模块');
-      }
-
-      // 手动更新核心原则：禁止静默下载，禁止退出时自动安装
-      autoUpdater.autoDownload = false;
-      autoUpdater.autoInstallOnAppQuit = false;
-
-      this.updaterInstance = autoUpdater;
-      this.bindUpdaterEvents(autoUpdater);
-      return autoUpdater;
-    } catch (err) {
-      console.warn('[Update] 加载 electron-updater 失败:', err);
-      return null;
-    }
+  setState(next) {
+    this.state = next;
+    this.onStateChange?.(next);
   }
 
-  bindUpdaterEvents(autoUpdater) {
-    autoUpdater.on('download-progress', (progressObj) => {
-      this.downloadProgress = Math.round(progressObj.percent || 0);
-      console.log(`[Update] 下载进度: ${this.downloadProgress}%`);
+  finishCheck(next) {
+    this.setState(next);
+    this.resolveCheck?.(next);
+    this.resolveCheck = null;
+    this.checkPromise = null;
+  }
+
+  finishDownload(next) {
+    this.setState(next);
+    this.resolveDownload?.(next);
+    this.resolveDownload = null;
+    this.downloadPromise = null;
+  }
+
+  async getAdapter() {
+    if (this.adapter) return this.adapter;
+    if (!this.adapterPromise) {
+      this.adapterPromise = import('electron-updater')
+        .then((module) => {
+          const autoUpdater = module.autoUpdater || module.default?.autoUpdater;
+          if (!autoUpdater) {
+            throw new Error('未能初始化 electron-updater 模块');
+          }
+          autoUpdater.autoDownload = false;
+          autoUpdater.autoInstallOnAppQuit = false;
+          this.bindEvents(autoUpdater);
+          this.adapter = autoUpdater;
+          return autoUpdater;
+        })
+        .catch((err) => {
+          this.adapterPromise = null;
+          throw err;
+        });
+    }
+    return this.adapterPromise;
+  }
+
+  bindEvents(autoUpdater) {
+    autoUpdater.on('update-available', (info) => {
+      const version = asVersion(info) || this.currentVersion;
+      this.latestVersion = version;
+      this.finishCheck({
+        status: 'available',
+        currentVersion: this.currentVersion,
+        latestVersion: version,
+      });
+    });
+    autoUpdater.on('update-not-available', (info) => {
+      const version = asVersion(info) || this.currentVersion;
+      this.latestVersion = version;
+      this.finishCheck({
+        status: 'latest',
+        currentVersion: this.currentVersion,
+        latestVersion: version,
+      });
+    });
+    autoUpdater.on('download-progress', (progress) => {
+      if (typeof progress?.percent !== 'number') return;
+      this.setState({
+        status: 'downloading',
+        currentVersion: this.currentVersion,
+        latestVersion: this.latestVersion,
+        percent: Math.min(100, Math.max(0, progress.percent)),
+        transferred: Math.max(0, progress.transferred ?? 0),
+        total: Math.max(0, progress.total ?? 0),
+      });
+    });
+    autoUpdater.on('update-downloaded', (info) => {
+      const version = asVersion(info);
+      if (version) this.latestVersion = version;
+      this.finishDownload({
+        status: 'downloaded',
+        currentVersion: this.currentVersion,
+        latestVersion: this.latestVersion,
+      });
+    });
+    autoUpdater.on('error', (err) => {
+      const next = isNoReleaseError(err)
+        ? {
+            status: 'latest',
+            currentVersion: this.currentVersion,
+            latestVersion: this.currentVersion,
+            message: '远程仓库暂无可用的新版本。',
+          }
+        : {
+            status: 'error',
+            currentVersion: this.currentVersion,
+            message: errorText(err),
+          };
+      if (this.downloadPromise) this.finishDownload(next);
+      else this.finishCheck(next);
     });
   }
 
-  getParentWindow() {
-    return this.windowManager?.mainWindow || null;
+  getState() {
+    return this.state;
   }
 
-  async checkForUpdates() {
-    const parentWindow = this.getParentWindow();
-    const currentVersion = app.getVersion();
-
-    // 开发环境防护
-    if (!app.isPackaged) {
-      await dialog.showMessageBox(parentWindow, {
-        type: 'info',
-        title: '检查更新',
-        message: '当前处于开发调试模式',
-        detail: `当前青梧版本: v${currentVersion}\n\n检查更新、差异下载与在线安装仅在正式打包的 Windows 发行版本中生效。\n您可以访问项目发布页查看最新版本。`,
-        icon: this.iconPath,
-        buttons: ['确定', '访问发布页'],
-        defaultId: 0,
-        cancelId: 0,
-        noLink: true,
-      }).then((res) => {
-        if (res.response === 1) {
-          shell.openExternal(CONFIG.repositoryUrl || 'https://github.com/deepseek-ai/dsh');
-        }
-      });
-      return;
+  async check() {
+    if (!this.supported) return this.state;
+    if (this.checkPromise) return this.checkPromise;
+    if (this.state.status === 'downloading' || this.state.status === 'downloaded') {
+      return this.state;
     }
 
-    // 状态防重判断
-    if (this.state === 'checking') {
-      await dialog.showMessageBox(parentWindow, {
-        type: 'info',
-        title: '检查更新',
-        message: '正在检查更新中',
-        detail: '正在连接服务器获取最新版本信息，请稍候...',
-        icon: this.iconPath,
-        buttons: ['确定'],
-      });
-      return;
-    }
-
-    if (this.state === 'downloading') {
-      await dialog.showMessageBox(parentWindow, {
-        type: 'info',
-        title: '正在下载更新',
-        message: `新版本正在下载中 (已完成 ${this.downloadProgress}%)`,
-        detail: '下载完成后将提示您确认安装，您可以在此期间继续使用应用。',
-        icon: this.iconPath,
-        buttons: ['确定'],
-      });
-      return;
-    }
-
-    if (this.state === 'downloaded') {
-      const res = await dialog.showMessageBox(parentWindow, {
-        type: 'info',
-        title: '更新已就绪',
-        message: `青梧 v${this.latestVersion} 已下载完成`,
-        detail: '是否立即退出应用并安装更新？\n选择“稍后安装”将在本次会话中保留更新包，不会在退出时自动强制安装。',
-        icon: this.iconPath,
-        buttons: ['重启并安装', '稍后安装'],
-        defaultId: 0,
-        cancelId: 1,
-        noLink: true,
-      });
-
-      if (res.response === 0 && this.updaterInstance) {
-        this.updaterInstance.quitAndInstall();
-      }
-      return;
-    }
-
-    this.state = 'checking';
-
+    this.setState({ status: 'checking', currentVersion: this.currentVersion });
+    this.checkPromise = new Promise((resolve) => {
+      this.resolveCheck = resolve;
+    });
     try {
-      const autoUpdater = await this.getAutoUpdater();
-      if (!autoUpdater) {
-        this.state = 'idle';
-        await dialog.showMessageBox(parentWindow, {
-          type: 'info',
-          title: '检查更新',
-          message: '暂无在线更新服务配置',
-          detail: `当前版本: v${currentVersion}\n\n您可以前往官方发布页手动获取最新安装包。`,
-          icon: this.iconPath,
-          buttons: ['确定', '访问发布页'],
-          defaultId: 0,
-          cancelId: 0,
-          noLink: true,
-        }).then((res) => {
-          if (res.response === 1) {
-            shell.openExternal(CONFIG.repositoryUrl || 'https://github.com/deepseek-ai/dsh');
-          }
+      const autoUpdater = await this.getAdapter();
+      void autoUpdater.checkForUpdates().catch((err) => {
+        this.finishCheck({
+          status: 'error',
+          currentVersion: this.currentVersion,
+          message: errorText(err),
         });
-        return;
-      }
-
-      const updateCheckResult = await autoUpdater.checkForUpdates();
-      const updateInfo = updateCheckResult?.updateInfo;
-
-      if (!updateInfo || updateInfo.version === currentVersion) {
-        this.state = 'idle';
-        await dialog.showMessageBox(parentWindow, {
-          type: 'info',
-          title: '检查更新',
-          message: '当前已是最新版本',
-          detail: `青梧 v${currentVersion} 目前已是最新版本，无需更新。\n内置引擎: @deepseek-ai/dsh ${CONFIG.harnessVersion || '0.1.0-rc.7'}`,
-          icon: this.iconPath,
-          buttons: ['确定'],
-        });
-        return;
-      }
-
-      // 发现新版本，不自动下载，先弹窗由用户确认
-      this.state = 'available';
-      this.latestVersion = updateInfo.version;
-
-      let releaseNotes = '';
-      if (typeof updateInfo.releaseNotes === 'string') {
-        releaseNotes = updateInfo.releaseNotes;
-      } else if (Array.isArray(updateInfo.releaseNotes)) {
-        releaseNotes = updateInfo.releaseNotes.map((n) => (typeof n === 'string' ? n : n.note || '')).join('\n');
-      }
-
-      const promptMsg = [
-        `当前版本: v${currentVersion}`,
-        `最新版本: v${updateInfo.version}`,
-        releaseNotes ? `\n更新说明:\n${releaseNotes}` : '',
-        '\n是否开始下载更新？',
-      ].filter(Boolean).join('\n');
-
-      const choice = await dialog.showMessageBox(parentWindow, {
-        type: 'info',
-        title: '发现新版本',
-        message: `发现新版本 青梧 v${updateInfo.version}`,
-        detail: promptMsg,
-        icon: this.iconPath,
-        buttons: ['下载更新', '稍后提醒'],
-        defaultId: 0,
-        cancelId: 1,
-        noLink: true,
       });
-
-      if (choice.response === 0) {
-        this.state = 'downloading';
-        this.downloadProgress = 0;
-
-        autoUpdater.downloadUpdate().then(() => {
-          this.state = 'downloaded';
-          dialog.showMessageBox(this.getParentWindow(), {
-            type: 'info',
-            title: '更新已就绪',
-            message: `青梧 v${updateInfo.version} 下载完成`,
-            detail: '新版本已准备就绪。是否立即重启并完成安装？\n选择“稍后安装”将在本次会话中保留更新包，不会在退出时自动强制安装。',
-            icon: this.iconPath,
-            buttons: ['重启并安装', '稍后安装'],
-            defaultId: 0,
-            cancelId: 1,
-            noLink: true,
-          }).then((installChoice) => {
-            if (installChoice.response === 0) {
-              autoUpdater.quitAndInstall();
-            }
-          });
-        }).catch((err) => {
-          this.state = 'error';
-          console.error('[Update] 下载更新包失败:', err);
-          const errStr = String(err?.message || err || '');
-          const cleanErr = errStr.split('\n')[0].trim().slice(0, 150) || '网络连接中断或下载超时。';
-          dialog.showMessageBox(this.getParentWindow(), {
-            type: 'warning',
-            title: '下载更新失败',
-            message: '更新包下载遇到异常',
-            detail: `原因: ${cleanErr}\n\n您可以稍后重新尝试，或直接前往发布页下载。`,
-            icon: this.iconPath,
-            buttons: ['确定', '前往发布页'],
-            defaultId: 0,
-            cancelId: 0,
-            noLink: true,
-          }).then((res) => {
-            if (res.response === 1) {
-              shell.openExternal(CONFIG.repositoryUrl || 'https://github.com/lvtian-bot/qingwu');
-            }
-          });
-        });
-      } else {
-        this.state = 'idle';
-      }
     } catch (err) {
-      this.state = 'idle';
-      console.error('[Update] 检查更新失败:', err);
-
-      const errStr = String(err?.message || err || '');
-      const is404OrNoRelease =
-        err?.statusCode === 404 ||
-        errStr.includes('404') ||
-        errStr.includes('releases.atom') ||
-        errStr.includes('Cannot find latest') ||
-        errStr.includes('No published versions on GitHub');
-
-      const isNetworkError =
-        errStr.includes('ETIMEDOUT') ||
-        errStr.includes('ENOTFOUND') ||
-        errStr.includes('ECONNREFUSED') ||
-        errStr.includes('ERR_CONNECTION') ||
-        errStr.includes('net::ERR');
-
-      if (is404OrNoRelease) {
-        await dialog.showMessageBox(parentWindow, {
-          type: 'info',
-          title: '检查更新',
-          message: '当前已是最新版本',
-          detail: `当前青梧版本: v${currentVersion}\n\n远程仓库暂无可用的更新版本。\n内置引擎: @deepseek-ai/dsh ${CONFIG.harnessVersion || '0.1.0-rc.7'}`,
-          icon: this.iconPath,
-          buttons: ['确定', '访问发布页'],
-          defaultId: 0,
-          cancelId: 0,
-          noLink: true,
-        }).then((res) => {
-          if (res.response === 1) {
-            shell.openExternal(CONFIG.repositoryUrl || 'https://github.com/lvtian-bot/qingwu');
-          }
-        });
-        return;
-      }
-
-      let userFriendlyMsg = '未能连接到更新服务器，请检查网络连接后重试。';
-      if (!isNetworkError) {
-        const firstLine = errStr.split('\n')[0].trim();
-        if (firstLine && firstLine.length < 120) {
-          userFriendlyMsg = `检查更新遇到异常: ${firstLine}`;
-        }
-      }
-
-      await dialog.showMessageBox(parentWindow, {
-        type: 'warning',
-        title: '检查更新',
-        message: '未能获取最新版本信息',
-        detail: `${userFriendlyMsg}\n\n您可以前往发布页手动查看最新版本。`,
-        icon: this.iconPath,
-        buttons: ['确定', '访问发布页'],
-        defaultId: 0,
-        cancelId: 0,
-        noLink: true,
-      }).then((res) => {
-        if (res.response === 1) {
-          shell.openExternal(CONFIG.repositoryUrl || 'https://github.com/lvtian-bot/qingwu');
-        }
+      this.finishCheck({
+        status: 'error',
+        currentVersion: this.currentVersion,
+        message: errorText(err),
       });
+    }
+    return this.checkPromise;
+  }
+
+  async download() {
+    if (!this.supported || this.state.status !== 'available') return this.state;
+    if (this.downloadPromise) return this.downloadPromise;
+
+    this.setState({
+      status: 'downloading',
+      currentVersion: this.currentVersion,
+      latestVersion: this.latestVersion,
+      percent: 0,
+      transferred: 0,
+      total: 0,
+    });
+    this.downloadPromise = new Promise((resolve) => {
+      this.resolveDownload = resolve;
+    });
+    try {
+      const autoUpdater = await this.getAdapter();
+      void autoUpdater.downloadUpdate().catch(() => {
+        // 下载错误统一由 error 事件收敛到状态机
+      });
+    } catch (err) {
+      this.finishDownload({
+        status: 'error',
+        currentVersion: this.currentVersion,
+        message: errorText(err),
+      });
+    }
+    return this.downloadPromise;
+  }
+
+  install() {
+    if (this.state.status !== 'downloaded' || !this.adapter) return false;
+    try {
+      this.adapter.quitAndInstall();
+      return true;
+    } catch {
+      this.setState({
+        status: 'error',
+        currentVersion: this.currentVersion,
+        message: '启动安装失败，请前往发布页手动下载。',
+      });
+      return false;
     }
   }
 }

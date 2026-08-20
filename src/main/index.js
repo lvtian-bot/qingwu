@@ -1,9 +1,10 @@
-import { app, dialog } from 'electron';
+import { app, dialog, ipcMain, shell } from 'electron';
 import { HarnessManager } from './harness.js';
 import { WindowManager } from './window.js';
 import { createApplicationMenu } from './menu.js';
-import { setupAboutPanel, showAboutDialog } from './about.js';
-import { UpdateManager } from './update.js';
+import { setupAboutPanel } from './about.js';
+import { UpdateService } from './update.js';
+import { UpdateWindowManager } from './update-window.js';
 import { CONFIG } from './config.js';
 
 const gotTheLock = app.requestSingleInstanceLock();
@@ -14,10 +15,33 @@ if (!gotTheLock) {
 } else {
   const windowManager = new WindowManager();
   const harnessManager = new HarnessManager();
-  let updateManager = null;
+  const updateService = new UpdateService();
+  const updateWindowManager = new UpdateWindowManager(() => windowManager.mainWindow);
+
+  updateService.onStateChange = (state) => updateWindowManager.sendState(state);
 
   app.on('second-instance', () => {
     windowManager.focus();
+  });
+
+  const isUpdateWindowSender = (event) => updateWindowManager.isSender(event);
+
+  ipcMain.handle('update:getState', (event) =>
+    isUpdateWindowSender(event) ? updateService.getState() : null
+  );
+  ipcMain.handle('update:check', (event) =>
+    isUpdateWindowSender(event) ? updateService.check() : null
+  );
+  ipcMain.handle('update:download', (event) =>
+    isUpdateWindowSender(event) ? updateService.download() : null
+  );
+  ipcMain.handle('update:install', (event) =>
+    isUpdateWindowSender(event) ? updateService.install() : false
+  );
+  ipcMain.handle('update:openReleases', (event) => {
+    if (isUpdateWindowSender(event)) {
+      shell.openExternal(CONFIG.repositoryUrl + '/releases');
+    }
   });
 
   app.whenReady().then(async () => {
@@ -30,14 +54,8 @@ if (!gotTheLock) {
       const serviceUrl = harnessManager.getServiceUrl();
       windowManager.createWindow(serviceUrl);
 
-      updateManager = new UpdateManager({
-        windowManager,
-        iconPath: windowManager.getIconPath(),
-      });
-
       createApplicationMenu({
-        onCheckForUpdates: () => updateManager.checkForUpdates(),
-        onShowAbout: () => showAboutDialog(windowManager.mainWindow, windowManager.getIconPath()),
+        onCheckForUpdates: () => updateWindowManager.open(),
       });
 
       harnessManager.onUnexpectedExit((code, signal) => {

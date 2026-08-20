@@ -1,8 +1,8 @@
-import { Menu, shell } from 'electron';
+import { app, Menu, shell } from 'electron';
 import { CONFIG } from './config.js';
 
 export function createApplicationMenu(options = {}) {
-  const { onCheckForUpdates, onShowAbout } = options;
+  const { onCheckForUpdates } = options;
 
   const template = [
     {
@@ -54,27 +54,23 @@ export function createApplicationMenu(options = {}) {
       label: '帮助',
       submenu: [
         {
-          label: '检查更新...',
+          label: '检查更新',
           click: () => {
             if (typeof onCheckForUpdates === 'function') {
               onCheckForUpdates();
             }
           },
         },
-        { type: 'separator' },
         {
-          label: '青梧 官方主页',
+          label: 'GitHub 仓库',
           click: () => {
-            shell.openExternal(CONFIG.repositoryUrl || 'https://github.com/deepseek-ai/dsh');
+            shell.openExternal(CONFIG.repositoryUrl);
           },
         },
-        { type: 'separator' },
         {
-          label: '关于青梧',
+          label: '关于 青梧',
           click: () => {
-            if (typeof onShowAbout === 'function') {
-              onShowAbout();
-            }
+            app.showAboutPanel();
           },
         },
       ],

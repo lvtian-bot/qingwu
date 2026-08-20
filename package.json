@@ -4,15 +4,14 @@
   "version": "0.0.2",
   "description": "办公 Agent 桌面客户端",
   "author": "Qingwu Authors",
-  "type": "module",
-  "main": "src/main/index.js",
+  "main": "out/main/index.js",
   "scripts": {
-    "start": "electron .",
-    "dev": "electron .",
-    "check": "node --check src/main/config.js && node --check src/main/harness.js && node --check src/main/window.js && node --check src/main/menu.js && node --check src/main/about.js && node --check src/main/update.js && node --check src/main/index.js",
-    "postinstall": "node scripts/patch-dsh.js",
-    "build": "electron-builder",
-    "dist": "electron-builder --win --x64"
+    "dev": "electron-vite dev",
+    "start": "electron-vite preview",
+    "build": "node -e \"fs.rmSync('out', { force: true, recursive: true })\" && electron-vite build",
+    "check": "electron-vite build",
+    "postinstall": "node scripts/patch-dsh.mjs",
+    "dist": "npm run build && electron-builder --win --x64"
   },
   "dependencies": {
     "@deepseek-ai/cordis-plugin-group": "^1.0.1",
@@ -40,8 +39,13 @@
     "electron-updater": "^6.8.9"
   },
   "devDependencies": {
+    "@vitejs/plugin-react": "^4.7.0",
     "electron": "43.4.1",
-    "electron-builder": "^26.15.3"
+    "electron-builder": "^26.15.3",
+    "electron-vite": "^5.0.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "vite": "^6.4.3"
   },
   "build": {
     "appId": "com.qingwu.desktop",
@@ -50,7 +54,7 @@
       "output": "dist"
     },
     "files": [
-      "src/**/*",
+      "out/**/*",
       "package.json",
       "!**/node_modules/*/{CHANGELOG*,README*,*.md,*.txt}",
       "!**/node_modules/**/*.{map,d.ts,d.mts,d.cts,ts,mts,cts,flow,py,c,cc,h,hh,cpp,hpp,gyp,gypi,ninja,o,obj,pdb,lib,def,s,asm,vcxproj*}",
