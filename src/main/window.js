@@ -1,4 +1,4 @@
-import { BrowserWindow, shell, Menu } from 'electron';
+import { BrowserWindow, shell } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import { CONFIG } from './config.js';
@@ -24,8 +24,6 @@ export class WindowManager {
   }
 
   createWindow(url) {
-    Menu.setApplicationMenu(null);
-
     const icon = this.getIconPath();
 
     this.mainWindow = new BrowserWindow({

@@ -1,5 +1,7 @@
 export const CONFIG = {
   appName: '青梧',
+  harnessVersion: '0.1.0-rc.7',
+  repositoryUrl: 'https://github.com/deepseek-ai/dsh',
   defaultHost: '127.0.0.1',
   defaultPort: 3080,
   window: {
