@@ -53,6 +53,13 @@
       "src/**/*",
       "package.json"
     ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "lvtian-bot",
+        "repo": "qingwu"
+      }
+    ],
     "asar": true,
     "npmRebuild": false,
     "asarUnpack": [
