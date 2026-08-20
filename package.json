@@ -1,7 +1,7 @@
 {
   "name": "qingwu",
   "productName": "青梧",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "办公 Agent 桌面客户端",
   "author": "Qingwu Authors",
   "main": "out/main/index.js",
