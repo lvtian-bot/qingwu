@@ -26,8 +26,8 @@ Harness 引擎（Agent / Session / Tools / LLM / Sandbox / Skills）
 4. 端口：dsh web 默认 127.0.0.1:3080；V1 直接使用，后续做设置页再改为可配置。
 5. 与引擎的抽象边界：UI 与引擎之间保持抽象，不把界面代码直接长在 Harness 内部 API 上，为后续换引擎保留可能。
 
-## 待核实项（第一轮启动后验证）
+## 已核实项（V0.0.1 验证结论）
 
-- dsh web 是否支持自定义端口参数，还是仅固定 3080。
-- 打包后 Harness 的全部依赖（含可能的原生模块）是否能完整打进安装包。
-- dsh web 启动是否需要额外的 profile / 插件初始化步骤。
+1. **端口与参数支持**：已验证 dsh web 支持 `--port <port>`（传 0 可由系统自动分配）、`--host <host>` 以及 `--no-open`（禁止自动唤起外部默认浏览器）。
+2. **依赖与打包机制**：Harness 及其配套插件包通过 npm dependencies 内置；打包配置使用 `asarUnpack: ["node_modules/**"]`，在生产环境以 `ELECTRON_RUN_AS_NODE=1` 及 `--expose-internals` 启动，完整兼容所有原生预编译模块（koffi、node-pty）。
+3. **Profile 初始化与系统兼容**：dsh 内置 healProfilesModuleFallback 软链机制；已落地 Windows 下 Directory Junction 的安全解除与更新补丁（scripts/patch-dsh.js），无需用户手动介入。

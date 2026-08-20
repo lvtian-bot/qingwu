@@ -2,9 +2,21 @@
 
 办公 Agent 桌面客户端。V1 把 DeepSeek Harness 封装成普通办公用户能双击打开、不用命令行的 Windows 桌面应用。
 
-## 当前阶段
+## 开发与构建
 
-项目处于第一轮开发前：项目管理机制与产品需求已就位，代码尚未开始。第一轮需求见 docs/requirements-v1.md。
+```bash
+# 安装依赖
+npm install
+
+# 代码检查
+npm run check
+
+# 开发运行
+npm start
+
+# 打包 Windows 安装包
+npm run dist
+```
 
 ## 产品定位
 

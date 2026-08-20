@@ -13,8 +13,8 @@
 
 ## 新功能
 
-- [ ] V0.1.0：Electron 桌面壳（拉起 dsh、加载官方 UI、干净启停、Windows 安装包）；需求见 requirements-v1.md
-- [ ] 启动后核实 dsh web 端口与参数、打包完整性（见 tech-architecture.md 待核实项）
+- [x] V0.0.1：Electron 桌面壳（拉起 dsh、加载官方 UI、干净启停、Windows 安装包） ✅ 2026-08-20
+- [x] 启动后核实 dsh web 端口与参数、打包完整性（见 tech-architecture.md 待核实项） ✅ 2026-08-20
 - [ ] V0.2.0：托盘、快捷键、工作区 / 项目选择、设置页
 - [ ] V0.3.0：自动更新机制
 - [ ] V0.4.0 起：办公能力沉淀与自研界面逐步替换

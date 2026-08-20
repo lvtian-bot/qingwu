@@ -1,0 +1,75 @@
+{
+  "name": "qingwu",
+  "productName": "青梧",
+  "version": "0.0.1",
+  "description": "办公 Agent 桌面客户端",
+  "author": "Qingwu Authors",
+  "type": "module",
+  "main": "src/main/index.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron .",
+    "check": "node --check src/main/config.js && node --check src/main/harness.js && node --check src/main/window.js && node --check src/main/index.js",
+    "postinstall": "node scripts/patch-dsh.js",
+    "build": "electron-builder",
+    "dist": "electron-builder --win --x64"
+  },
+  "dependencies": {
+    "@deepseek-ai/cordis-plugin-group": "^1.0.1",
+    "@deepseek-ai/dsh": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-anonymous-user-id": "^0.1.0-rc.7",
+    "@deepseek-ai/dsh-atomic-write": "^0.1.0-rc.7",
+    "@deepseek-ai/dsh-bash-local": "^0.1.0-rc.7",
+    "@deepseek-ai/dsh-client-ui-primitives": "^0.1.0-rc.7",
+    "@deepseek-ai/dsh-client-ui-slots": "^0.1.0-rc.7",
+    "@deepseek-ai/dsh-code-runtime": "^0.1.0-rc.7",
+    "@deepseek-ai/dsh-compaction": "^0.1.0-rc.7",
+    "@deepseek-ai/dsh-fs": "^0.1.0-rc.7",
+    "@deepseek-ai/dsh-invariants": "^0.1.0-rc.7",
+    "@deepseek-ai/dsh-output-retention": "^0.1.0-rc.7",
+    "@deepseek-ai/dsh-sandbox": "^0.1.0-rc.7",
+    "@deepseek-ai/dsh-scope": "^0.1.0-rc.7",
+    "@deepseek-ai/dsh-session-telemetry": "^0.1.0-rc.7",
+    "@deepseek-ai/dsh-session-title-llm": "^0.1.0-rc.7",
+    "@deepseek-ai/dsh-shell": "^0.1.0-rc.7",
+    "@deepseek-ai/dsh-spill": "^0.1.0-rc.7",
+    "@deepseek-ai/dsh-subagent-in-process-driver": "^0.1.0-rc.7",
+    "@deepseek-ai/dsh-system-prompt": "^0.1.0-rc.7",
+    "@deepseek-ai/dsh-timeout": "^0.1.0-rc.7",
+    "@deepseek-ai/dsh-workflow": "^0.1.0-rc.7"
+  },
+  "devDependencies": {
+    "electron": "43.4.1",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "com.qingwu.desktop",
+    "productName": "青梧",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "npmRebuild": false,
+    "asarUnpack": [
+      "node_modules/**"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "青梧",
+      "artifactName": "${productName}-Setup-${version}.${ext}"
+    }
+  }
+}
