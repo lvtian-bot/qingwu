@@ -209,11 +209,13 @@ export class UpdateManager {
         }).catch((err) => {
           this.state = 'error';
           console.error('[Update] 下载更新包失败:', err);
+          const errStr = String(err?.message || err || '');
+          const cleanErr = errStr.split('\n')[0].trim().slice(0, 150) || '网络连接中断或下载超时。';
           dialog.showMessageBox(this.getParentWindow(), {
             type: 'warning',
             title: '下载更新失败',
             message: '更新包下载遇到异常',
-            detail: `原因: ${err.message || '网络连接中断或下载超时。'}\n\n您可以稍后重新尝试，或直接前往发布页下载。`,
+            detail: `原因: ${cleanErr}\n\n您可以稍后重新尝试，或直接前往发布页下载。`,
             icon: this.iconPath,
             buttons: ['确定', '前往发布页'],
             defaultId: 0,
@@ -221,7 +223,7 @@ export class UpdateManager {
             noLink: true,
           }).then((res) => {
             if (res.response === 1) {
-              shell.openExternal(CONFIG.repositoryUrl || 'https://github.com/deepseek-ai/dsh');
+              shell.openExternal(CONFIG.repositoryUrl || 'https://github.com/lvtian-bot/qingwu');
             }
           });
         });
@@ -229,13 +231,56 @@ export class UpdateManager {
         this.state = 'idle';
       }
     } catch (err) {
-      this.state = 'error';
+      this.state = 'idle';
       console.error('[Update] 检查更新失败:', err);
+
+      const errStr = String(err?.message || err || '');
+      const is404OrNoRelease =
+        err?.statusCode === 404 ||
+        errStr.includes('404') ||
+        errStr.includes('releases.atom') ||
+        errStr.includes('Cannot find latest') ||
+        errStr.includes('No published versions on GitHub');
+
+      const isNetworkError =
+        errStr.includes('ETIMEDOUT') ||
+        errStr.includes('ENOTFOUND') ||
+        errStr.includes('ECONNREFUSED') ||
+        errStr.includes('ERR_CONNECTION') ||
+        errStr.includes('net::ERR');
+
+      if (is404OrNoRelease) {
+        await dialog.showMessageBox(parentWindow, {
+          type: 'info',
+          title: '检查更新',
+          message: '当前已是最新版本',
+          detail: `当前青梧版本: v${currentVersion}\n\n远程仓库暂无可用的更新版本。\n内置引擎: @deepseek-ai/dsh ${CONFIG.harnessVersion || '0.1.0-rc.7'}`,
+          icon: this.iconPath,
+          buttons: ['确定', '访问发布页'],
+          defaultId: 0,
+          cancelId: 0,
+          noLink: true,
+        }).then((res) => {
+          if (res.response === 1) {
+            shell.openExternal(CONFIG.repositoryUrl || 'https://github.com/lvtian-bot/qingwu');
+          }
+        });
+        return;
+      }
+
+      let userFriendlyMsg = '未能连接到更新服务器，请检查网络连接后重试。';
+      if (!isNetworkError) {
+        const firstLine = errStr.split('\n')[0].trim();
+        if (firstLine && firstLine.length < 120) {
+          userFriendlyMsg = `检查更新遇到异常: ${firstLine}`;
+        }
+      }
+
       await dialog.showMessageBox(parentWindow, {
         type: 'warning',
-        title: '检查更新失败',
+        title: '检查更新',
         message: '未能获取最新版本信息',
-        detail: `检查更新时遇到错误:\n${err.message || '网络连接异常或无法连接到更新服务器。'}\n\n您可以前往发布页手动查看最新版本。`,
+        detail: `${userFriendlyMsg}\n\n您可以前往发布页手动查看最新版本。`,
         icon: this.iconPath,
         buttons: ['确定', '访问发布页'],
         defaultId: 0,
@@ -243,10 +288,9 @@ export class UpdateManager {
         noLink: true,
       }).then((res) => {
         if (res.response === 1) {
-          shell.openExternal(CONFIG.repositoryUrl || 'https://github.com/deepseek-ai/dsh');
+          shell.openExternal(CONFIG.repositoryUrl || 'https://github.com/lvtian-bot/qingwu');
         }
       });
-      this.state = 'idle';
     }
   }
 }

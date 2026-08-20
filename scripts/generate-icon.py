@@ -6,21 +6,19 @@ size = 512
 img = Image.new('RGBA', (size, size), (0, 0, 0, 0))
 draw = ImageDraw.Draw(img)
 
-# Background rounded rectangle
-bg_color = (24, 30, 48, 255)
-draw.rounded_rectangle([16, 16, size - 16, size - 16], radius=96, fill=bg_color)
+# No dark background plate: the blue badge is the icon itself.
 
 # Inner circle badge
-badge_color = (37, 99, 235, 230)
+badge_color = (20, 184, 166, 255)  # teal-500 #14B8A6
 draw.ellipse([80, 80, size - 80, size - 80], fill=badge_color)
 
 # Secondary ring
-ring_color = (147, 197, 253, 200)
+ring_color = (94, 234, 212, 255)  # teal-300 #5EEAD4
 draw.ellipse([96, 96, size - 96, size - 96], outline=ring_color, width=8)
 
 # Stylized tree / wing motif
-draw.pieslice([130, 130, 370, 370], 180, 270, fill=(255, 255, 255, 240))
-draw.pieslice([142, 130, 382, 370], 270, 360, fill=(186, 230, 253, 240))
+draw.pieslice([130, 130, 370, 370], 180, 270, fill=(255, 255, 255, 255))
+draw.pieslice([142, 130, 382, 370], 270, 360, fill=(153, 246, 228, 255))  # teal-200 #99F6E4
 draw.polygon([(256, 150), (276, 360), (236, 360)], fill=(255, 255, 255, 255))
 draw.rounded_rectangle([170, 350, 342, 372], radius=10, fill=(255, 255, 255, 255))
 

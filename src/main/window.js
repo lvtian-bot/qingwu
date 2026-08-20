@@ -32,7 +32,7 @@ export class WindowManager {
       height: CONFIG.window.height,
       minWidth: CONFIG.window.minWidth,
       minHeight: CONFIG.window.minHeight,
-      autoHideMenuBar: true,
+      autoHideMenuBar: false,
       show: false,
       icon,
       webPreferences: {

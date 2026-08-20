@@ -28,8 +28,6 @@ export async function showAboutDialog(parentWindow, iconPath) {
     `Chromium: v${process.versions.chrome}`,
     `Node.js: v${process.versions.node}`,
     `系统架构: ${process.platform} (${process.arch})`,
-    '',
-    '青梧 是一款面向普通办公用户的办公 Agent 桌面客户端。',
   ].join('\n');
 
   const result = await dialog.showMessageBox(parentWindow || null, {

@@ -1,7 +1,7 @@
 {
   "name": "qingwu",
   "productName": "青梧",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "办公 Agent 桌面客户端",
   "author": "Qingwu Authors",
   "type": "module",
@@ -51,7 +51,10 @@
     },
     "files": [
       "src/**/*",
-      "package.json"
+      "package.json",
+      "!**/node_modules/*/{CHANGELOG*,README*,*.md,*.txt}",
+      "!**/node_modules/**/*.{map,d.ts,d.mts,d.cts,ts,mts,cts,flow,py,c,cc,h,hh,cpp,hpp,gyp,gypi,ninja,o,obj,pdb,lib,def,s,asm,vcxproj*}",
+      "!**/node_modules/**/{test,tests,testing,docs,example,examples,coverage,.github,.vscode,.bin}/**"
     ],
     "publish": [
       {
