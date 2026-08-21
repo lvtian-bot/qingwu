@@ -1,4 +1,5 @@
 import { app, dialog, ipcMain, Menu, shell } from 'electron';
+import { acquireHiddenConsole } from './console.js';
 import { HarnessManager } from './harness.js';
 import { WindowManager } from './window.js';
 import { createApplicationMenu } from './menu.js';
@@ -14,6 +15,7 @@ if (!gotTheLock) {
   console.log('[Main] 已有应用实例正在运行，退出当前进程');
   app.quit();
 } else {
+  acquireHiddenConsole();
   app.setAppUserModelId(CONFIG.appId || 'com.qingwu.desktop');
   const windowManager = new WindowManager();
   const harnessManager = new HarnessManager();

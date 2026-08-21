@@ -2,6 +2,7 @@ node_modules/
 dist/
 out/
 release/
+.npm-cache/
 *.log
 .DS_Store
 Thumbs.db

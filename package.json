@@ -36,7 +36,8 @@
     "@deepseek-ai/dsh-system-prompt": "^0.1.1-rc.2",
     "@deepseek-ai/dsh-timeout": "^0.1.1-rc.2",
     "@deepseek-ai/dsh-workflow": "^0.1.1-rc.2",
-    "electron-updater": "^6.8.9"
+    "electron-updater": "^6.8.9",
+    "koffi": "^3.1.6"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.7.0",
@@ -71,16 +72,16 @@
     ],
     "asar": true,
     "npmRebuild": false,
-   "asarUnpack": [
-     "node_modules/**"
-   ],
-   "win": {
-     "target": [
-       "nsis"
-     ],
+    "asarUnpack": [
+      "node_modules/**"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
       "executableName": "qingwu",
-     "icon": "build/icon.ico"
-   },
+      "icon": "build/icon.ico"
+    },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
