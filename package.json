@@ -84,7 +84,7 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "青梧",
-      "artifactName": "${productName}-Setup-${version}.${ext}"
+      "artifactName": "Qingwu-Setup-${version}.${ext}"
     }
   }
 }
