@@ -42,8 +42,7 @@ export function createApplicationMenu(options = {}) {
             role: 'quit',
           },
         ],
-      },
-      {
+      },      {
         label: '编辑',
         submenu: [
           { label: '撤销', accelerator: 'CmdOrCtrl+Z', role: 'undo' },
@@ -135,6 +134,18 @@ export function createApplicationMenu(options = {}) {
     Menu.setApplicationMenu(menu);
     return menu;
   };
+
+  // 原生菜单被“点击外部”关闭时，popup 的 callback 不会触发（electron#17341），
+  // 菜单关闭后点击落点所在视图必然重新获得焦点，以 focus 事件作为确定关闭信号。
+  const notifyMenuClosed = () => {
+    const win = getMainWindow?.();
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('titlebar:menu-closed');
+    }
+  };
+
+  getMainWindow?.()?.webContents.on('focus', notifyMenuClosed);
+  getTargetWebContents?.()?.on('focus', notifyMenuClosed);
 
   settings.onChange((key) => {
     if (key === 'closeToTray') {
