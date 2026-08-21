@@ -1,13 +1,23 @@
 .titlebar {
+  --titlebar-bg: #181825;
+  --titlebar-fg: #cdd6f4;
+  --titlebar-menu-idle-fg: #a6adc8;
+  --titlebar-border: #313244;
+  --titlebar-title-fg: #7f849c;
+  --titlebar-hover-bg: #283349;
+  --titlebar-hover-fg: #cdd6f4;
+  --titlebar-active-bg: #283349;
+  --titlebar-active-fg: #cdd6f4;
+
   display: flex;
   align-items: center;
   height: 35px;
-  background-color: #181818;
-  color: #cccccc;
-  font-family: 'Microsoft YaHei', 'PingFang SC', 'Segoe UI', sans-serif;
+  background-color: var(--titlebar-bg);
+  color: var(--titlebar-fg);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif;
   font-size: 12px;
   box-sizing: border-box;
-  border-bottom: 1px solid #2b2b2b;
+  border-bottom: 1px solid var(--titlebar-border);
   user-select: none;
   -webkit-app-region: drag;
   position: fixed;
@@ -15,6 +25,20 @@
   left: 0;
   right: 0;
   z-index: 9999;
+}
+
+@media (prefers-color-scheme: light) {
+  .titlebar {
+    --titlebar-bg: #eef4f9;
+    --titlebar-fg: #1a1a1a;
+    --titlebar-menu-idle-fg: #6b6b6b;
+    --titlebar-border: #e2e2e4;
+    --titlebar-title-fg: #9a9a9a;
+    --titlebar-hover-bg: #d4e3f8;
+    --titlebar-hover-fg: #1a1a1a;
+    --titlebar-active-bg: #d4e3f8;
+    --titlebar-active-fg: #1a1a1a;
+  }
 }
 
 .titlebar-left {
@@ -48,9 +72,9 @@
 .titlebar-menu-item {
   background: transparent;
   border: none;
-  color: #cccccc;
+  color: var(--titlebar-menu-idle-fg);
   font-family: inherit;
-  font-size: 12px;
+  font-size: 14px;
   padding: 4px 8px;
   border-radius: 4px;
   cursor: default;
@@ -59,13 +83,13 @@
 }
 
 .titlebar-menu-item:hover {
-  background-color: rgba(255, 255, 255, 0.08);
-  color: #ffffff;
+  background-color: var(--titlebar-hover-bg);
+  color: var(--titlebar-hover-fg);
 }
 
 .titlebar-menu-item.active {
-  background-color: rgba(255, 255, 255, 0.16);
-  color: #ffffff;
+  background-color: var(--titlebar-active-bg);
+  color: var(--titlebar-active-fg);
 }
 
 .titlebar-center {
@@ -80,7 +104,7 @@
 }
 
 .titlebar-title {
-  color: #8c8c8c;
+  color: var(--titlebar-title-fg);
   font-size: 12px;
   white-space: nowrap;
   overflow: hidden;

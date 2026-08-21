@@ -1,4 +1,4 @@
-import { app, BrowserWindow, WebContentsView, shell } from 'electron';
+import { app, BrowserWindow, WebContentsView, shell, nativeTheme } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import { CONFIG } from './config.js';
@@ -6,12 +6,19 @@ import { settings } from './settings.js';
 
 const TITLE_BAR_HEIGHT = 35;
 
+const TITLE_BAR_OVERLAY_COLORS = {
+  dark: { color: '#181825', symbolColor: '#a6adc8' },
+  light: { color: '#eef4f9', symbolColor: '#6b6b6b' },
+};
+
 export class WindowManager {
   constructor() {
     this.mainWindow = null;
     this.dshView = null;
     this.isQuitting = false;
     this.serviceUrl = null;
+
+    nativeTheme.on('updated', () => this.applyTitleBarOverlay());
   }
 
   getIconPath() {
@@ -45,8 +52,7 @@ export class WindowManager {
       minHeight: CONFIG.window.minHeight,
       titleBarStyle: 'hidden',
       titleBarOverlay: {
-        color: '#181818',
-        symbolColor: '#999999',
+        ...TITLE_BAR_OVERLAY_COLORS[nativeTheme.shouldUseDarkColors ? 'dark' : 'light'],
         height: TITLE_BAR_HEIGHT,
       },
       autoHideMenuBar: true,
@@ -62,6 +68,8 @@ export class WindowManager {
     });
 
     this.mainWindow.setMenuBarVisibility(false);
+
+    this.applyTitleBarOverlay();
 
     this.mainWindow.on('close', (e) => {
       if (!this.isQuitting && settings.get('closeToTray')) {
@@ -154,6 +162,12 @@ export class WindowManager {
 
     this.loadUrl(url);
     return this.mainWindow;
+  }
+
+  applyTitleBarOverlay() {
+    if (!this.mainWindow || this.mainWindow.isDestroyed()) return;
+    const colors = TITLE_BAR_OVERLAY_COLORS[nativeTheme.shouldUseDarkColors ? 'dark' : 'light'];
+    this.mainWindow.setTitleBarOverlay({ ...colors, height: TITLE_BAR_HEIGHT });
   }
 
   loadUrl(url) {

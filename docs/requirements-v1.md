@@ -14,7 +14,7 @@
    - 启动时自动拉起内置的 @deepseek-ai/dsh（dsh web），等待服务就绪。
    - 就绪后创建桌面窗口，加载官方 Web UI（127.0.0.1:3080）。
    - 退出时停掉 Harness 子进程；异常退出给用户明确提示。
-2. 依赖内置：@deepseek-ai/dsh 作为 dependency 随应用打包，锁定版本（当前 0.1.0-rc.7）。
+2. 依赖内置：@deepseek-ai/dsh 作为 dependency 随应用打包，锁定版本（当前 0.1.1-rc.2）。
 3. 基础壳：窗口标题「青梧」、应用图标、合理默认尺寸、隐藏菜单栏。
 4. Windows 安装包：一键安装、启动、卸载；安装目录干净。
 5. 工程基础：git 仓库、npm 依赖管理、基础脚本（启动 / 构建）、README 与治理文档就位。
@@ -39,7 +39,7 @@
 ## 依赖与版本
 
 - Node.js：>= 22.19（开发环境；当前机器 v24.18.0）
-- @deepseek-ai/dsh：0.1.0-rc.7（锁定）
+- @deepseek-ai/dsh：0.1.1-rc.2（锁定）
 - electron：43.4.1
 - npm 源：npmmirror（本机已配置）
 
