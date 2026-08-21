@@ -8,12 +8,12 @@
 - @deepseek-ai/dsh：DeepSeek Harness CLI / 运行时，作为 npm 依赖随应用打包并锁定版本，用户无需单独安装。
 - 打包：electron-builder / NSIS，产出 Windows 安装包。
 
-## 分层（V1）
+## 分层（当前）
 
 ```
 我们自己的 UI（后续按轮次替换）
         ↓ 加载 / 替换
-官方 dsh web UI（V1 直接使用）
+官方 dsh web UI（当前直接使用）
         ↓ 本地服务
 Harness 引擎（Agent / Session / Tools / LLM / Sandbox / Skills）
 ```
@@ -23,8 +23,26 @@ Harness 引擎（Agent / Session / Tools / LLM / Sandbox / Skills）
 1. 引擎随包内置并锁定版本：App 锁定某个 dsh 版本，测试确认后再发布；不依赖用户环境的全局安装，避免版本不一致问题。dsh 当前快速迭代，升级需单独验证。
 2. 不合并源码：Harness 作为依赖使用，不 fork 进本仓库，保持引擎与产品代码独立。
 3. 运行方式：以 ELECTRON_RUN_AS_NODE=1 运行 dsh 的 CLI 入口（lib/bin.js），避免依赖 .bin 脚本在打包后的路径问题。
-4. 端口：dsh web 默认 127.0.0.1:3080；V1 直接使用，后续做设置页再改为可配置。
+4. 端口：dsh web 默认 127.0.0.1:3080；当前直接使用，后续做设置页再改为可配置。
 5. 与引擎的抽象边界：UI 与引擎之间保持抽象，不把界面代码直接长在 Harness 内部 API 上，为后续换引擎保留可能。
+
+## UI 替换路径（2026-08 补充核实）
+
+背景：官方 dsh web UI 基于 slot（插槽）的客户端插件组合。三栏布局由 `dsh-client-ui-layout` 注册，左侧栏由 `dsh-client-ui-sidebar` 注册进 `sidebar` slot，并进一步暴露 `sidebar.brand.*`、`sidebar.workspaces`、`sidebar.settings` 等子 slot；会话/Workspace 数据通过标准钩子（`useSessions`、`useWorkspaces`）注入，替换方可获得与官方侧边栏相同的接口。
+
+约束：
+
+1. 应用内安装产物只有预构建 dist（`lib/client.js`），无法在其上做源码级修改；任何改动都会在 dsh 升级时丢失。
+2. 承接关键决策 2（不 fork）：不在 Harness 源码仓上维护自己的分支。
+
+在此约束下，后续替换 UI 只有两条候选路线，尚未选型：
+
+- **路线 A：完全自研 UI**。Electron 壳直接加载自有前端，通过 dsh 本地服务 API 对接引擎；与官方 Web UI 彻底解耦，不受上游 slot 契约变动影响，但需自行覆盖全部界面能力（会话、设置、工具渲染、审批交互等），工作量大。
+- **路线 B：自有插件做模块替换（官方预期方式，2026-08 二次核实修正）**。不 fork 源码仓、不重建官方前端 dist：dsh 原生支持 `dsh plugin --profile web add <package>` 将第三方插件包装进 profile，profile 即「官方 bundle 层 + 用户覆盖层」的有序栈；客户端插件产物是自包含的 `lib/client.js`（`window.__ModuleLoader__.load` 格式，CSS 内联、React 由运行时 require 提供），可用自有 esbuild 构建。替换面板通过 slot 声明/注入实现（如替换 `sidebar` 注册方或注入 `sidebar.workspaces` 子 slot），sidebar 官方文档明确支持部署包替换其注册值。剩余代价：dsh 尚处 rc 阶段（0.1.1-rc.2），slot 契约与 ModuleLoader 格式可能变动，需锁定版本并在升级时做回归；自有插件需维护一条小构建链。
+
+选型（2026-08 用户已定）：走路线 B，用自有插件从外壳性模块（如左侧栏）开始逐个替换，最终替换整个官方 Web UI；路线 A（完全自研 UI）不再是独立选项，而是本路线走完后的自然终态。边界与断点：越靠近对话区等核心交互链，越接近重写，且需自有公共底座（theme token、UI primitives、数据钩子）替代官方运行时；替换的模块越多，dsh 升级时的回归面越大。每替换一个模块前，先核实该模块的耦合点与代价。
+
+分发与集成方式（2026-08 与用户对齐）：插件是构建期产物，不是用户运行时概念。自有 UI 插件与官方插件同等待遇，作为应用依赖打进安装包，随版本一起分发；每个版本打包「本版选择的插件集合」——被自有插件替换掉的官方模块不再打包。用户全程只有一个动作：安装/升级软件，不存在任何运行时"装插件"步骤。（dsh 的 `dsh plugin add` 是终端用户现场装插件的开发者玩法，不适用于本产品。）自有插件如何以内置依赖方式进入 dsh profile 组合，留待首个替换插件落地时由执行方确定。
 
 ## 已核实项（V0.0.1 验证结论）
 

@@ -1,6 +1,6 @@
 # 青梧 Qingwu
 
-办公 Agent 桌面客户端。V1 把 DeepSeek Harness 封装成普通办公用户能双击打开、不用命令行的 Windows 桌面应用。
+办公 Agent 桌面客户端。把 DeepSeek Harness 封装成普通办公用户能双击打开、不用命令行的 Windows 桌面应用。
 
 ## 开发与构建
 
@@ -26,7 +26,6 @@ npm run dist
 
 - AGENTS.md：协作规范
 - docs/product-positioning.md：产品定位
-- docs/requirements-v1.md：第一轮开发需求
 - docs/tech-architecture.md：技术路线与决策
 - docs/TODO.md：待办
 

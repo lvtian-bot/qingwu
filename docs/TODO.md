@@ -1,6 +1,6 @@
 # 青梧 待办
 
-产品定位与边界见 product-positioning.md；第一轮需求见 requirements-v1.md；历史已完成事项见 TODO-ARCHIVE.md。
+产品定位与边界见 product-positioning.md；历史已完成事项见 TODO-ARCHIVE.md。
 
 待办记录的任务不代表一定要做，是可以探讨的。如果实现过程中会带来更大的问题，或成本大于收益，必须提出来。
 
@@ -13,8 +13,9 @@
 
 ## 新功能
 
-
 ## Bug 修复
+
+- [x] Windows 下 Agent 执行命令时不断闪现控制台窗口：Electron 主进程无控制台，dsh 子进程（pwsh 等）各自新建控制台窗口所致。方案：主进程启动时 AllocConsole 并立即 SW_HIDE 隐藏，让全部子进程继承该隐藏控制台；属青梧自有实现，不依赖 dsh 上游。 ✅ 2026-08-21（src/main/console.js，koffi 调用 Win32；待用户实际运行验证）
 
 ## 暂不考虑
 
