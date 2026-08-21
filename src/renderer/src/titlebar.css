@@ -1,0 +1,95 @@
+.titlebar {
+  display: flex;
+  align-items: center;
+  height: 35px;
+  background-color: #181818;
+  color: #cccccc;
+  font-family: 'Microsoft YaHei', 'PingFang SC', 'Segoe UI', sans-serif;
+  font-size: 12px;
+  box-sizing: border-box;
+  border-bottom: 1px solid #2b2b2b;
+  user-select: none;
+  -webkit-app-region: drag;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 9999;
+}
+
+.titlebar-left {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  padding-left: 8px;
+  -webkit-app-region: no-drag;
+}
+
+.titlebar-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin-right: 6px;
+}
+
+.titlebar-icon-svg {
+  display: block;
+}
+
+.titlebar-menu {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  gap: 2px;
+}
+
+.titlebar-menu-item {
+  background: transparent;
+  border: none;
+  color: #cccccc;
+  font-family: inherit;
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: default;
+  transition: background-color 0.1s ease, color 0.1s ease;
+  line-height: 1;
+}
+
+.titlebar-menu-item:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+}
+
+.titlebar-menu-item.active {
+  background-color: rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+}
+
+.titlebar-center {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 0 12px;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.titlebar-title {
+  color: #8c8c8c;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.titlebar-controls-spacer {
+  width: 138px;
+  height: 100%;
+  flex-shrink: 0;
+  -webkit-app-region: no-drag;
+}

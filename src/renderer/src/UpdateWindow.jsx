@@ -152,8 +152,9 @@ export function UpdateWindow() {
   }
 
   return (
-    <div className="update-card">
-      <StatusIcon status={status} />
+    <div className="update-window-wrapper">
+      <div className="update-card">
+        <StatusIcon status={status} />
       <div className="update-title">{title}</div>
       <div className="update-desc">{description}</div>
       {status === 'downloading' && (
@@ -170,8 +171,9 @@ export function UpdateWindow() {
           </div>
         </div>
       )}
-      <div className="update-actions">{actions}</div>
-      <div className="update-footer">青梧 v{currentVersion}</div>
+        <div className="update-actions">{actions}</div>
+        <div className="update-footer">青梧 v{currentVersion}</div>
+      </div>
     </div>
   );
 }

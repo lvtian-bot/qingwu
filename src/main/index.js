@@ -1,10 +1,11 @@
-import { app, dialog, ipcMain, shell } from 'electron';
+import { app, dialog, ipcMain, Menu, shell } from 'electron';
 import { HarnessManager } from './harness.js';
 import { WindowManager } from './window.js';
 import { createApplicationMenu } from './menu.js';
 import { setupAboutPanel } from './about.js';
 import { UpdateService } from './update.js';
 import { UpdateWindowManager } from './update-window.js';
+import { TrayManager } from './tray.js';
 import { CONFIG } from './config.js';
 
 const gotTheLock = app.requestSingleInstanceLock();
@@ -13,10 +14,12 @@ if (!gotTheLock) {
   console.log('[Main] 已有应用实例正在运行，退出当前进程');
   app.quit();
 } else {
+  app.setAppUserModelId(CONFIG.appId || 'com.qingwu.desktop');
   const windowManager = new WindowManager();
   const harnessManager = new HarnessManager();
   const updateService = new UpdateService();
   const updateWindowManager = new UpdateWindowManager(() => windowManager.mainWindow);
+  const trayManager = new TrayManager(windowManager, updateWindowManager);
 
   updateService.onStateChange = (state) => updateWindowManager.sendState(state);
 
@@ -44,6 +47,34 @@ if (!gotTheLock) {
     }
   });
 
+  ipcMain.handle('titlebar:popupMenu', (event, { menuName, x, y }) => {
+    const win = windowManager.mainWindow;
+    if (!win || win.isDestroyed()) return;
+
+    const appMenu = Menu.getApplicationMenu();
+    if (!appMenu) return;
+
+    const targetItem = appMenu.items.find((item) => item.label === menuName);
+    if (!targetItem || !targetItem.submenu) return;
+
+    targetItem.submenu.popup({
+      window: win,
+      x: Math.round(x),
+      y: Math.round(y),
+      callback: () => {
+        if (!win.isDestroyed()) {
+          win.webContents.send('titlebar:menu-closed');
+        }
+      },
+    });
+  });
+
+  ipcMain.handle('titlebar:getTitle', () => {
+    return windowManager.mainWindow && !windowManager.mainWindow.isDestroyed()
+      ? windowManager.mainWindow.getTitle()
+      : CONFIG.appName;
+  });
+
   app.whenReady().then(async () => {
     try {
       console.log('[Main] 青梧应用启动中...');
@@ -54,8 +85,15 @@ if (!gotTheLock) {
       const serviceUrl = harnessManager.getServiceUrl();
       windowManager.createWindow(serviceUrl);
 
+      const iconPath = windowManager.getIconPath();
+      if (iconPath) {
+        trayManager.init(iconPath);
+      }
+
       createApplicationMenu({
         onCheckForUpdates: () => updateWindowManager.open(),
+        getTargetWebContents: () => windowManager.getTargetWebContents(),
+        getMainWindow: () => windowManager.mainWindow,
       });
 
       harnessManager.onUnexpectedExit((code, signal) => {
@@ -80,6 +118,8 @@ if (!gotTheLock) {
   });
 
   app.on('before-quit', async (event) => {
+    windowManager.isQuitting = true;
+    trayManager.destroy();
     console.log('[Main] 正在退出应用，清理子进程...');
     await harnessManager.stop();
   });

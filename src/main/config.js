@@ -1,5 +1,6 @@
 export const CONFIG = {
   appName: '青梧',
+  appId: 'com.qingwu.desktop',
   harnessVersion: '0.1.0-rc.7',
   repositoryUrl: 'https://github.com/lvtian-bot/qingwu',
   defaultHost: '127.0.0.1',

@@ -43,9 +43,11 @@ export class UpdateWindowManager {
     });
 
     if (process.env.ELECTRON_RENDERER_URL) {
-      this.window.loadURL(process.env.ELECTRON_RENDERER_URL);
+      this.window.loadURL(`${process.env.ELECTRON_RENDERER_URL}?view=update`);
     } else {
-      this.window.loadFile(path.join(__dirname, '../renderer/index.html'));
+      this.window.loadFile(path.join(__dirname, '../renderer/index.html'), {
+        query: { view: 'update' },
+      });
     }
   }
 
