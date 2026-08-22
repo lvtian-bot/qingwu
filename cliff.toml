@@ -37,7 +37,9 @@ tag_pattern = "v[0-9].*"
 sort_commits = "oldest"
 
 commit_parsers = [
-  { message = "^(feat|fix|chore)\\(release|发布\\)|^feat|fix|chore: (release|发布|Release)", skip = true },
+  { message = "^(feat|fix|chore)\\((release|发布)\\)", skip = true },
+  { message = "^chore: (release|发布|Release)", skip = true },
+  { message = "^merge:", skip = true },
   { message = "^feat", group = "✨ 新增" },
   { message = "^fix", group = "🐛 修复" },
   { message = "^perf", group = "⚡ 性能" },
