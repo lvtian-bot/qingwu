@@ -8,7 +8,10 @@ import { setupAboutPanel } from './about';
 import { UpdateService } from './update';
 import { UpdateWindowManager } from './update-window';
 import { TrayManager } from './tray';
+import { DshBridge } from './dsh-bridge';
+import { settings } from './settings';
 import { CONFIG } from './config';
+import type { UiMode } from '../shared/types';
 
 const gotTheLock = app.requestSingleInstanceLock();
 
@@ -23,6 +26,10 @@ if (!gotTheLock) {
   const updateService = new UpdateService();
   const updateWindowManager = new UpdateWindowManager(() => windowManager.mainWindow);
   const trayManager = new TrayManager(windowManager, updateWindowManager);
+  const dshBridge = new DshBridge(
+    () => harnessManager.getServiceUrl(),
+    () => windowManager.mainWindow
+  );
 
   updateService.onStateChange = (state) => updateWindowManager.sendState(state);
 
@@ -79,6 +86,30 @@ if (!gotTheLock) {
       : CONFIG.appName;
   });
 
+  ipcMain.handle('dsh:call', async (_event, method: string, payload: unknown) => {
+    const result = await dshBridge.call(method, payload);
+    // 历史页携带海量流式分片（单会话实测约 2.7 万条 chunk），IPC 传输前剥离：
+    // 历史渲染只消费成型的 assistant/message；chunk 仅用于实时流式草稿，
+    // 剥离唯一损失是"正在流式中的尾部部分文本"，后续阶段再做虚拟化分页。
+    if (method === 'session.history' && result.ok) {
+      const value = result.value as { events?: { event?: { type?: string } }[] };
+      if (Array.isArray(value?.events)) {
+        value.events = value.events.filter((entry) => entry.event?.type !== 'assistant/chunk');
+      }
+    }
+    return result;
+  });
+  ipcMain.handle('dsh:respond', (_event, rpcId: string, result: unknown) =>
+    dshBridge.respond(rpcId, result as Parameters<typeof dshBridge.respond>[1])
+  );
+
+  ipcMain.handle('ui:getMode', () => settings.get('uiMode'));
+  ipcMain.handle('ui:setMode', (_event, mode: UiMode) => {
+    if (mode !== 'official' && mode !== 'native') return;
+    settings.set('uiMode', mode);
+    windowManager.applyUiMode(mode);
+  });
+
   app.whenReady().then(async () => {
     try {
       console.log('[Main] 青梧应用启动中...');
@@ -88,6 +119,7 @@ if (!gotTheLock) {
 
       const serviceUrl = harnessManager.getServiceUrl();
       windowManager.createWindow(serviceUrl);
+      dshBridge.start();
 
       const iconPath = windowManager.getIconPath();
       if (iconPath) {
@@ -98,6 +130,11 @@ if (!gotTheLock) {
         onCheckForUpdates: () => updateWindowManager.open(),
         getTargetWebContents: () => windowManager.getTargetWebContents(),
         getMainWindow: () => windowManager.mainWindow,
+        onSwitchUiMode: () => {
+          const next: UiMode = settings.get('uiMode') === 'native' ? 'official' : 'native';
+          settings.set('uiMode', next);
+          windowManager.applyUiMode(next);
+        },
       });
 
       harnessManager.onUnexpectedExit((code, signal) => {
@@ -124,6 +161,7 @@ if (!gotTheLock) {
   app.on('before-quit', async (_event) => {
     windowManager.isQuitting = true;
     trayManager.destroy();
+    dshBridge.stop();
     console.log('[Main] 正在退出应用，清理子进程...');
     await harnessManager.stop();
   });

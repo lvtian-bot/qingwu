@@ -70,7 +70,10 @@ export class HarnessManager {
 
     const child = spawn(process.execPath, args, {
       env,
-      cwd: process.cwd(),
+      // 引擎工作目录：无项目会话的 cwd 落点。用程序目录会把 AI 的文件
+      // 读写引进安装目录，故取用户主目录（官方 web 无此问题：开发者
+      // 总是从项目目录启动，cwd 天然正确；桌面应用必须显式指定）。
+      cwd: app.getPath('home'),
       stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true
     });

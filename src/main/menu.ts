@@ -7,10 +7,11 @@ export interface ApplicationMenuOptions {
   onCheckForUpdates?: () => void;
   getTargetWebContents?: () => WebContents | null;
   getMainWindow?: () => BrowserWindow | null;
+  onSwitchUiMode?: () => void;
 }
 
 export function createApplicationMenu(options: ApplicationMenuOptions = {}) {
-  const { onCheckForUpdates, getTargetWebContents, getMainWindow } = options;
+  const { onCheckForUpdates, getTargetWebContents, getMainWindow, onSwitchUiMode } = options;
 
   const buildAndSetMenu = () => {
     const template: Electron.MenuItemConstructorOptions[] = [
@@ -101,6 +102,13 @@ export function createApplicationMenu(options: ApplicationMenuOptions = {}) {
           },
           { type: 'separator' },
           {
+            label: settings.get('uiMode') === 'native' ? '切换到 DeepSeek 界面' : '切换到青梧界面',
+            click: () => {
+              onSwitchUiMode?.();
+            },
+          },
+          { type: 'separator' },
+          {
             label: '开发者工具',
             accelerator: 'F12',
             click: () => {
@@ -155,7 +163,7 @@ export function createApplicationMenu(options: ApplicationMenuOptions = {}) {
   getTargetWebContents?.()?.on('focus', notifyMenuClosed);
 
   settings.onChange((key) => {
-    if (key === 'closeToTray') {
+    if (key === 'closeToTray' || key === 'uiMode') {
       buildAndSetMenu();
     }
   });

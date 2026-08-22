@@ -1,9 +1,12 @@
 import { app } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
+import type { UiMode } from '../shared/types';
 
 export interface AppSettings {
   closeToTray: boolean;
+  /** 界面模式：official = 官方 dsh web UI（默认），native = 自研界面。 */
+  uiMode: UiMode;
 }
 
 type SettingsListener = (
@@ -22,6 +25,7 @@ class SettingsManager {
     this.configPath = path.join(app.getPath('userData'), 'settings.json');
     this.settings = {
       closeToTray: true,
+      uiMode: 'official',
     };
     this.listeners = new Set();
     this.loaded = false;
@@ -35,6 +39,9 @@ class SettingsManager {
         const parsed: unknown = JSON.parse(raw);
         if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
           this.settings = { ...this.settings, ...(parsed as Partial<AppSettings>) };
+          if (this.settings.uiMode !== 'official' && this.settings.uiMode !== 'native') {
+            this.settings.uiMode = 'official';
+          }
         }
       }
     } catch (err) {

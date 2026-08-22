@@ -1,6 +1,7 @@
 import { createRoot } from 'react-dom/client';
 import { UpdateWindow } from './UpdateWindow';
 import { TitleBar } from './TitleBar';
+import { NativeApp } from './native/NativeApp';
 import './update.css';
 
 const params = new URLSearchParams(window.location.search);
@@ -13,5 +14,10 @@ if (!rootElement) {
 if (view === 'update') {
   createRoot(rootElement).render(<UpdateWindow />);
 } else {
-  createRoot(rootElement).render(<TitleBar />);
+  createRoot(rootElement).render(
+    <>
+      <TitleBar />
+      <NativeApp />
+    </>
+  );
 }

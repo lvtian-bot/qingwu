@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { IpcRendererEvent } from 'electron';
-import type { QingwuApi, UpdateState } from '../shared/types';
+import type { DshStreamFrame, QingwuApi, UiMode, UpdateState } from '../shared/types';
 
 const api: QingwuApi = {
   onUpdateState: (listener) => {
@@ -31,6 +31,22 @@ const api: QingwuApi = {
       listener(isFullScreen);
     ipcRenderer.on('window:fullscreen-changed', handler);
     return () => ipcRenderer.removeListener('window:fullscreen-changed', handler);
+  },
+
+  dshCall: (method, payload) => ipcRenderer.invoke('dsh:call', method, payload),
+  dshRespond: (rpcId, result) => ipcRenderer.invoke('dsh:respond', rpcId, result),
+  onDshEvent: (listener) => {
+    const handler = (_event: IpcRendererEvent, frame: DshStreamFrame) => listener(frame);
+    ipcRenderer.on('dsh:event', handler);
+    return () => ipcRenderer.removeListener('dsh:event', handler);
+  },
+
+  getUiMode: () => ipcRenderer.invoke('ui:getMode'),
+  setUiMode: (mode) => ipcRenderer.invoke('ui:setMode', mode),
+  onUiModeChanged: (listener) => {
+    const handler = (_event: IpcRendererEvent, mode: UiMode) => listener(mode);
+    ipcRenderer.on('ui:mode-changed', handler);
+    return () => ipcRenderer.removeListener('ui:mode-changed', handler);
   },
 };
 

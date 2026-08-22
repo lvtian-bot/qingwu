@@ -1,0 +1,365 @@
+/* 自研界面：codex 风格极简布局，位于标题栏（35px）下方。 */
+
+.native-app {
+  position: fixed;
+  top: 35px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  background: var(--native-bg);
+  color: var(--native-fg);
+  font-family: -apple-system, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  font-size: 14px;
+  z-index: 1;
+}
+
+:root {
+  --native-bg: #ffffff;
+  --native-fg: #1f2328;
+  --native-muted: #6b7280;
+  --native-border: #e5e7eb;
+  --native-sidebar-bg: #f7f8fa;
+  --native-accent: #2563eb;
+  --native-user-bg: #eef2ff;
+  --native-tool-bg: #f8f9fb;
+  --native-error: #dc2626;
+  --native-card-border: #d1d5db;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --native-bg: #16181d;
+    --native-fg: #e6e8eb;
+    --native-muted: #9aa1ab;
+    --native-border: #2c2f36;
+    --native-sidebar-bg: #101216;
+    --native-accent: #4c8dff;
+    --native-user-bg: #23283a;
+    --native-tool-bg: #1c1f25;
+    --native-error: #f87171;
+    --native-card-border: #3a3f48;
+  }
+}
+
+/* ---------- 侧栏 ---------- */
+
+.native-sidebar {
+  width: 232px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--native-border);
+  background: var(--native-sidebar-bg);
+}
+
+.native-sidebar-actions {
+  display: flex;
+  gap: 8px;
+  margin: 12px 12px 8px;
+}
+
+.native-new-session,
+.native-add-workspace {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid var(--native-border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--native-fg);
+  font-size: 13px;
+  cursor: pointer;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.native-new-session:hover,
+.native-add-workspace:hover {
+  border-color: var(--native-accent);
+  color: var(--native-accent);
+}
+
+.native-session-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 8px;
+}
+
+.native-session-group {
+  margin-bottom: 10px;
+}
+
+.native-group-title {
+  padding: 4px 10px 5px;
+  font-size: 11px;
+  color: var(--native-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  user-select: none;
+}
+
+.native-session-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  margin-bottom: 2px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--native-fg);
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+  overflow: hidden;
+}
+
+.native-session-item:hover {
+  background: var(--native-tool-bg);
+}
+
+.native-session-item.active {
+  background: var(--native-user-bg);
+}
+
+.native-session-title {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.native-running-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--native-accent);
+  flex-shrink: 0;
+}
+
+/* ---------- 对话区 ---------- */
+
+.native-chat {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  min-width: 0;
+}
+
+.native-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--native-muted);
+}
+
+.native-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 24px;
+}
+
+.native-hint {
+  color: var(--native-muted);
+  font-size: 13px;
+  text-align: center;
+  padding: 12px;
+}
+
+.native-msg {
+  margin-bottom: 18px;
+  max-width: 780px;
+}
+
+.native-msg-role {
+  font-size: 12px;
+  color: var(--native-muted);
+  margin-bottom: 4px;
+}
+
+.native-msg.user .native-msg-body {
+  background: var(--native-user-bg);
+  border-radius: 10px;
+  padding: 10px 14px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.native-msg.assistant .native-msg-body {
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.65;
+}
+
+/* 工具调用折叠条 */
+.native-tool {
+  margin: 8px 0;
+  border: 1px solid var(--native-border);
+  border-radius: 8px;
+  background: var(--native-tool-bg);
+  font-size: 13px;
+}
+
+.native-tool summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 12px;
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+}
+
+.native-tool summary::-webkit-details-marker {
+  display: none;
+}
+
+.native-tool-name {
+  font-family: Consolas, 'Courier New', monospace;
+}
+
+.native-tool-status {
+  color: var(--native-muted);
+  font-size: 12px;
+}
+
+.native-tool.error .native-tool-status {
+  color: var(--native-error);
+}
+
+.native-tool-args,
+.native-tool-result {
+  margin: 0;
+  padding: 8px 12px;
+  border-top: 1px solid var(--native-border);
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 260px;
+  overflow-y: auto;
+  color: var(--native-muted);
+}
+
+/* ---------- 审批 / 问答卡片 ---------- */
+
+.native-interactions {
+  padding: 0 24px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.native-card {
+  border: 1px solid var(--native-card-border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  background: var(--native-bg);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+}
+
+.native-card-title {
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.native-card-text {
+  color: var(--native-muted);
+  font-size: 13px;
+  margin-bottom: 10px;
+  white-space: pre-wrap;
+}
+
+.native-card-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.native-card-actions button {
+  padding: 6px 14px;
+  border: 1px solid var(--native-card-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--native-fg);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.native-card-actions button:hover {
+  border-color: var(--native-accent);
+}
+
+.native-card-actions button.primary {
+  background: var(--native-accent);
+  border-color: var(--native-accent);
+  color: #fff;
+}
+
+/* ---------- 输入区 ---------- */
+
+.native-composer {
+  display: flex;
+  gap: 8px;
+  padding: 12px 24px 16px;
+  border-top: 1px solid var(--native-border);
+}
+
+.native-composer textarea {
+  flex: 1;
+  resize: none;
+  min-height: 44px;
+  max-height: 180px;
+  padding: 10px 12px;
+  border: 1px solid var(--native-border);
+  border-radius: 10px;
+  background: var(--native-bg);
+  color: var(--native-fg);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.5;
+  outline: none;
+}
+
+.native-composer textarea:focus {
+  border-color: var(--native-accent);
+}
+
+.native-send {
+  align-self: flex-end;
+  padding: 10px 18px;
+  border: none;
+  border-radius: 10px;
+  background: var(--native-accent);
+  color: #fff;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.native-send:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.native-send.stop {
+  background: var(--native-error);
+}
+
+.native-error {
+  position: absolute;
+  bottom: 84px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: 70%;
+  padding: 8px 16px;
+  border-radius: 8px;
+  background: var(--native-error);
+  color: #fff;
+  font-size: 13px;
+  cursor: pointer;
+  z-index: 3;
+}

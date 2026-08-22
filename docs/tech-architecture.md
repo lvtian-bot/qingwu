@@ -12,10 +12,9 @@
 ## 分层（当前）
 
 ```
-我们自己的 UI（后续按轮次替换）
-        ↓ 加载 / 替换
-官方 dsh web UI（当前直接使用）
-        ↓ 本地服务
+自研 UI（独立前端，经主进程桥调用 /api RPC 与事件流）
+官方 dsh web UI（原样保留，可切换）
+        ↓ 同一本地服务
 Harness 引擎（Agent / Session / Tools / LLM / Sandbox / Skills）
 ```
 
@@ -27,23 +26,34 @@ Harness 引擎（Agent / Session / Tools / LLM / Sandbox / Skills）
 4. 端口：dsh web 默认 127.0.0.1:3080；当前直接使用，后续做设置页再改为可配置。
 5. 与引擎的抽象边界：UI 与引擎之间保持抽象，不把界面代码直接长在 Harness 内部 API 上，为后续换引擎保留可能。
 
-## UI 替换路径（2026-08 补充核实）
+## UI 路线（2026-08-23 修订：独立前端 + 双界面并存）
 
-背景：官方 dsh web UI 基于 slot（插槽）的客户端插件组合。三栏布局由 `dsh-client-ui-layout` 注册，左侧栏由 `dsh-client-ui-sidebar` 注册进 `sidebar` slot，并进一步暴露 `sidebar.brand.*`、`sidebar.workspaces`、`sidebar.settings` 等子 slot；会话/Workspace 数据通过标准钩子（`useSessions`、`useWorkspaces`）注入，替换方可获得与官方侧边栏相同的接口。
+> 命名说明：文档中的「自研界面」即用户可见的「青梧界面」（菜单文案），与「DeepSeek 界面」（官方 dsh web UI）相对。
 
-约束：
+背景：2026-08 曾选型「自有插件渐进替换官方 Web UI」（路线 B），并认定完全自研 UI（路线 A）是该路线走完后的自然终态。2026-08-23 针对自研 UI 的对接方式完成一轮本地解剖与生态调研，**修订为：独立前端直调 dsh 本地 API，官方 Web UI 长期原样并存，应用内可切换**。
 
-1. 应用内安装产物只有预构建 dist（`lib/client.js`），无法在其上做源码级修改；任何改动都会在 dsh 升级时丢失。
-2. 承接关键决策 2（不 fork）：不在 Harness 源码仓上维护自己的分支。
+修订依据（均已在 0.1.1-rc.2 本地安装产物中核实）：
 
-在此约束下，后续替换 UI 只有两条候选路线，尚未选型：
+1. 官方 Web UI 与引擎之间是一套完整的 RPC 协议（`@deepseek-ai/dsh-host-apiproxy`）：`POST /api/<method>` 承载单次调用（46 个方法，覆盖会话全生命周期、workspace、设置、凭据、模型、子代理、目录操作等），`/api/events.mux` 与 `/api/events.host` 两条只下行 WebSocket 推送事件流，审批/问答经下行帧 + `POST /api/respond` 回应。
+2. 协议约定层作为 npm 公开导出：`dsh-host-apiproxy` 的 `./api`（领域类型 + Zod schema）与 `./client`（`AbstractApiClient`）浏览器可导入。
+3. 信任栅栏明确容许非浏览器客户端：回环地址（127.0.0.1）免认证通过；但带浏览器 Origin 的直连要求 Origin 与 Host 权威一致，因此 renderer 不能直连引擎，须由主进程桥接——官方 web-server 文档描述的 Electron 模式正是「经 IPC 桥接发送 fetch」。
+4. 生态先例：dsh-vscode（VS Code 扩展，codex 风格自研 webview）与 dsh-tui（终端客户端）均已直调该 API 走通；官方 SDK（stdio JSON-RPC）与 ACP 能力面过窄（无审批 UI 语义），headless 无交互面，均不适合交互式 UI。
 
-- **路线 A：完全自研 UI**。Electron 壳直接加载自有前端，通过 dsh 本地服务 API 对接引擎；与官方 Web UI 彻底解耦，不受上游 slot 契约变动影响，但需自行覆盖全部界面能力（会话、设置、工具渲染、审批交互等），工作量大。
-- **路线 B：自有插件做模块替换（官方预期方式，2026-08 二次核实修正）**。不 fork 源码仓、不重建官方前端 dist：dsh 原生支持 `dsh plugin --profile web add <package>` 将第三方插件包装进 profile，profile 即「官方 bundle 层 + 用户覆盖层」的有序栈；客户端插件产物是自包含的 `lib/client.js`（`window.__ModuleLoader__.load` 格式，CSS 内联、React 由运行时 require 提供），可用自有 esbuild 构建。替换面板通过 slot 声明/注入实现（如替换 `sidebar` 注册方或注入 `sidebar.workspaces` 子 slot），sidebar 官方文档明确支持部署包替换其注册值。剩余代价：dsh 尚处 rc 阶段（0.1.1-rc.2），slot 契约与 ModuleLoader 格式可能变动，需锁定版本并在升级时做回归；自有插件需维护一条小构建链。
+插件路线为何错配：其本质是寄生于官方前端运行时的模块替换（React 由官方运行时提供、CSS 内联、视觉对齐官方 theme token），适合改良官方 UI，不适合布局风格完全不同的自研界面；且其终点仍是完全自研，渐进中间产物到终点时大部分需重写。
 
-选型（2026-08 用户已定）：走路线 B，用自有插件从外壳性模块（如左侧栏）开始逐个替换，最终替换整个官方 Web UI；路线 A（完全自研 UI）不再是独立选项，而是本路线走完后的自然终态。边界与断点：越靠近对话区等核心交互链，越接近重写，且需自有公共底座（theme token、UI primitives、数据钩子）替代官方运行时；替换的模块越多，dsh 升级时的回归面越大。每替换一个模块前，先核实该模块的耦合点与代价。
+风险与升级闸门：
 
-分发与集成方式（2026-08 与用户对齐）：插件是构建期产物，不是用户运行时概念。自有 UI 插件与官方插件同等待遇，作为应用依赖打进安装包，随版本一起分发；每个版本打包「本版选择的插件集合」——被自有插件替换掉的官方模块不再打包。用户全程只有一个动作：安装/升级软件，不存在任何运行时"装插件"步骤。（dsh 的 `dsh plugin add` 是终端用户现场装插件的开发者玩法，不适用于本产品。）自有插件如何以内置依赖方式进入 dsh profile 组合，留待首个替换插件落地时由执行方确定。
+- 官方 README 明示 "THERE WILL BE COMPATIBILITY-BREAKING CHANGES"，dsh-tui 曾经历事件流 SSE→WebSocket 的破坏性变更。该 API 非官方承诺契约，跟进责任在我方。
+- 闸门一：类型对齐。自研 UI 的协议类型对齐官方约定层（`./api` 类型），契约变化在编译期暴露。（阶段 1 先以手写最小类型落地，契约编译闸门随后续阶段补齐，见 TODO。）
+- 闸门二：升级流程。升级 dsh 版本 = 升依赖 → `npm run check` 编译通过 → 双界面冒烟（同一引擎，官方 UI 与自研 UI 各跑一轮会话）→ 发版。
+- 官方 UI 是现成对照组与参照系：升级后对比观察官方 UI 的演进方向。
+
+实现形态：
+
+- 自研 UI 为 Electron renderer 内的独立界面层（与自研标题栏同页，位于标题栏下方区域），通过主进程桥（IPC fetch 转发 + WebSocket 事件流转发）对接引擎；官方 Web UI 保持在现有 `WebContentsView` 中，零改动。
+- 界面模式（`uiMode`：official / native）持久化于应用设置，切换即时生效（隐藏/显示对应视图层），两套界面共享同一引擎实例与会话数据。
+
+引擎备选：Pi（badlogic/pi-mono）经评估暂不引入。其官方支持自建 UI（pi-web-ui）但引擎哲学为极简（四核心工具），且同为 0.x 无兼容承诺；青梧已建成的打包/启动/修复链均围绕 dsh。自研 UI 只依赖 API 层、不寄生官方前端运行时，这一架构同时保证未来若需更换引擎时界面资产可迁移。重新评估触发条件：dsh 停止维护，或其 API 变动频繁到升级闸门持续大面积报警。
 
 ## 已核实项（V0.0.1 验证结论）
 

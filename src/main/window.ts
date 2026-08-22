@@ -4,6 +4,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { CONFIG } from './config';
 import { settings } from './settings';
+import type { UiMode } from '../shared/types';
 
 const TITLE_BAR_HEIGHT = 35;
 
@@ -163,6 +164,7 @@ export class WindowManager {
       this.dshView = null;
     });
 
+    this.applyUiMode(settings.get('uiMode'));
     this.loadUrl(url);
     return win;
   }
@@ -171,6 +173,16 @@ export class WindowManager {
     if (!this.mainWindow || this.mainWindow.isDestroyed()) return;
     const colors = TITLE_BAR_OVERLAY_COLORS[nativeTheme.shouldUseDarkColors ? 'dark' : 'light'];
     this.mainWindow.setTitleBarOverlay({ ...colors, height: TITLE_BAR_HEIGHT });
+  }
+
+  /** 应用界面模式：official 显示官方视图层，native 隐藏之并显示自研界面层。 */
+  applyUiMode(mode: UiMode): void {
+    if (this.dshView && !this.dshView.webContents.isDestroyed()) {
+      this.dshView.setVisible(mode === 'official');
+    }
+    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+      this.mainWindow.webContents.send('ui:mode-changed', mode);
+    }
   }
 
   loadUrl(url: string): void {
