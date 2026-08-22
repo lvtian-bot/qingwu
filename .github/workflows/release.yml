@@ -57,6 +57,12 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # 先回到远端 master 顶端再生成提交，避免从 tag 检出直接推送
+          # 在 master 领先 tag 时必然非快进被拒
+          git restore CHANGELOG.md
+          git fetch origin master
+          git checkout -B changelog-sync origin/master
+          git-cliff.exe -o CHANGELOG.md
           git add CHANGELOG.md
           if (-Not (git diff --cached --quiet)) {
             git commit -m "chore: 发布后更新 CHANGELOG 至 ${{ github.ref_name }}"

@@ -17,6 +17,8 @@
 
 ## Bug 修复
 
+- [x] 发布工作流回写 CHANGELOG 必然非快进失败：CI 在 tag 检出上直接推 master，master 领先 tag 即被拒。改为切到远端 master 顶端重新生成后再推，消除结构性失败，仅剩秒级并发窗口。 ✅ 2026-08-22（.github/workflows/release.yml）
+
 - [x] Windows 下 Agent 执行命令时不断闪现控制台窗口：Electron 主进程无控制台，dsh 子进程（pwsh 等）各自新建控制台窗口所致。方案：主进程启动时 AllocConsole 并立即 SW_HIDE 隐藏，让全部子进程继承该隐藏控制台；属青梧自有实现，不依赖 dsh 上游。 ✅ 2026-08-21（src/main/console.js，koffi 调用 Win32；待用户实际运行验证）
 - [x] 标题栏菜单点击外部空白关闭后按钮高亮不消失：Electron 原生菜单 popup 回调在"点击外部关闭"时不触发（electron#17341）。改为以菜单关闭后落点视图的 focus 事件作为确定关闭信号，通知标题栏清除高亮。 ✅ 2026-08-21（src/main/menu.js；待用户实际运行验证）
 
