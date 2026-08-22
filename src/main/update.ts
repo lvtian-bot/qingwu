@@ -1,9 +1,16 @@
 import { app } from 'electron';
+import type { AppUpdater, UpdateInfo, ProgressInfo } from 'electron-updater';
+import type { UpdateState } from '../shared/types';
 
-function isNoReleaseError(err) {
-  const message = String(err?.message || err || '');
+function errorDetail(err: unknown): { message?: unknown; statusCode?: unknown } | null | undefined {
+  return err as { message?: unknown; statusCode?: unknown } | null | undefined;
+}
+
+function isNoReleaseError(err: unknown): boolean {
+  const detail = errorDetail(err);
+  const message = String(detail?.message || detail || '');
   return (
-    err?.statusCode === 404 ||
+    detail?.statusCode === 404 ||
     message.includes('404') ||
     message.includes('releases.atom') ||
     message.includes('Cannot find latest') ||
@@ -11,27 +18,40 @@ function isNoReleaseError(err) {
   );
 }
 
-function errorText(err) {
-  const message = String(err?.message || err || '');
+function errorText(err: unknown): string {
+  const detail = errorDetail(err);
+  const message = String(detail?.message || detail || '');
   if (/checksum|sha512|signature|integrity/i.test(message)) {
     return '更新包校验失败，请稍后重试或前往发布页手动下载。';
   }
   if (/network|fetch|connect|timeout|ENOTFOUND|ECONN|ETIMEDOUT|ERR_/i.test(message)) {
     return '网络连接异常，请检查网络后重试。';
   }
-  const firstLine = message.split('\n')[0].trim();
+  const firstLine = message.split('\\n')[0].trim();
   if (firstLine && firstLine.length < 120) {
     return '更新遇到异常: ' + firstLine;
   }
   return '更新遇到异常，请稍后重试。';
 }
 
-function asVersion(payload) {
+function asVersion(payload: { version?: unknown } | null | undefined): string | null {
   const version = payload?.version;
   return typeof version === 'string' && version.trim() !== '' ? version.trim() : null;
 }
 
 export class UpdateService {
+  private readonly currentVersion: string;
+  private latestVersion: string;
+  private readonly supported: boolean;
+  private state: UpdateState;
+  private adapter: AppUpdater | null = null;
+  private adapterPromise: Promise<AppUpdater> | null = null;
+  private checkPromise: Promise<UpdateState> | null = null;
+  private resolveCheck: ((state: UpdateState) => void) | null = null;
+  private downloadPromise: Promise<UpdateState> | null = null;
+  private resolveDownload: ((state: UpdateState) => void) | null = null;
+  onStateChange: ((state: UpdateState) => void) | null = null;
+
   constructor() {
     this.currentVersion = app.getVersion();
     this.latestVersion = this.currentVersion;
@@ -39,40 +59,37 @@ export class UpdateService {
     this.state = this.supported
       ? { status: 'idle', currentVersion: this.currentVersion }
       : { status: 'unsupported', currentVersion: this.currentVersion };
-    this.adapter = null;
-    this.adapterPromise = null;
-    this.checkPromise = null;
-    this.resolveCheck = null;
-    this.downloadPromise = null;
-    this.resolveDownload = null;
-    this.onStateChange = null;
   }
 
-  setState(next) {
+  private setState(next: UpdateState): void {
     this.state = next;
     this.onStateChange?.(next);
   }
 
-  finishCheck(next) {
+  private finishCheck(next: UpdateState): void {
     this.setState(next);
     this.resolveCheck?.(next);
     this.resolveCheck = null;
     this.checkPromise = null;
   }
 
-  finishDownload(next) {
+  private finishDownload(next: UpdateState): void {
     this.setState(next);
     this.resolveDownload?.(next);
     this.resolveDownload = null;
     this.downloadPromise = null;
   }
 
-  async getAdapter() {
+  private async getAdapter(): Promise<AppUpdater> {
     if (this.adapter) return this.adapter;
     if (!this.adapterPromise) {
       this.adapterPromise = import('electron-updater')
         .then((module) => {
-          const autoUpdater = module.autoUpdater || module.default?.autoUpdater;
+          const mod = module as unknown as {
+            autoUpdater?: AppUpdater;
+            default?: { autoUpdater?: AppUpdater };
+          };
+          const autoUpdater = mod.autoUpdater ?? mod.default?.autoUpdater;
           if (!autoUpdater) {
             throw new Error('未能初始化 electron-updater 模块');
           }
@@ -82,7 +99,7 @@ export class UpdateService {
           this.adapter = autoUpdater;
           return autoUpdater;
         })
-        .catch((err) => {
+        .catch((err: unknown) => {
           this.adapterPromise = null;
           throw err;
         });
@@ -90,8 +107,8 @@ export class UpdateService {
     return this.adapterPromise;
   }
 
-  bindEvents(autoUpdater) {
-    autoUpdater.on('update-available', (info) => {
+  private bindEvents(autoUpdater: AppUpdater): void {
+    autoUpdater.on('update-available', (info: UpdateInfo) => {
       const version = asVersion(info) || this.currentVersion;
       this.latestVersion = version;
       this.finishCheck({
@@ -100,7 +117,7 @@ export class UpdateService {
         latestVersion: version,
       });
     });
-    autoUpdater.on('update-not-available', (info) => {
+    autoUpdater.on('update-not-available', (info: UpdateInfo) => {
       const version = asVersion(info) || this.currentVersion;
       this.latestVersion = version;
       this.finishCheck({
@@ -109,7 +126,7 @@ export class UpdateService {
         latestVersion: version,
       });
     });
-    autoUpdater.on('download-progress', (progress) => {
+    autoUpdater.on('download-progress', (progress: ProgressInfo) => {
       if (typeof progress?.percent !== 'number') return;
       this.setState({
         status: 'downloading',
@@ -120,7 +137,7 @@ export class UpdateService {
         total: Math.max(0, progress.total ?? 0),
       });
     });
-    autoUpdater.on('update-downloaded', (info) => {
+    autoUpdater.on('update-downloaded', (info: UpdateInfo) => {
       const version = asVersion(info);
       if (version) this.latestVersion = version;
       this.finishDownload({
@@ -129,8 +146,8 @@ export class UpdateService {
         latestVersion: this.latestVersion,
       });
     });
-    autoUpdater.on('error', (err) => {
-      const next = isNoReleaseError(err)
+    autoUpdater.on('error', (err: Error) => {
+      const next: UpdateState = isNoReleaseError(err)
         ? {
             status: 'latest',
             currentVersion: this.currentVersion,
@@ -147,11 +164,11 @@ export class UpdateService {
     });
   }
 
-  getState() {
+  getState(): UpdateState {
     return this.state;
   }
 
-  async check() {
+  async check(): Promise<UpdateState> {
     if (!this.supported) return this.state;
     if (this.checkPromise) return this.checkPromise;
     if (this.state.status === 'downloading' || this.state.status === 'downloaded') {
@@ -159,12 +176,12 @@ export class UpdateService {
     }
 
     this.setState({ status: 'checking', currentVersion: this.currentVersion });
-    this.checkPromise = new Promise((resolve) => {
+    this.checkPromise = new Promise<UpdateState>((resolve) => {
       this.resolveCheck = resolve;
     });
     try {
       const autoUpdater = await this.getAdapter();
-      void autoUpdater.checkForUpdates().catch((err) => {
+      void autoUpdater.checkForUpdates().catch((err: unknown) => {
         this.finishCheck({
           status: 'error',
           currentVersion: this.currentVersion,
@@ -181,7 +198,7 @@ export class UpdateService {
     return this.checkPromise;
   }
 
-  async download() {
+  async download(): Promise<UpdateState> {
     if (!this.supported || this.state.status !== 'available') return this.state;
     if (this.downloadPromise) return this.downloadPromise;
 
@@ -193,7 +210,7 @@ export class UpdateService {
       transferred: 0,
       total: 0,
     });
-    this.downloadPromise = new Promise((resolve) => {
+    this.downloadPromise = new Promise<UpdateState>((resolve) => {
       this.resolveDownload = resolve;
     });
     try {
@@ -211,7 +228,7 @@ export class UpdateService {
     return this.downloadPromise;
   }
 
-  install() {
+  install(): boolean {
     if (this.state.status !== 'downloaded' || !this.adapter) return false;
     try {
       this.adapter.quitAndInstall();

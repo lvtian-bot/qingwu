@@ -9,7 +9,10 @@
     "dev": "electron-vite dev",
     "start": "electron-vite preview",
     "build": "node -e \"fs.rmSync('out', { force: true, recursive: true })\" && electron-vite build",
-    "check": "electron-vite build",
+    "check": "npm run typecheck && electron-vite build",
+    "typecheck": "npm run typecheck:node && npm run typecheck:web",
+    "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
+    "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
     "postinstall": "node scripts/patch-dsh.mjs",
     "dist": "npm run build && electron-builder --win --x64"
   },
@@ -40,12 +43,16 @@
     "koffi": "^3.1.6"
   },
   "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.7.0",
     "electron": "43.4.1",
     "electron-builder": "^26.15.3",
     "electron-vite": "^5.0.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "typescript": "^5.8.3",
     "vite": "^6.4.3"
   },
   "build": {

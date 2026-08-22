@@ -1,13 +1,14 @@
 import { app, dialog, ipcMain, Menu, shell } from 'electron';
-import { acquireHiddenConsole } from './console.js';
-import { HarnessManager } from './harness.js';
-import { WindowManager } from './window.js';
-import { createApplicationMenu } from './menu.js';
-import { setupAboutPanel } from './about.js';
-import { UpdateService } from './update.js';
-import { UpdateWindowManager } from './update-window.js';
-import { TrayManager } from './tray.js';
-import { CONFIG } from './config.js';
+import type { IpcMainInvokeEvent } from 'electron';
+import { acquireHiddenConsole } from './console';
+import { HarnessManager } from './harness';
+import { WindowManager } from './window';
+import { createApplicationMenu } from './menu';
+import { setupAboutPanel } from './about';
+import { UpdateService } from './update';
+import { UpdateWindowManager } from './update-window';
+import { TrayManager } from './tray';
+import { CONFIG } from './config';
 
 const gotTheLock = app.requestSingleInstanceLock();
 
@@ -29,7 +30,8 @@ if (!gotTheLock) {
     windowManager.focus();
   });
 
-  const isUpdateWindowSender = (event) => updateWindowManager.isSender(event);
+  const isUpdateWindowSender = (event: IpcMainInvokeEvent) =>
+    updateWindowManager.isSender(event);
 
   ipcMain.handle('update:getState', (event) =>
     isUpdateWindowSender(event) ? updateService.getState() : null
@@ -49,7 +51,7 @@ if (!gotTheLock) {
     }
   });
 
-  ipcMain.handle('titlebar:popupMenu', (event, { menuName, x, y }) => {
+  ipcMain.handle('titlebar:popupMenu', (_event, { menuName, x, y }) => {
     const win = windowManager.mainWindow;
     if (!win || win.isDestroyed()) return;
 
@@ -109,7 +111,7 @@ if (!gotTheLock) {
       console.error('[Main] 启动失败:', err);
       dialog.showErrorBox(
         '青梧启动失败',
-        `无法启动内置引擎服务:\n${err.message || err}\n\n应用即将退出。`
+        `无法启动内置引擎服务:\n${err instanceof Error ? err.message : String(err)}\n\n应用即将退出。`
       );
       app.quit();
     }
@@ -119,7 +121,7 @@ if (!gotTheLock) {
     app.quit();
   });
 
-  app.on('before-quit', async (event) => {
+  app.on('before-quit', async (_event) => {
     windowManager.isQuitting = true;
     trayManager.destroy();
     console.log('[Main] 正在退出应用，清理子进程...');

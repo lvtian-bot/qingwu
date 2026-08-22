@@ -1,16 +1,23 @@
 import { Tray, Menu, app } from 'electron';
-import { CONFIG } from './config.js';
-import { settings } from './settings.js';
+import { CONFIG } from './config';
+import { settings } from './settings';
+import type { WindowManager } from './window';
+import type { UpdateWindowManager } from './update-window';
 
 export class TrayManager {
-  constructor(windowManager, updateWindowManager) {
+  private tray: Tray | null = null;
+  private readonly windowManager: WindowManager;
+  private readonly updateWindowManager: UpdateWindowManager;
+  private unsubscribeSettings: (() => void) | null = null;
+
+  constructor(windowManager: WindowManager, updateWindowManager: UpdateWindowManager) {
     this.tray = null;
     this.windowManager = windowManager;
     this.updateWindowManager = updateWindowManager;
     this.unsubscribeSettings = null;
   }
 
-  init(iconPath) {
+  init(iconPath: string | undefined): void {
     if (this.tray || !iconPath) return;
 
     try {

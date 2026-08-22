@@ -2,7 +2,22 @@ import { app } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 
+export interface AppSettings {
+  closeToTray: boolean;
+}
+
+type SettingsListener = (
+  key: keyof AppSettings,
+  value: AppSettings[keyof AppSettings],
+  all: AppSettings
+) => void;
+
 class SettingsManager {
+  private configPath: string;
+  private settings: AppSettings;
+  private listeners = new Set<SettingsListener>();
+  private loaded = false;
+
   constructor() {
     this.configPath = path.join(app.getPath('userData'), 'settings.json');
     this.settings = {
@@ -17,9 +32,9 @@ class SettingsManager {
     try {
       if (fs.existsSync(this.configPath)) {
         const raw = fs.readFileSync(this.configPath, 'utf-8');
-        const parsed = JSON.parse(raw);
-        if (parsed && typeof parsed === 'object') {
-          this.settings = { ...this.settings, ...parsed };
+        const parsed: unknown = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          this.settings = { ...this.settings, ...(parsed as Partial<AppSettings>) };
         }
       }
     } catch (err) {
@@ -41,12 +56,12 @@ class SettingsManager {
     }
   }
 
-  get(key) {
+  get<K extends keyof AppSettings>(key: K): AppSettings[K] {
     this.load();
     return this.settings[key];
   }
 
-  set(key, value) {
+  set<K extends keyof AppSettings>(key: K, value: AppSettings[K]) {
     this.load();
     if (this.settings[key] === value) return;
     this.settings[key] = value;
@@ -60,7 +75,7 @@ class SettingsManager {
     }
   }
 
-  onChange(listener) {
+  onChange(listener: SettingsListener) {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
   }

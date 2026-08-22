@@ -1,12 +1,19 @@
 import { app, Menu, shell } from 'electron';
-import { CONFIG } from './config.js';
-import { settings } from './settings.js';
+import type { BrowserWindow, WebContents } from 'electron';
+import { CONFIG } from './config';
+import { settings } from './settings';
 
-export function createApplicationMenu(options = {}) {
+export interface ApplicationMenuOptions {
+  onCheckForUpdates?: () => void;
+  getTargetWebContents?: () => WebContents | null;
+  getMainWindow?: () => BrowserWindow | null;
+}
+
+export function createApplicationMenu(options: ApplicationMenuOptions = {}) {
   const { onCheckForUpdates, getTargetWebContents, getMainWindow } = options;
 
   const buildAndSetMenu = () => {
-    const template = [
+    const template: Electron.MenuItemConstructorOptions[] = [
       {
         label: '文件',
         submenu: [

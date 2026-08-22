@@ -5,6 +5,7 @@
 ## 技术栈（已定）
 
 - Electron：桌面壳。DeepSeek Harness 本身是 Node.js / TypeScript 技术栈，Electron 自带 Node 与 Chromium，天然吻合；不选 Tauri，避免凭空增加 Rust 与 Node sidecar 管理复杂度。
+- TypeScript：自有代码（主进程 / preload / 渲染层）统一使用 TypeScript，strict 模式，类型检查纳入 npm run check 门禁；dsh 生态本身是 TS，后续自有 UI 插件可直接复用其类型契约。
 - @deepseek-ai/dsh：DeepSeek Harness CLI / 运行时，作为 npm 依赖随应用打包并锁定版本，用户无需单独安装。
 - 打包：electron-builder / NSIS，产出 Windows 安装包。
 

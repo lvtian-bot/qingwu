@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
+import type { MouseEvent } from 'react';
 import './titlebar.css';
 
-const MENU_ITEMS = ['文件', '编辑', '视图', '帮助'];
+const MENU_ITEMS = ['文件', '编辑', '视图', '帮助'] as const;
+type MenuName = (typeof MENU_ITEMS)[number];
 
 function QingwuIcon() {
   return (
@@ -34,7 +36,7 @@ function QingwuIcon() {
 
 export function TitleBar() {
   const [title, setTitle] = useState('青梧');
-  const [activeMenu, setActiveMenu] = useState(null);
+  const [activeMenu, setActiveMenu] = useState<MenuName | null>(null);
   const [isFullScreen, setIsFullScreen] = useState(false);
 
   useEffect(() => {
@@ -63,7 +65,7 @@ export function TitleBar() {
     };
   }, []);
 
-  const handleMenuClick = (menuName, e) => {
+  const handleMenuClick = (menuName: MenuName, e: MouseEvent<HTMLButtonElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     setActiveMenu(menuName);
     window.qingwu?.popupMenu?.({
@@ -73,7 +75,7 @@ export function TitleBar() {
     });
   };
 
-  const handleMenuMouseEnter = (menuName, e) => {
+  const handleMenuMouseEnter = (menuName: MenuName, e: MouseEvent<HTMLButtonElement>) => {
     if (activeMenu && activeMenu !== menuName) {
       const rect = e.currentTarget.getBoundingClientRect();
       setActiveMenu(menuName);

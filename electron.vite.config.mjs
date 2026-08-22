@@ -8,7 +8,7 @@ export default defineConfig({
     build: {
       emptyOutDir: false,
       rollupOptions: {
-        input: { index: resolve(__dirname, 'src/main/index.js') },
+        input: { index: resolve(__dirname, 'src/main/index.ts') },
       },
     },
   },
@@ -17,7 +17,7 @@ export default defineConfig({
     build: {
       emptyOutDir: false,
       rollupOptions: {
-        input: { index: resolve(__dirname, 'src/preload/index.js') },
+        input: { index: resolve(__dirname, 'src/preload/index.ts') },
       },
     },
   },

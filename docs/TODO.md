@@ -13,6 +13,8 @@
 
 ## 新功能
 
+- [x] 自有代码迁移 TypeScript：主进程 / preload / 渲染层全量 .ts/.tsx，strict 类型检查纳入 npm run check 门禁，为后续自有插件对接 dsh 的 TS 类型契约打基础。 ✅ 2026-08-22（类型检查与构建通过；Windows 运行时行为无改动预期，待随下次实际使用回归）
+
 ## Bug 修复
 
 - [x] Windows 下 Agent 执行命令时不断闪现控制台窗口：Electron 主进程无控制台，dsh 子进程（pwsh 等）各自新建控制台窗口所致。方案：主进程启动时 AllocConsole 并立即 SW_HIDE 隐藏，让全部子进程继承该隐藏控制台；属青梧自有实现，不依赖 dsh 上游。 ✅ 2026-08-21（src/main/console.js，koffi 调用 Win32；待用户实际运行验证）

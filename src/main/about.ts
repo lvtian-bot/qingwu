@@ -1,5 +1,5 @@
 import { app } from 'electron';
-import { CONFIG } from './config.js';
+import { CONFIG } from './config';
 
 export function setupAboutPanel() {
   app.setAboutPanelOptions({

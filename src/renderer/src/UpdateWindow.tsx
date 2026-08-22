@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react';
+import type { ReactNode } from 'react';
+import type { UpdateState, UpdateStatus } from '../../shared/types';
 
-function formatBytes(value) {
+function formatBytes(value: number): string {
   if (!Number.isFinite(value) || value < 0) return '0 B';
   if (value < 1024) return '' + Math.round(value) + ' B';
   if (value < 1024 * 1024) return '' + (value / 1024).toFixed(1) + ' KB';
   return '' + (value / (1024 * 1024)).toFixed(1) + ' MB';
 }
 
-function StatusIcon({ status }) {
+function StatusIcon({ status }: { status: UpdateStatus }) {
   if (status === 'checking' || status === 'downloading' || status === 'idle') {
     return <div className="icon-spinner" aria-hidden="true" />;
   }
@@ -40,7 +42,7 @@ function StatusIcon({ status }) {
 }
 
 export function UpdateWindow() {
-  const [state, setState] = useState(null);
+  const [state, setState] = useState<UpdateState | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -85,7 +87,7 @@ export function UpdateWindow() {
 
   let title = '';
   let description = '';
-  let actions = null;
+  let actions: ReactNode = null;
 
   if (status === 'unsupported') {
     title = '开发调试模式';

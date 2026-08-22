@@ -1,27 +1,28 @@
 import { app, BrowserWindow, WebContentsView, shell, nativeTheme } from 'electron';
+import type { WebContents } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
-import { CONFIG } from './config.js';
-import { settings } from './settings.js';
+import { CONFIG } from './config';
+import { settings } from './settings';
 
 const TITLE_BAR_HEIGHT = 35;
 
 const TITLE_BAR_OVERLAY_COLORS = {
   dark: { color: '#181825', symbolColor: '#a6adc8' },
   light: { color: '#eef4f9', symbolColor: '#6b6b6b' },
-};
+} as const;
 
 export class WindowManager {
-  constructor() {
-    this.mainWindow = null;
-    this.dshView = null;
-    this.isQuitting = false;
-    this.serviceUrl = null;
+  mainWindow: BrowserWindow | null = null;
+  dshView: WebContentsView | null = null;
+  isQuitting = false;
+  private serviceUrl: string | null = null;
 
+  constructor() {
     nativeTheme.on('updated', () => this.applyTitleBarOverlay());
   }
 
-  getIconPath() {
+  getIconPath(): string | undefined {
     const possiblePaths = [
       path.join(app.getAppPath(), 'build', 'icon.ico'),
       path.join(app.getAppPath(), 'build', 'icon.png'),
@@ -40,11 +41,11 @@ export class WindowManager {
     return undefined;
   }
 
-  createWindow(url) {
+  createWindow(url: string): BrowserWindow {
     const icon = this.getIconPath();
     this.serviceUrl = url;
 
-    this.mainWindow = new BrowserWindow({
+    const win = new BrowserWindow({
       title: CONFIG.appName,
       width: CONFIG.window.width,
       height: CONFIG.window.height,
@@ -66,19 +67,20 @@ export class WindowManager {
         spellcheck: false,
       },
     });
+    this.mainWindow = win;
 
-    this.mainWindow.setMenuBarVisibility(false);
+    win.setMenuBarVisibility(false);
 
     this.applyTitleBarOverlay();
 
-    this.mainWindow.on('close', (e) => {
+    win.on('close', (e) => {
       if (!this.isQuitting && settings.get('closeToTray')) {
         e.preventDefault();
-        this.mainWindow.hide();
+        win.hide();
       }
     });
 
-    this.dshView = new WebContentsView({
+    const dshView = new WebContentsView({
       webPreferences: {
         nodeIntegration: false,
         contextIsolation: true,
@@ -86,14 +88,15 @@ export class WindowManager {
         spellcheck: false,
       },
     });
-    this.mainWindow.contentView.addChildView(this.dshView);
+    this.dshView = dshView;
+    win.contentView.addChildView(dshView);
 
     const updateViewBounds = () => {
-      if (!this.mainWindow || this.mainWindow.isDestroyed() || !this.dshView) return;
-      const [width, height] = this.mainWindow.getContentSize();
-      const isFullScreen = this.mainWindow.isFullScreen();
+      if (!this.mainWindow || win.isDestroyed() || !this.dshView) return;
+      const [width, height] = win.getContentSize();
+      const isFullScreen = win.isFullScreen();
       const topOffset = isFullScreen ? 0 : TITLE_BAR_HEIGHT;
-      this.dshView.setBounds({
+      dshView.setBounds({
         x: 0,
         y: topOffset,
         width: width,
@@ -101,33 +104,33 @@ export class WindowManager {
       });
     };
 
-    this.mainWindow.on('resize', updateViewBounds);
-    this.mainWindow.on('maximize', updateViewBounds);
-    this.mainWindow.on('unmaximize', updateViewBounds);
-    this.mainWindow.on('enter-full-screen', () => {
+    win.on('resize', updateViewBounds);
+    win.on('maximize', updateViewBounds);
+    win.on('unmaximize', updateViewBounds);
+    win.on('enter-full-screen', () => {
       updateViewBounds();
-      if (!this.mainWindow.isDestroyed()) {
-        this.mainWindow.webContents.send('window:fullscreen-changed', true);
+      if (!win.isDestroyed()) {
+        win.webContents.send('window:fullscreen-changed', true);
       }
     });
-    this.mainWindow.on('leave-full-screen', () => {
+    win.on('leave-full-screen', () => {
       updateViewBounds();
-      if (!this.mainWindow.isDestroyed()) {
-        this.mainWindow.webContents.send('window:fullscreen-changed', false);
+      if (!win.isDestroyed()) {
+        win.webContents.send('window:fullscreen-changed', false);
       }
     });
 
-    this.dshView.webContents.on('page-title-updated', (e, title) => {
+    dshView.webContents.on('page-title-updated', (e, title) => {
       e.preventDefault();
       const displayTitle =
         title && title !== CONFIG.appName ? `${CONFIG.appName} - ${title}` : CONFIG.appName;
-      this.mainWindow.setTitle(displayTitle);
-      if (!this.mainWindow.isDestroyed()) {
-        this.mainWindow.webContents.send('titlebar:title-changed', displayTitle);
+      win.setTitle(displayTitle);
+      if (!win.isDestroyed()) {
+        win.webContents.send('titlebar:title-changed', displayTitle);
       }
     });
 
-    this.dshView.webContents.setWindowOpenHandler(({ url: targetUrl }) => {
+    dshView.webContents.setWindowOpenHandler(({ url: targetUrl }) => {
       if (targetUrl.startsWith('http:') || targetUrl.startsWith('https:')) {
         if (!this.serviceUrl || !targetUrl.startsWith(this.serviceUrl)) {
           shell.openExternal(targetUrl);
@@ -137,7 +140,7 @@ export class WindowManager {
       return { action: 'allow' };
     });
 
-    this.dshView.webContents.on('will-navigate', (e, targetUrl) => {
+    dshView.webContents.on('will-navigate', (e, targetUrl) => {
       if (this.serviceUrl && !targetUrl.startsWith(this.serviceUrl)) {
         e.preventDefault();
         shell.openExternal(targetUrl);
@@ -145,32 +148,32 @@ export class WindowManager {
     });
 
     if (process.env.ELECTRON_RENDERER_URL) {
-      this.mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL);
+      win.loadURL(process.env.ELECTRON_RENDERER_URL);
     } else {
-      this.mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
+      win.loadFile(path.join(__dirname, '../renderer/index.html'));
     }
 
-    this.mainWindow.once('ready-to-show', () => {
+    win.once('ready-to-show', () => {
       updateViewBounds();
-      this.mainWindow.show();
+      win.show();
     });
 
-    this.mainWindow.on('closed', () => {
+    win.on('closed', () => {
       this.mainWindow = null;
       this.dshView = null;
     });
 
     this.loadUrl(url);
-    return this.mainWindow;
+    return win;
   }
 
-  applyTitleBarOverlay() {
+  applyTitleBarOverlay(): void {
     if (!this.mainWindow || this.mainWindow.isDestroyed()) return;
     const colors = TITLE_BAR_OVERLAY_COLORS[nativeTheme.shouldUseDarkColors ? 'dark' : 'light'];
     this.mainWindow.setTitleBarOverlay({ ...colors, height: TITLE_BAR_HEIGHT });
   }
 
-  loadUrl(url) {
+  loadUrl(url: string): void {
     this.serviceUrl = url;
     if (this.dshView && !this.dshView.webContents.isDestroyed()) {
       this.dshView.webContents.loadURL(url).catch((err) => {
@@ -179,7 +182,7 @@ export class WindowManager {
     }
   }
 
-  getTargetWebContents() {
+  getTargetWebContents(): WebContents | null {
     if (this.dshView && !this.dshView.webContents.isDestroyed()) {
       return this.dshView.webContents;
     }
@@ -189,7 +192,7 @@ export class WindowManager {
     return null;
   }
 
-  focus() {
+  focus(): void {
     if (this.mainWindow) {
       if (!this.mainWindow.isVisible()) {
         this.mainWindow.show();
@@ -204,7 +207,7 @@ export class WindowManager {
     }
   }
 
-  showErrorMessage(title, message) {
+  showErrorMessage(title: string, message: string): void {
     if (this.dshView && !this.dshView.webContents.isDestroyed()) {
       const escapedMsg = message.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
       const errorHtml = `

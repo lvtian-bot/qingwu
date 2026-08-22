@@ -1,13 +1,17 @@
 import { BrowserWindow } from 'electron';
+import type { IpcMainInvokeEvent } from 'electron';
 import path from 'node:path';
+import type { UpdateState } from '../shared/types';
 
 export class UpdateWindowManager {
-  constructor(getParentWindow) {
+  private readonly getParentWindow: () => BrowserWindow | null;
+  private window: BrowserWindow | null = null;
+
+  constructor(getParentWindow: () => BrowserWindow | null) {
     this.getParentWindow = getParentWindow;
-    this.window = null;
   }
 
-  open() {
+  open(): void {
     if (this.window && !this.window.isDestroyed()) {
       if (this.window.isMinimized()) this.window.restore();
       this.window.focus();
@@ -15,7 +19,7 @@ export class UpdateWindowManager {
     }
 
     const parent = this.getParentWindow();
-    this.window = new BrowserWindow({
+    const win = new BrowserWindow({
       title: '检查更新',
       width: 440,
       height: 400,
@@ -33,31 +37,34 @@ export class UpdateWindowManager {
         spellcheck: false,
       },
     });
+    this.window = win;
 
-    this.window.setMenu(null);
-    this.window.once('ready-to-show', () => {
-      this.window?.show();
+    win.setMenu(null);
+    win.once('ready-to-show', () => {
+      win.show();
     });
-    this.window.on('closed', () => {
-      this.window = null;
+    win.on('closed', () => {
+      if (this.window === win) {
+        this.window = null;
+      }
     });
 
     if (process.env.ELECTRON_RENDERER_URL) {
-      this.window.loadURL(`${process.env.ELECTRON_RENDERER_URL}?view=update`);
+      win.loadURL(`${process.env.ELECTRON_RENDERER_URL}?view=update`);
     } else {
-      this.window.loadFile(path.join(__dirname, '../renderer/index.html'), {
+      win.loadFile(path.join(__dirname, '../renderer/index.html'), {
         query: { view: 'update' },
       });
     }
   }
 
-  sendState(state) {
+  sendState(state: UpdateState): void {
     if (this.window && !this.window.isDestroyed()) {
       this.window.webContents.send('update:state-changed', state);
     }
   }
 
-  isSender(event) {
+  isSender(event: IpcMainInvokeEvent): boolean {
     return (
       !!this.window && !this.window.isDestroyed() && event.sender === this.window.webContents
     );

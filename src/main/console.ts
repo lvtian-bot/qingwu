@@ -13,15 +13,16 @@ import koffi from 'koffi';
 export function acquireHiddenConsole() {
   if (process.platform !== 'win32') return;
 
-  let kernel32;
-  let user32;
+  let kernel32: ReturnType<typeof koffi.load> | null = null;
+  let user32: ReturnType<typeof koffi.load> | null = null;
   try {
     kernel32 = koffi.load('kernel32.dll');
     user32 = koffi.load('user32.dll');
   } catch (err) {
-    console.warn('[Main] 加载 Win32 API 失败，跳过控制台隐藏:', err?.message || err);
+    console.warn('[Main] 加载 Win32 API 失败，跳过控制台隐藏:', describeError(err));
     return;
   }
+  if (!kernel32 || !user32) return;
 
   try {
     const allocConsole = kernel32.func('int __stdcall AllocConsole()');
@@ -35,6 +36,10 @@ export function acquireHiddenConsole() {
     const hwnd = getConsoleWindow();
     if (hwnd) showWindow(hwnd, SW_HIDE);
   } catch (err) {
-    console.warn('[Main] 申请隐藏控制台失败，子进程可能闪现窗口:', err?.message || err);
+    console.warn('[Main] 申请隐藏控制台失败，子进程可能闪现窗口:', describeError(err));
   }
+}
+
+function describeError(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
