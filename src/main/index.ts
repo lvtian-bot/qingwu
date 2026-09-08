@@ -1,4 +1,4 @@
-import { app, dialog, ipcMain, Menu, shell } from 'electron';
+import { app, dialog, ipcMain, shell } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
 import { acquireHiddenConsole } from './console';
 import { HarnessManager } from './harness';
@@ -56,28 +56,6 @@ if (!gotTheLock) {
     if (isUpdateWindowSender(event)) {
       shell.openExternal(CONFIG.repositoryUrl + '/releases');
     }
-  });
-
-  ipcMain.handle('titlebar:popupMenu', (_event, { menuName, x, y }) => {
-    const win = windowManager.mainWindow;
-    if (!win || win.isDestroyed()) return;
-
-    const appMenu = Menu.getApplicationMenu();
-    if (!appMenu) return;
-
-    const targetItem = appMenu.items.find((item) => item.label === menuName);
-    if (!targetItem || !targetItem.submenu) return;
-
-    targetItem.submenu.popup({
-      window: win,
-      x: Math.round(x),
-      y: Math.round(y),
-      callback: () => {
-        if (!win.isDestroyed()) {
-          win.webContents.send('titlebar:menu-closed');
-        }
-      },
-    });
   });
 
   ipcMain.handle('titlebar:getTitle', () => {

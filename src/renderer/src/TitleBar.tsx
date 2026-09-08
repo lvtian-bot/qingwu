@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { MouseEvent } from 'react';
 import './titlebar.css';
 
@@ -38,6 +38,31 @@ export function TitleBar() {
   const [title, setTitle] = useState('青梧');
   const [activeMenu, setActiveMenu] = useState<MenuName | null>(null);
   const [isFullScreen, setIsFullScreen] = useState(false);
+  const disarmPointerGuardRef = useRef<() => void>(() => {});
+
+  const clearActiveMenu = () => {
+    disarmPointerGuardRef.current();
+    setActiveMenu(null);
+  };
+
+  // 原生菜单开启期间持有鼠标捕获，页面收不到任何指针事件；Esc、再点菜单按钮、
+  // 点击标题栏其他位置等关闭路径既不触发 popup 回调也不改变焦点，因此页面
+  // 收到的第一个指针事件即意味着菜单已关闭，以此清除按钮高亮。
+  const armPointerGuard = () => {
+    disarmPointerGuardRef.current();
+    const onPointer = () => {
+      disarm();
+      setActiveMenu(null);
+    };
+    const disarm = () => {
+      window.removeEventListener('mousemove', onPointer, true);
+      window.removeEventListener('mousedown', onPointer, true);
+      disarmPointerGuardRef.current = () => {};
+    };
+    window.addEventListener('mousemove', onPointer, true);
+    window.addEventListener('mousedown', onPointer, true);
+    disarmPointerGuardRef.current = disarm;
+  };
 
   useEffect(() => {
     if (window.qingwu?.getTitle) {
@@ -51,7 +76,7 @@ export function TitleBar() {
     });
 
     const unsubMenu = window.qingwu?.onMenuClosed?.(() => {
-      setActiveMenu(null);
+      clearActiveMenu();
     });
 
     const unsubFs = window.qingwu?.onFullscreenChanged?.((fs) => {
@@ -59,6 +84,7 @@ export function TitleBar() {
     });
 
     return () => {
+      disarmPointerGuardRef.current();
       unsubTitle?.();
       unsubMenu?.();
       unsubFs?.();
@@ -68,23 +94,12 @@ export function TitleBar() {
   const handleMenuClick = (menuName: MenuName, e: MouseEvent<HTMLButtonElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     setActiveMenu(menuName);
+    armPointerGuard();
     window.qingwu?.popupMenu?.({
       menuName,
       x: rect.left,
       y: rect.bottom,
     });
-  };
-
-  const handleMenuMouseEnter = (menuName: MenuName, e: MouseEvent<HTMLButtonElement>) => {
-    if (activeMenu && activeMenu !== menuName) {
-      const rect = e.currentTarget.getBoundingClientRect();
-      setActiveMenu(menuName);
-      window.qingwu?.popupMenu?.({
-        menuName,
-        x: rect.left,
-        y: rect.bottom,
-      });
-    }
   };
 
   if (isFullScreen) {
@@ -104,7 +119,6 @@ export function TitleBar() {
               type="button"
               className={"titlebar-menu-item" + (activeMenu === item ? " active" : "")}
               onClick={(e) => handleMenuClick(item, e)}
-              onMouseEnter={(e) => handleMenuMouseEnter(item, e)}
             >
               {item}
             </button>

@@ -1,4 +1,4 @@
-import { app, Menu, shell } from 'electron';
+import { app, ipcMain, Menu, shell } from 'electron';
 import type { BrowserWindow, WebContents } from 'electron';
 import { CONFIG } from './config';
 import { settings } from './settings';
@@ -150,17 +150,51 @@ export function createApplicationMenu(options: ApplicationMenuOptions = {}) {
     return menu;
   };
 
-  // 原生菜单被“点击外部”关闭时，popup 的 callback 不会触发（electron#17341），
-  // 菜单关闭后点击落点所在视图必然重新获得焦点，以 focus 事件作为确定关闭信号。
-  const notifyMenuClosed = () => {
+  // popup 回调在 Esc、再点标题栏按钮、焦点移出（含部分点击外部场景）等关闭路径下
+  // 不触发（electron#17341 及其在 Windows 上的变体），故由主进程在菜单开启期间
+  // 以多个信号兜底通知标题栏“菜单已关闭”；popupOpen 保证信号只在菜单真正
+  // 开启时生效，避免打开菜单那次点击自身的 focus 事件误触发。
+  let popupOpen = false;
+  const sendMenuClosed = () => {
     const win = getMainWindow?.();
     if (win && !win.isDestroyed()) {
       win.webContents.send('titlebar:menu-closed');
     }
   };
+  const notifyMenuClosed = () => {
+    if (!popupOpen) return;
+    popupOpen = false;
+    sendMenuClosed();
+  };
 
+  // 菜单关闭后点击落点所在视图必然重新获得焦点，作为点击外部关闭的兜底信号。
   getMainWindow?.()?.webContents.on('focus', notifyMenuClosed);
   getTargetWebContents?.()?.on('focus', notifyMenuClosed);
+
+  ipcMain.handle('titlebar:popupMenu', (_event, { menuName, x, y }) => {
+    const win = getMainWindow?.();
+    if (!win || win.isDestroyed()) return;
+
+    const targetItem = Menu.getApplicationMenu()?.items.find((item) => item.label === menuName);
+    if (!targetItem || !targetItem.submenu) return;
+
+    popupOpen = true;
+    // 菜单开启期间点击其他应用时 callback 与 focus 兜底都不触发，以窗口 blur 为关闭信号。
+    const onWindowBlur = notifyMenuClosed;
+    win.once('blur', onWindowBlur);
+
+    targetItem.submenu.popup({
+      window: win,
+      x: Math.round(x),
+      y: Math.round(y),
+      callback: () => {
+        const wasOpen = popupOpen;
+        popupOpen = false;
+        win.removeListener('blur', onWindowBlur);
+        if (wasOpen) sendMenuClosed();
+      },
+    });
+  });
 
   settings.onChange((key) => {
     if (key === 'closeToTray' || key === 'uiMode') {

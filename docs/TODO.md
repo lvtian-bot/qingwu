@@ -25,6 +25,7 @@
 
 - [x] Windows 下 Agent 执行命令时不断闪现控制台窗口：Electron 主进程无控制台，dsh 子进程（pwsh 等）各自新建控制台窗口所致。方案：主进程启动时 AllocConsole 并立即 SW_HIDE 隐藏，让全部子进程继承该隐藏控制台；属青梧自有实现，不依赖 dsh 上游。 ✅ 2026-08-21（src/main/console.js，koffi 调用 Win32；待用户实际运行验证）
 - [x] 标题栏菜单点击外部空白关闭后按钮高亮不消失：Electron 原生菜单 popup 回调在"点击外部关闭"时不触发（electron#17341）。改为以菜单关闭后落点视图的 focus 事件作为确定关闭信号，通知标题栏清除高亮。 ✅ 2026-08-21（src/main/menu.js；待用户实际运行验证）
+- [x] 标题栏菜单按 Esc / 再点按钮等关闭后高亮仍不消失（v0.0.8 实测）：popup 回调在这些无焦点变化的关闭路径下同样不触发，focus 兜底只在焦点转移时生效，此类路径全部无信号。改为 popup 处理器收拢至 menu.ts 并以 popupOpen 门控三路关闭信号（callback / webContents focus / 窗口 blur）；渲染层新增指针事件守卫，利用原生菜单开启期间页面收不到指针事件的特性，收到首个 mousemove/mousedown 即清除高亮；顺带移除粘滞状态下会引发幻影菜单的 onMouseEnter 悬停切换。 ✅ 2026-09-07（src/main/menu.ts、src/renderer/src/TitleBar.tsx；沙箱验证信号链路，类型检查与构建通过；真实手势待用户实际体验）
 
 ## 暂不考虑
 
