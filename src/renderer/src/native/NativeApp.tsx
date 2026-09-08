@@ -1,32 +1,30 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
-  ApprovalRequestedFrame,
-  AssistantChunkEvent,
-  AssistantMessageEvent,
-  HistoryEntry,
-  HostFrame,
-  MuxFrame,
-  QuestionRequestedFrame,
+  ApprovalRequestPayload,
+  RemoteEventFrame,
   SessionEvent,
+  SessionFollowFrame,
   SessionSummary,
-  ToolCallEvent,
-  ToolResultEvent,
-  UserMessageEvent,
+  ToolCallEventData,
+  ToolResultEventData,
+  UserQuestionsRequestPayload,
+  WorkspaceFollowFrame,
   WorkspaceView,
 } from './protocol';
-import type { DshRpcResult, DshStreamFrame, UiMode } from '../../../shared/types';
+import { Endpoints } from './protocol';
+import type { DshRpcResult, DshStreamItem, UiMode } from '../../../shared/types';
 import './native.css';
 
 const qingwu = window.qingwu;
 
-async function rpc<T>(method: string, payload: unknown): Promise<T> {
-  const result = (await qingwu.dshCall(method, payload)) as DshRpcResult<T> | undefined;
+async function rpc<T>(endpoint: string, payload: unknown): Promise<T> {
+  const result = (await qingwu.dshCall(endpoint, payload)) as DshRpcResult<T> | undefined;
   if (!result || typeof result.ok !== 'boolean') {
-    throw new Error(`${method} 返回非法结果`);
+    throw new Error(`${endpoint} 返回非法结果`);
   }
   if (!result.ok) {
     throw new Error(
-      `${method} 失败: ${result.error?.code ?? 'unknown'} ${result.error?.message ?? ''}`
+      `${endpoint} 失败: ${result.error?.code ?? 'unknown'} ${result.error?.message ?? ''}`
     );
   }
   return result.value;
@@ -46,12 +44,16 @@ function textOf(content: unknown[]): string {
     .join('');
 }
 
-interface PendingApproval extends ApprovalRequestedFrame {
-  rpcId: string;
+/** 待决策审批（$events 瀑布）。 */
+interface PendingApproval extends ApprovalRequestPayload {
+  eventId: string;
+  clientId: string;
 }
 
-interface PendingQuestion extends QuestionRequestedFrame {
-  rpcId: string;
+/** 待回答问答（$events 瀑布）。 */
+interface PendingQuestion extends UserQuestionsRequestPayload {
+  eventId: string;
+  clientId: string;
 }
 
 /** 工具调用条目：call 事件与 result 事件按 callId 配对。 */
@@ -76,20 +78,23 @@ function foldChatItems(events: SessionEvent[]): ChatItem[] {
 
   for (const event of events) {
     if (event.type === 'user/message') {
-      const data = (event as UserMessageEvent).data;
-      if (data?.source?.kind === 'user') {
+      const data = event.data as { source?: { kind: string }; content?: unknown[] } | null;
+      if (data?.source?.kind === 'user' && Array.isArray(data.content)) {
         items.push({ kind: 'user', key: `u-${event.seq}`, text: textOf(data.content) });
       }
     } else if (event.type === 'assistant/message') {
-      const data = (event as AssistantMessageEvent).data;
+      const data = event.data as {
+        message?: { content?: unknown[] };
+        interrupted?: true;
+      } | null;
       items.push({
         kind: 'assistant',
         key: `a-${event.seq}`,
-        text: textOf(data.message.content),
-        interrupted: data.interrupted,
+        text: data?.message?.content ? textOf(data.message.content) : '',
+        interrupted: data?.interrupted,
       });
     } else if (event.type === 'tool/call') {
-      const data = (event as ToolCallEvent).data;
+      const data = event.data as ToolCallEventData;
       const item: ToolItem = {
         callId: data.callId,
         name: data.name,
@@ -99,7 +104,7 @@ function foldChatItems(events: SessionEvent[]): ChatItem[] {
       tools.set(data.callId, item);
       items.push({ kind: 'tool', key: `t-${event.seq}`, tool: item });
     } else if (event.type === 'tool/result') {
-      const data = (event as ToolResultEvent).data;
+      const data = event.data as ToolResultEventData;
       const block = data.message?.content?.[0];
       if (block && block.type === 'tool-result') {
         const target = tools.get(block.toolCallId);
@@ -145,40 +150,28 @@ export function NativeApp() {
   const [questions, setQuestions] = useState<PendingQuestion[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loadingHistory, setLoadingHistory] = useState(false);
-  const [loadedId, setLoadedId] = useState<string | null>(null);
   const eventsRef = useRef<SessionEvent[]>([]);
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const currentIdRef = useRef<string | null>(null);
+  const sessionStreamRef = useRef<string | null>(null);
+  const eventsClientIdRef = useRef<string | null>(null);
+  const refreshTimerRef = useRef<number | undefined>(undefined);
 
   const refreshSessions = useCallback(async () => {
     try {
-      const [listValue, wsValue] = await Promise.all([
-        rpc<{ items: SessionSummary[] }>('session.list', {}),
-        rpc<{ items: WorkspaceView[] }>('workspace.list', {}),
-      ]);
+      const listValue = await rpc<{ items: SessionSummary[] }>(Endpoints.sessionList, {
+        _request: {},
+      });
       setSessions(listValue.items);
-      setWorkspaces(wsValue.items);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
   }, []);
 
-  const loadSession = useCallback(async (sessionId: string) => {
-    setCurrentId(sessionId);
-    setLoadingHistory(true);
-    try {
-      const value = await rpc<{ events: HistoryEntry[] }>('session.history', {
-        sessionId,
-        maxMessages: 100,
-      });
-      eventsRef.current = value.events.map((entry) => entry.event);
-      setItems(foldChatItems(eventsRef.current));
-      setDraft('');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setLoadingHistory(false);
-    }
-  }, []);
+  const scheduleRefresh = useCallback(() => {
+    if (refreshTimerRef.current !== undefined) window.clearTimeout(refreshTimerRef.current);
+    refreshTimerRef.current = window.setTimeout(() => void refreshSessions(), 300);
+  }, [refreshSessions]);
 
   const appendEvent = useCallback((event: SessionEvent) => {
     eventsRef.current = [...eventsRef.current, event];
@@ -198,104 +191,183 @@ export function NativeApp() {
     }
   }, [workspaces, activeWorkspaceId]);
 
-  // 事件流分发
+  // 全局流：$events（会话增删/状态/审批/问答）+ workspace/follow（项目注册表）
   useEffect(() => {
-    let refreshTimer: number | undefined;
-    const scheduleRefresh = () => {
-      if (refreshTimer !== undefined) window.clearTimeout(refreshTimer);
-      refreshTimer = window.setTimeout(() => void refreshSessions(), 300);
+    const openStream = (endpoint: string, payload: unknown) => {
+      void qingwu.dshStreamOpen(endpoint, payload).catch((err) => {
+        setError(`打开 ${endpoint} 流失败: ${err instanceof Error ? err.message : String(err)}`);
+      });
     };
+    openStream('$events', {});
+    openStream(Endpoints.workspaceFollow, {});
 
-    const unsubscribe = qingwu.onDshEvent(({ stream, rpcId, payload }: DshStreamFrame) => {
-      if (stream === 'host') {
-        const frame = payload as HostFrame;
-        if (
-          frame.type === 'host/session-added' ||
-          frame.type === 'host/session-removed' ||
-          frame.type === 'host/workspace-changed' ||
-          frame.type === 'host/workspace-removed' ||
-          frame.type === 'host/workspace-order-changed'
-        ) {
+    const handleRemoteEvent = (frame: RemoteEventFrame) => {
+      if (frame.type === 'ready') {
+        eventsClientIdRef.current = frame.clientId;
+        return;
+      }
+      if (frame.type === 'emit') {
+        const [firstArg, secondArg] = Array.isArray(frame.args) ? frame.args : [];
+        if (frame.event === 'api-session/added' && firstArg) {
+          const summary = firstArg as SessionSummary;
+          setSessions((prev) => {
+            const rest = prev.filter((s) => s.sessionId !== summary.sessionId);
+            return [summary, ...rest];
+          });
+        } else if (frame.event === 'api-session/removed' && typeof firstArg === 'string') {
+          const removedId = firstArg;
+          setSessions((prev) => prev.filter((s) => s.sessionId !== removedId));
+          if (currentIdRef.current === removedId) {
+            setCurrentId(null);
+          }
+        } else if (frame.event === 'api-session/status') {
+          const sessionId = firstArg as string;
+          const isRunning = Boolean(secondArg);
+          if (currentIdRef.current === sessionId) setRunning(isRunning);
+          setSessions((prev) =>
+            prev.map((s) => (s.sessionId === sessionId ? { ...s, running: isRunning } : s))
+          );
+        } else if (frame.event === 'api-session/error') {
+          const sessionId = firstArg as string;
+          const message = secondArg as string;
+          if (currentIdRef.current === sessionId) setError(message);
+        } else if (frame.event === 'api-session/activity') {
           scheduleRefresh();
-        } else if (frame.type === 'host/session-status') {
-          if (frame.sessionId === currentId) setRunning(frame.running);
-          scheduleRefresh();
-        } else if (frame.type === 'host/agent-error' && frame.sessionId === currentId) {
-          setError(frame.message);
         }
         return;
       }
-
-      const frame = payload as MuxFrame;
-      switch (frame.type) {
-        case 'session/event': {
-          if (frame.sessionId !== currentId) return;
-          const event = frame.event;
-          if (event.type === 'assistant/chunk') {
-            const chunk = (event as AssistantChunkEvent).data.chunk;
-            if (chunk.type === 'text-delta') {
-              setDraft((prev) => prev + chunk.text);
-            }
-          } else if (event.type === 'assistant/message') {
-            setDraft('');
-            appendEvent(event);
-          } else {
-            appendEvent(event);
-          }
-          break;
+      if (frame.type === 'waterfall') {
+        if (frame.event === 'approval/request') {
+          const request = (frame.request ?? {}) as ApprovalRequestPayload;
+          setApprovals((prev) =>
+            prev.some((a) => a.eventId === frame.eventId)
+              ? prev
+              : [...prev, { ...request, eventId: frame.eventId, clientId: eventsClientIdRef.current ?? '' }]
+          );
+        } else if (frame.event === 'user-questions/request') {
+          const request = (frame.request ?? {}) as UserQuestionsRequestPayload;
+          setQuestions((prev) =>
+            prev.some((q) => q.eventId === frame.eventId)
+              ? prev
+              : [...prev, { ...request, eventId: frame.eventId, clientId: eventsClientIdRef.current ?? '' }]
+          );
         }
-        case 'approval/requested':
-          setApprovals((prev) => [...prev, { ...(frame as ApprovalRequestedFrame), rpcId }]);
-          break;
-        case 'approval/resolved':
-          setApprovals((prev) => prev.filter((a) => a.approvalId !== frame.approvalId));
-          break;
-        case 'question/requested':
-          setQuestions((prev) => [...prev, { ...(frame as QuestionRequestedFrame), rpcId }]);
-          break;
-        case 'question/resolved':
-          setQuestions((prev) => prev.filter((q) => q.rpcId !== frame.questionRpcId));
-          break;
-        case 'session/projection': {
-          // title 投影实时更新会话列表（seq 高者胜，与列表基线 asOfSeq 比较）
-          const title = frame.value;
-          if (frame.key === 'title' && typeof title === 'string') {
-            setSessions((prev) =>
-              prev.map((s) => {
-                if (s.sessionId !== frame.sessionId) return s;
-                if ((s.projections?.asOfSeq ?? -1) >= frame.seq) return s;
-                return {
-                  ...s,
-                  projections: {
-                    asOfSeq: frame.seq,
-                    values: { ...s.projections?.values, title },
-                  },
-                };
-              })
-            );
-          }
-          break;
-        }
-        case 'stream/error':
-          setError(frame.error.message);
-          break;
-        default:
-          break;
+        return;
       }
-    });
+      if (frame.type === 'cancel') {
+        setApprovals((prev) => prev.filter((a) => a.eventId !== frame.eventId));
+        setQuestions((prev) => prev.filter((q) => q.eventId !== frame.eventId));
+      }
+    };
+
+    const handleWorkspaceFollow = (frame: WorkspaceFollowFrame) => {
+      if (frame.type === 'baseline') {
+        setWorkspaces(frame.value?.items ?? []);
+        return;
+      }
+      if (frame.type === 'upsert' && frame.workspace) {
+        setWorkspaces((prev) => {
+          const rest = prev.filter((w) => w.workspaceId !== frame.workspace!.workspaceId);
+          return [...rest, frame.workspace!];
+        });
+      } else if (frame.type === 'remove' && frame.workspaceId) {
+        setWorkspaces((prev) => prev.filter((w) => w.workspaceId !== frame.workspaceId));
+      } else if (frame.type === 'order' && Array.isArray(frame.workspaceIds)) {
+        setWorkspaces((prev) => {
+          const byId = new Map(prev.map((w) => [w.workspaceId, w]));
+          return frame.workspaceIds!.map((id) => byId.get(id)).filter((w): w is WorkspaceView => Boolean(w));
+        });
+      }
+      // archived 增量只影响归档列表，当前界面不消费
+    };
+
+    const handleStreamItem = ({ streamId: _streamId, endpoint, value }: DshStreamItem) => {
+      if (!isRecord(value)) return;
+      if (value.type === 'stream/error') {
+        const err = value.error as { message?: string } | undefined;
+        if (err?.message) setError(err.message);
+        return;
+      }
+      if (endpoint === '$events') {
+        handleRemoteEvent(value as unknown as RemoteEventFrame);
+      } else if (endpoint === Endpoints.workspaceFollow) {
+        handleWorkspaceFollow(value as unknown as WorkspaceFollowFrame);
+      }
+    };
+
+    const unsubscribe = qingwu.onDshStreamItem(handleStreamItem);
     return () => {
-      if (refreshTimer !== undefined) window.clearTimeout(refreshTimer);
       unsubscribe();
     };
-  }, [currentId, appendEvent, refreshSessions]);
+  }, [scheduleRefresh]);
 
-  // 会话切换时加载历史（loadedId 防止重复加载）
+  // 选中会话：打开 session/follow 日志流（开场快照 + 实时事件）
   useEffect(() => {
-    if (currentId && currentId !== loadedId) {
-      setLoadedId(currentId);
-      void loadSession(currentId);
+    currentIdRef.current = currentId;
+    if (sessionStreamRef.current) {
+      qingwu.dshStreamCancel(sessionStreamRef.current);
+      sessionStreamRef.current = null;
     }
-  }, [currentId, loadedId, loadSession]);
+    eventsRef.current = [];
+    setItems([]);
+    setDraft('');
+    setRunning(false);
+    if (!currentId) return;
+
+    setLoadingHistory(true);
+    let cancelled = false;
+    void qingwu.dshStreamOpen(
+      Endpoints.sessionFollow,
+      { request: { address: { kind: 'session', sessionId: currentId }, maxMessages: 100 } }
+    ).then((streamId) => {
+      if (cancelled) {
+        qingwu.dshStreamCancel(streamId);
+        return;
+      }
+      sessionStreamRef.current = streamId;
+    });
+
+    const handleFollowItem = ({ streamId, endpoint, value }: DshStreamItem) => {
+      if (cancelled || endpoint !== Endpoints.sessionFollow || streamId !== sessionStreamRef.current) {
+        return;
+      }
+      if (!isRecord(value)) return;
+      if (value.type === 'stream/error' || value.type === 'stream/end') return;
+      const frame = value as unknown as SessionFollowFrame;
+      if (frame.type === 'snapshot') {
+        const events = frame.records
+          .filter((record) => record.type === 'event')
+          .map((record) => record.event);
+        eventsRef.current = events;
+        setItems(foldChatItems(events));
+        setLoadingHistory(false);
+        return;
+      }
+      if (frame.type === 'event') {
+        const event = frame.event;
+        if (event.type === 'assistant/chunk') {
+          const chunk = (event.data as { chunk?: { type?: string; text?: string } } | null)?.chunk;
+          if (chunk?.type === 'text-delta' && typeof chunk.text === 'string') {
+            setDraft((prev) => prev + chunk.text);
+          }
+          return;
+        }
+        if (event.type === 'assistant/message') {
+          setDraft('');
+        }
+        appendEvent(event);
+      }
+    };
+    const unsubscribe = qingwu.onDshStreamItem(handleFollowItem);
+    return () => {
+      cancelled = true;
+      unsubscribe();
+      if (sessionStreamRef.current) {
+        qingwu.dshStreamCancel(sessionStreamRef.current);
+        sessionStreamRef.current = null;
+      }
+    };
+  }, [currentId, appendEvent]);
 
   // 自动滚动到底部
   useEffect(() => {
@@ -354,13 +426,13 @@ export function NativeApp() {
       .map((id) => sessions.find((s) => s.sessionId === id))
       .find((s) => s?.blank && s.origin !== 'subagent');
     if (reusable) {
-      setLoadedId(null);
       setCurrentId(reusable.sessionId);
       return;
     }
-    const value = await rpc<{ sessionId: string }>('session.create', { workspaceId: wsId });
+    const value = await rpc<{ sessionId: string }>(Endpoints.sessionCreate, {
+      request: { workspaceId: wsId },
+    });
     await refreshSessions();
-    setLoadedId(null);
     setCurrentId(value.sessionId);
   };
 
@@ -383,10 +455,10 @@ export function NativeApp() {
   /** 添加项目：独立的目录选择动作；添加后立即在其下开新会话。 */
   const handleAddWorkspace = async () => {
     try {
-      const picked = await rpc<{ path: string | null }>('host.pickDirectory', {});
-      if (!picked.path) return;
-      const created = await rpc<{ workspace: WorkspaceView }>('workspace.create', {
-        path: picked.path,
+      const picked = await rpc<string | null>(Endpoints.directoryPickerPick, {});
+      if (!picked) return;
+      const created = await rpc<{ workspace: WorkspaceView }>(Endpoints.workspaceCreate, {
+        request: { path: picked },
       });
       setActiveWorkspaceId(created.workspace.workspaceId);
       await refreshSessions();
@@ -401,11 +473,14 @@ export function NativeApp() {
     if (!text || !currentId) return;
     setInput('');
     try {
-      await rpc('session.prompt', {
-        sessionId: currentId,
-        mode: 'queue',
-        content: [{ type: 'text', text }],
-        clientTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      await rpc(Endpoints.sessionPrompt, {
+        request: {
+          requestId: crypto.randomUUID(),
+          sessionId: currentId,
+          mode: 'queue',
+          content: [{ type: 'text', text }],
+          clientTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        },
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -414,27 +489,24 @@ export function NativeApp() {
   };
 
   const handleApproval = async (approval: PendingApproval, outcome: 'allowed-once' | 'rejected') => {
-    setApprovals((prev) => prev.filter((a) => a.approvalId !== approval.approvalId));
-    await qingwu.dshRespond(approval.rpcId, {
-      ok: true,
-      value: { sessionId: approval.sessionId, approvalId: approval.approvalId, outcome },
+    setApprovals((prev) => prev.filter((a) => a.eventId !== approval.eventId));
+    await qingwu.dshEventResult(approval.clientId, approval.eventId, {
+      kind: 'result',
+      value: outcome,
     });
   };
 
   const handleQuestion = async (question: PendingQuestion, questionId: string, label: string) => {
-    await qingwu.dshRespond(question.rpcId, {
-      ok: true,
-      value: {
-        sessionId: question.sessionId,
-        answer: { answers: [{ id: questionId, selected: [label] }] },
-      },
+    await qingwu.dshEventResult(question.clientId, question.eventId, {
+      kind: 'result',
+      value: { answers: [{ id: questionId, selected: [label] }] },
     });
   };
 
   const handleStop = async () => {
     if (!currentId) return;
     try {
-      await rpc('session.cancel', { sessionId: currentId });
+      await rpc(Endpoints.sessionCancel, { request: { sessionId: currentId } });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -541,8 +613,8 @@ export function NativeApp() {
             {(approvals.length > 0 || questions.length > 0) && (
               <div className="native-interactions">
                 {approvals.map((approval) => (
-                  <div key={approval.approvalId} className="native-card approval">
-                    <div className="native-card-title">请求授权：{approval.toolName}</div>
+                  <div key={approval.eventId} className="native-card approval">
+                    <div className="native-card-title">请求授权：{approval.toolName ?? '工具'}</div>
                     {approval.reason && <div className="native-card-text">{approval.reason}</div>}
                     <div className="native-card-actions">
                       <button
@@ -556,8 +628,8 @@ export function NativeApp() {
                   </div>
                 ))}
                 {questions.map((question) =>
-                  question.questions.map((q) => (
-                    <div key={`${question.rpcId}-${q.id}`} className="native-card question">
+                  (question.questions ?? []).map((q) => (
+                    <div key={`${question.eventId}-${q.id}`} className="native-card question">
                       <div className="native-card-title">{q.question}</div>
                       {q.detail && <div className="native-card-text">{q.detail}</div>}
                       <div className="native-card-actions">
@@ -612,4 +684,8 @@ export function NativeApp() {
       </main>
     </div>
   );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
 }

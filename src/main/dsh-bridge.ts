@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { BrowserWindow } from 'electron';
-import type { DshRpcReceipt, DshRpcResult } from '../shared/types';
+import WebSocket from 'ws';
+import type { DshRpcResult } from '../shared/types';
 
 interface ClientRequestEnvelope {
   type: 'client-request';
@@ -9,50 +10,47 @@ interface ClientRequestEnvelope {
   payload: unknown;
 }
 
-interface ClientResponseEnvelope {
-  type: 'client-response';
+interface ServerResponseEnvelope {
+  type: 'server-response';
   rpcId: string;
   result: DshRpcResult<unknown>;
 }
 
-interface ClientResponseEnvelope {
-  type: 'client-response';
-  rpcId: string;
-  result: DshRpcResult<unknown>;
+interface RemoteStreamServerMessage {
+  type: 'item' | 'error' | 'end';
+  streamId: string;
+  value?: unknown;
+  error?: { code: string; message: string; details?: object };
 }
 
-interface ServerRequestEnvelope {
-  type: 'server-request';
-  rpcId: string;
-  method: string;
+interface ActiveStream {
+  endpoint: string;
   payload: unknown;
 }
 
 const RECONNECT_DELAY_MS = 3000;
-
-function isRpcResultShape(value: unknown): value is DshRpcResult<unknown> {
-  return typeof value === 'object' && value !== null && typeof (value as { ok?: unknown }).ok === 'boolean';
-}
-
-function isEnvelopeShape(value: unknown, type: string): value is { type: string; result?: unknown } {
-  return typeof value === 'object' && value !== null && (value as { type?: unknown }).type === type;
-}
-
-function preview(value: unknown): string {
-  return JSON.stringify(value)?.slice(0, 200) ?? String(value);
-}
+const REMOTE_STREAM_MUX_PATH = '/api/remote.mux';
+const REMOTE_EVENT_RESULT_ENDPOINT = '$events/result';
+/** endpoint 路径段校验：与引擎 endpointFromPath 的段规则保持同宽（$events 内部端点含 $）。 */
+const ENDPOINT_PATTERN = /^[A-Za-z0-9_$][\w$.-]*(?:\/[A-Za-z0-9_$][\w$.-]*)*$/;
 
 /**
  * 引擎通信桥：renderer 不能直连引擎（/api 信任栅栏要求浏览器 Origin 与
- * Host 权威一致），因此 fetch 与 WebSocket 均由主进程代理，经 IPC 转发。
- * 这与官方 web-server 文档描述的 Electron 宿主模式一致（经 IPC 桥接发送 fetch）。
+ * Host 权威一致），因此一元 RPC 与事件流均由主进程代理，经 IPC 转发。
+ * 0.1.2 契约：一元调用 POST /api/<endpoint>（client-request/server-response
+ * 信封，result 为 RemoteResult）；全部逻辑流复用 /api/remote.mux 一条
+ * WebSocket（鉴权只认握手 cookie，token 查询参数无效）。
  */
 export class DshBridge {
   private getServiceUrl: () => string;
   private getMainWindow: () => BrowserWindow | null;
-  private sockets = new Map<'mux' | 'host', WebSocket>();
-  private reconnectTimers = new Map<'mux' | 'host', NodeJS.Timeout>();
+  private authCookie: string | null = null;
+  private ws: WebSocket | null = null;
+  private wsConnected = false;
+  private reconnectTimer: NodeJS.Timeout | null = null;
   private stopped = false;
+  /** 已打开的逻辑流（WS 重连后按此重放 open）。 */
+  private streams = new Map<string, ActiveStream>();
 
   constructor(getServiceUrl: () => string, getMainWindow: () => BrowserWindow | null) {
     this.getServiceUrl = getServiceUrl;
@@ -61,68 +59,54 @@ export class DshBridge {
 
   start(): void {
     this.stopped = false;
-    this.openStream('mux');
-    this.openStream('host');
+    void this.acquireAuthCookie().finally(() => {
+      this.connectStreamSocket();
+    });
   }
 
   stop(): void {
     this.stopped = true;
-    for (const timer of this.reconnectTimers.values()) clearTimeout(timer);
-    this.reconnectTimers.clear();
-    for (const socket of this.sockets.values()) socket.close();
-    this.sockets.clear();
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    this.streams.clear();
+    this.ws?.close();
+    this.ws = null;
+    this.wsConnected = false;
   }
 
-  /** 单次 RPC 调用：POST /api/<method>，body 为完整 ClientRequest 信封，返回解包后的业务结果。 */
-  async call(method: string, payload: unknown): Promise<DshRpcResult<unknown>> {
+  /** 一元 RPC：POST /api/<endpoint>，payload 为具名参数，桥统一包 {args} 信封。 */
+  async call(endpoint: string, payload: unknown): Promise<DshRpcResult<unknown>> {
+    if (!ENDPOINT_PATTERN.test(endpoint)) {
+      return {
+        ok: false,
+        error: { code: 'internal', message: `非法 RPC endpoint: ${endpoint}` },
+      };
+    }
     const envelope: ClientRequestEnvelope = {
       type: 'client-request',
       rpcId: randomUUID(),
-      method,
-      payload,
+      method: endpoint,
+      payload: { args: payload },
     };
-    const body = await this.post(`/api/${method}`, envelope);
-    // post 的错误折叠（连接失败/HTTP错误/坏JSON）已是 RpcResult 形态
-    if (isRpcResultShape(body)) return body;
-    if (isEnvelopeShape(body, 'server-response') && isRpcResultShape(body.result)) {
-      return body.result;
-    }
-    return {
-      ok: false,
-      error: { code: 'internal', message: `引擎响应信封不合法: ${preview(body)}` },
-    };
-  }
-
-  /** 回应下行请求（审批/问答）：POST /api/respond，回显原帧 rpcId。 */
-  async respond(rpcId: string, result: DshRpcResult<unknown>): Promise<DshRpcReceipt> {
-    const envelope: ClientResponseEnvelope = {
-      type: 'client-response',
-      rpcId,
-      result,
-    };
-    const body = await this.post('/api/respond', envelope);
-    if (isRpcResultShape(body)) {
-      return { accepted: false, reason: body.ok ? 'unexpected' : body.error.message };
-    }
-    if (typeof body === 'object' && body !== null && 'accepted' in body) {
-      return body as DshRpcReceipt;
-    }
-    return { accepted: false, reason: `引擎回执不合法: ${preview(body)}` };
-  }
-
-  private async post(path: string, body: unknown): Promise<unknown> {
-    const base = this.getServiceUrl();
     let response: Response;
     try {
-      response = await fetch(new URL(path, base), {
+      response = await fetch(new URL(`/api/${endpoint}`, this.getServiceUrl()), {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(body),
+        headers: {
+          'content-type': 'application/json',
+          ...(this.authCookie ? { cookie: this.authCookie } : {}),
+        },
+        body: JSON.stringify(envelope),
       });
     } catch (err) {
       return {
         ok: false,
-        error: { code: 'internal', message: `引擎连接失败: ${err instanceof Error ? err.message : String(err)}` },
+        error: {
+          code: 'internal',
+          message: `引擎连接失败: ${err instanceof Error ? err.message : String(err)}`,
+        },
       };
     }
 
@@ -134,7 +118,14 @@ export class DshBridge {
     }
 
     try {
-      return await response.json();
+      const body = (await response.json()) as ServerResponseEnvelope;
+      if (body?.type !== 'server-response' || body.rpcId !== envelope.rpcId) {
+        return {
+          ok: false,
+          error: { code: 'internal', message: '引擎响应信封不合法' },
+        };
+      }
+      return body.result;
     } catch {
       return {
         ok: false,
@@ -143,56 +134,157 @@ export class DshBridge {
     }
   }
 
-  private openStream(stream: 'mux' | 'host'): void {
-    if (this.stopped) return;
+  /** 在 remote.mux 上打开一条逻辑流，payload 为具名参数（桥包 {args} 信封）。 */
+  openStream(endpoint: string, payload: unknown): string {
+    const streamId = randomUUID();
+    this.streams.set(streamId, { endpoint, payload });
+    this.sendStreamOpen(streamId, endpoint, payload);
+    return streamId;
+  }
+
+  cancelStream(streamId: string): void {
+    this.streams.delete(streamId);
+    this.sendWhenOpen({ type: 'cancel', streamId });
+  }
+
+  /** 回应 $events 瀑布（审批/问答）：POST /api/$events/result，载荷不走 args 包装。 */
+  async eventResult(clientId: string, eventId: string, outcome: unknown): Promise<void> {
+    if (!ENDPOINT_PATTERN.test(REMOTE_EVENT_RESULT_ENDPOINT)) return;
+    const envelope: ClientRequestEnvelope = {
+      type: 'client-request',
+      rpcId: randomUUID(),
+      method: REMOTE_EVENT_RESULT_ENDPOINT,
+      payload: { clientId, eventId, outcome },
+    };
+    try {
+      const response = await fetch(
+        new URL(`/api/${REMOTE_EVENT_RESULT_ENDPOINT}`, this.getServiceUrl()),
+        {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            ...(this.authCookie ? { cookie: this.authCookie } : {}),
+          },
+          body: JSON.stringify(envelope),
+        }
+      );
+      if (!response.ok) {
+        console.error(`[DshBridge] 事件回执失败: HTTP ${response.status}`);
+      }
+    } catch (err) {
+      console.error('[DshBridge] 事件回执失败:', err);
+    }
+  }
+
+  /**
+   * 用带 token 的 Web 地址换取会话 cookie：GET 一次（手动跟随跳转并收集
+   * Set-Cookie）。0.1.1 无鉴权时地址不含 token，直接跳过。
+   */
+  private async acquireAuthCookie(): Promise<void> {
     const base = this.getServiceUrl();
-    const url = new URL(`/api/events.${stream}`, base);
+    if (!new URL(base).searchParams.has('token')) return;
+    try {
+      let url = new URL(base);
+      for (let i = 0; i < 5; i += 1) {
+        const response = await fetch(url, { redirect: 'manual' });
+        const setCookies = response.headers.getSetCookie();
+        if (setCookies.length > 0) {
+          this.authCookie = setCookies.map((c) => c.split(';')[0]).join('; ');
+        }
+        if (response.status >= 300 && response.status < 400) {
+          const location = response.headers.get('location');
+          if (location) {
+            url = new URL(location, url);
+            continue;
+          }
+        }
+        break;
+      }
+    } catch (err) {
+      console.error('[DshBridge] 鉴权握手失败:', err);
+    }
+  }
+
+  private connectStreamSocket(): void {
+    if (this.stopped || this.ws) return;
+    const base = new URL(this.getServiceUrl());
+    const url = new URL(REMOTE_STREAM_MUX_PATH, base);
     url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
 
     let socket: WebSocket;
     try {
-      socket = new WebSocket(url);
+      socket = new WebSocket(url, {
+        headers: this.authCookie ? { cookie: this.authCookie } : undefined,
+      });
     } catch (err) {
-      console.error(`[DshBridge] ${stream} 流创建失败:`, err);
-      this.scheduleReconnect(stream);
+      console.error('[DshBridge] 流连接创建失败:', err);
+      this.scheduleReconnect();
       return;
     }
-    this.sockets.set(stream, socket);
+    this.ws = socket;
 
-    socket.onmessage = (event: MessageEvent) => {
-      if (typeof event.data !== 'string') return;
-      let envelope: ServerRequestEnvelope;
+    socket.on('open', () => {
+      this.wsConnected = true;
+      for (const [streamId, stream] of this.streams) {
+        this.sendStreamOpen(streamId, stream.endpoint, stream.payload);
+      }
+    });
+
+    socket.on('message', (data) => {
+      let message: RemoteStreamServerMessage;
       try {
-        envelope = JSON.parse(event.data) as ServerRequestEnvelope;
+        message = JSON.parse(String(data)) as RemoteStreamServerMessage;
       } catch {
-        console.error(`[DshBridge] ${stream} 流收到无法解析的帧，已丢弃`);
         return;
       }
-      if (envelope?.type !== 'server-request') return;
-      const win = this.getMainWindow();
-      if (win && !win.isDestroyed()) {
-        win.webContents.send('dsh:event', { stream, rpcId: envelope.rpcId, payload: envelope.payload });
+      const stream = this.streams.get(message.streamId);
+      if (!stream) return;
+      // error/end 为终态帧，转译为保留 shape 投递后保留注册（由渲染层决定是否关闭流）
+      let value: unknown = message.value;
+      if (message.type === 'error') {
+        value = { type: 'stream/error', error: message.error };
+      } else if (message.type === 'end') {
+        value = { type: 'stream/end' };
       }
-    };
+      this.sendToRenderer('dsh:stream-item', {
+        streamId: message.streamId,
+        endpoint: stream.endpoint,
+        value,
+      });
+    });
 
-    socket.onclose = () => {
-      this.sockets.delete(stream);
-      if (!this.stopped) {
-        this.scheduleReconnect(stream);
-      }
-    };
+    socket.on('close', () => {
+      this.ws = null;
+      this.wsConnected = false;
+      if (!this.stopped) this.scheduleReconnect();
+    });
 
-    socket.onerror = () => {
-      console.error(`[DshBridge] ${stream} 流连接错误`);
-    };
+    socket.on('error', () => {
+      // close 事件随后必然到达，重连调度以 close 为准
+    });
   }
 
-  private scheduleReconnect(stream: 'mux' | 'host'): void {
-    if (this.stopped || this.reconnectTimers.has(stream)) return;
-    const timer = setTimeout(() => {
-      this.reconnectTimers.delete(stream);
-      this.openStream(stream);
+  private scheduleReconnect(): void {
+    if (this.stopped || this.reconnectTimer) return;
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      this.connectStreamSocket();
     }, RECONNECT_DELAY_MS);
-    this.reconnectTimers.set(stream, timer);
+  }
+
+  private sendStreamOpen(streamId: string, endpoint: string, payload: unknown): void {
+    this.sendWhenOpen({ type: 'open', streamId, endpoint, payload: { args: payload } });
+  }
+
+  private sendWhenOpen(message: Record<string, unknown>): void {
+    if (!this.wsConnected || !this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+    this.ws.send(JSON.stringify(message));
+  }
+
+  private sendToRenderer(channel: string, payload: unknown): void {
+    const win = this.getMainWindow();
+    if (win && !win.isDestroyed()) {
+      win.webContents.send(channel, payload);
+    }
   }
 }

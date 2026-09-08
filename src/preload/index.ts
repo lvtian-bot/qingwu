@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { IpcRendererEvent } from 'electron';
-import type { DshStreamFrame, QingwuApi, UiMode, UpdateState } from '../shared/types';
+import type { DshStreamItem, QingwuApi, UiMode, UpdateState } from '../shared/types';
 
 const api: QingwuApi = {
   onUpdateState: (listener) => {
@@ -33,13 +33,19 @@ const api: QingwuApi = {
     return () => ipcRenderer.removeListener('window:fullscreen-changed', handler);
   },
 
-  dshCall: (method, payload) => ipcRenderer.invoke('dsh:call', method, payload),
-  dshRespond: (rpcId, result) => ipcRenderer.invoke('dsh:respond', rpcId, result),
-  onDshEvent: (listener) => {
-    const handler = (_event: IpcRendererEvent, frame: DshStreamFrame) => listener(frame);
-    ipcRenderer.on('dsh:event', handler);
-    return () => ipcRenderer.removeListener('dsh:event', handler);
+  dshCall: (endpoint, payload) => ipcRenderer.invoke('dsh:call', endpoint, payload),
+  dshStreamOpen: (endpoint, payload) =>
+    ipcRenderer.invoke('dsh:stream-open', { endpoint, payload }),
+  dshStreamCancel: (streamId) => {
+    void ipcRenderer.invoke('dsh:stream-cancel', { streamId });
   },
+  onDshStreamItem: (listener) => {
+    const handler = (_event: IpcRendererEvent, item: DshStreamItem) => listener(item);
+    ipcRenderer.on('dsh:stream-item', handler);
+    return () => ipcRenderer.removeListener('dsh:stream-item', handler);
+  },
+  dshEventResult: (clientId, eventId, outcome) =>
+    ipcRenderer.invoke('dsh:event-result', { clientId, eventId, outcome }),
 
   getUiMode: () => ipcRenderer.invoke('ui:getMode'),
   setUiMode: (mode) => ipcRenderer.invoke('ui:setMode', mode),

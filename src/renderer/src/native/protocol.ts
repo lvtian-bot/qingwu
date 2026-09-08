@@ -1,206 +1,95 @@
 /**
- * dsh /api 协议的最小类型对齐（阶段 1 手写子集）。
- * 来源：@deepseek-ai/dsh-host-apiproxy ./api 与 @deepseek-ai/dsh-session/types
- * 的 0.1.1-rc.2 声明。后续阶段改为直接依赖官方约定层（见 TODO 契约闸门项），
- * 字段以官方 .d.ts 为准；此处仅声明自研界面消费的字段，判别值保持开放
- * （unknown type 一律忽略渲染，协议是 merge-extensible 的）。
+ * dsh 0.1.2 /api 协议的最小类型对齐（自研界面消费子集）。
+ * 来源：@deepseek-ai/dsh-api-session-controller / dsh-api-workspace-controller /
+ * dsh-user-approval / dsh-user-questions 的 0.1.2-rc.1 声明，以及
+ * dsh-api-gateway 的 remote.mux 流协议。字段以官方 .d.ts 为准；未识别字段
+ * 一律忽略渲染（协议是 merge-extensible 的）。
  */
 
-// ---------- 消息与内容块 ----------
+// ---------- 一元 RPC endpoint ----------
+
+/** 自研界面消费的一元 RPC endpoint（wire 名为斜杠分隔）。 */
+export const Endpoints = {
+  sessionList: 'session/list',
+  sessionCreate: 'session/create',
+  sessionPrompt: 'session/prompt',
+  sessionCancel: 'session/cancel',
+  sessionPage: 'session/page',
+  sessionFollow: 'session/follow',
+  workspaceFollow: 'workspace/follow',
+  workspaceCreate: 'workspace/create',
+  directoryPickerPick: 'directoryPicker/pick',
+  eventsResult: '$events/result',
+} as const;
+
+// ---------- 会话事件（journal 原始事件，0.1.1 词汇保持兼容） ----------
 
 export interface TextBlock {
   type: 'text';
   text: string;
 }
 
-export interface ReasoningBlock {
-  type: 'reasoning';
-  text: string;
-}
+export type ContentBlock = TextBlock | { type: string } & Record<string, unknown>;
 
-export interface ToolCallBlock {
-  type: 'tool-call';
-  id: string;
-  name: string;
-  arguments: string;
-}
-
-export interface ToolResultBlock {
-  type: 'tool-result';
-  toolCallId: string;
-  content: unknown[];
-  isError?: boolean;
-}
-
-export type ContentBlock = TextBlock | ReasoningBlock | { type: string } & Record<string, unknown>;
-
-export interface UserMessage {
-  id: string;
-  role: 'user';
-  content: ContentBlock[];
-  source: { kind: string };
-}
-
-export interface AssistantMessage {
-  id: string;
-  role: 'assistant';
-  content: ContentBlock[];
-  source: { kind: 'model'; provider: string; model: string };
-}
-
-export interface ToolResultMessage {
-  id: string;
-  role: 'user';
-  content: [ToolResultBlock];
-  source: { kind: 'tool'; callId: string };
-}
-
-// ---------- 会话事件 ----------
-
-export interface SessionEventEnvelope {
+/** journal 原始事件（SessionWireEvent）：type/seq/time/data，识别不了的忽略。 */
+export interface SessionEvent {
   type: string;
   seq: number;
   time: number;
   data: unknown;
 }
 
-export interface UserMessageEvent extends SessionEventEnvelope {
-  type: 'user/message';
-  data: UserMessage;
+export interface UserMessageData {
+  source?: { kind: string };
+  content?: ContentBlock[];
 }
 
-export interface AssistantMessageEvent extends SessionEventEnvelope {
-  type: 'assistant/message';
-  data: {
-    turn: number;
-    step: number;
-    message: AssistantMessage;
-    usage?: unknown;
-    interrupted?: true;
-  };
+export interface AssistantMessageData {
+  message?: { content?: ContentBlock[] };
+  interrupted?: true;
 }
 
-export interface ToolCallEvent extends SessionEventEnvelope {
-  type: 'tool/call';
-  data: { turn: number; step: number; callId: string; name: string; arguments: string };
+export interface ToolCallEventData {
+  callId: string;
+  name: string;
+  arguments: string;
 }
 
-export interface ToolResultEvent extends SessionEventEnvelope {
-  type: 'tool/result';
-  data: {
-    turn: number;
-    step: number;
-    message: ToolResultMessage;
-    error?: { name: string; code: string };
-  };
+export interface ToolResultEventData {
+  message?: { content?: { type: string; toolCallId: string; content?: unknown[]; isError?: boolean }[] };
+  error?: { name: string; code: string };
 }
 
-export interface AssistantChunkEvent extends SessionEventEnvelope {
-  type: 'assistant/chunk';
-  data: {
-    turn: number;
-    step: number;
-    chunk:
-      | { type: 'block-start'; index: number; blockType: string }
-      | { type: 'text-delta'; index: number; text: string }
-      | { type: 'reasoning-delta'; index: number; text: string }
-      | { type: 'tool-call-delta'; index: number; id: string; name?: string; argumentsDelta: string }
-      | { type: 'block-end'; index: number; block: unknown }
-      | { type: 'usage'; usage: unknown }
-      | { type: 'finish'; reason: unknown };
-  };
+export interface AssistantChunkEventData {
+  chunk:
+    | { type: 'text-delta'; index: number; text: string }
+    | { type: string } & Record<string, unknown>;
 }
 
-export type SessionEvent =
-  | SessionEventEnvelope
-  | UserMessageEvent
-  | AssistantMessageEvent
-  | ToolCallEvent
-  | ToolResultEvent
-  | AssistantChunkEvent;
+// ---------- session/follow 日志流 ----------
 
-// ---------- mux 流帧 ----------
-
-export interface ApprovalRequestedFrame {
-  type: 'approval/requested';
-  sessionId: string;
-  approvalId: string;
-  toolName: string;
-  callId?: string;
-  reason?: string;
+export interface SessionHistoryRecord {
+  type: 'event' | 'chunks' | string;
+  event: SessionEvent;
 }
 
-export interface ApprovalResolvedFrame {
-  type: 'approval/resolved';
-  sessionId: string;
-  approvalId: string;
-  outcome: string;
+/** follow 开场帧：完整开场窗口 + 投影基线，后续为增量事件条目。 */
+export interface SessionFollowSnapshot {
+  type: 'snapshot';
+  cursor: number;
+  records: SessionHistoryRecord[];
+  hasMore: boolean;
+  projections?: { asOfSeq: number; values?: Record<string, unknown> };
 }
 
-export interface QuestionOption {
-  label: string;
-  description?: string;
+export interface SessionFollowEventItem {
+  type: 'event';
+  event: SessionEvent;
 }
 
-export interface QuestionRequestedFrame {
-  type: 'question/requested';
-  sessionId: string;
-  questions: {
-    id: string;
-    question: string;
-    detail?: string;
-    header?: string;
-    options?: QuestionOption[];
-    multiSelect?: boolean;
-  }[];
-}
+export type SessionFollowFrame = SessionFollowSnapshot | SessionFollowEventItem;
 
-export interface QuestionResolvedFrame {
-  type: 'question/resolved';
-  sessionId: string;
-  questionRpcId: string;
-  outcome: 'answered' | 'cancelled';
-}
-
-export type MuxFrame =
-  | { type: 'session/event'; sessionId: string; event: SessionEvent; view?: unknown }
-  | { type: 'session/subscribed'; sessionId: string; lastSeq: number }
-  | ApprovalRequestedFrame
-  | ApprovalResolvedFrame
-  | QuestionRequestedFrame
-  | QuestionResolvedFrame
-  | { type: 'session/queue'; sessionId: string; items: unknown[] }
-  | { type: 'session/projection'; sessionId: string; key: string; value: unknown; seq: number }
-  | { type: 'stream/error'; error: { code: string; message: string } };
-
-// ---------- host 流帧 ----------
-
-export type HostFrame =
-  | { type: 'host/session-added'; sessionId: string; blank: boolean; cwd?: string }
-  | { type: 'host/session-removed'; sessionId: string }
-  | { type: 'host/session-status'; sessionId: string; running: boolean }
-  | { type: 'host/agent-error'; sessionId: string; message: string }
-  | { type: 'host/workspace-changed'; workspace: unknown }
-  | { type: 'host/workspace-removed'; workspaceId: string }
-  | { type: 'host/workspace-order-changed'; workspaceIds: string[] }
-  | { type: 'host/archived-sessions-changed'; archivedSessionIds: string[] }
-  | { type: 'stream/error'; error: { code: string; message: string } };
-
-// ---------- RPC 载荷 ----------
-
-export interface SessionSummary {
-  sessionId: string;
-  updatedAt: number;
-  running: boolean;
-  blank: boolean;
-  cwd?: string;
-  origin?: string;
-  /** 会话列表投影基线：title 为 AI 自动生成或用户重命名的标题。 */
-  projections?: {
-    asOfSeq: number;
-    values?: { title?: string | null; [key: string]: unknown };
-  };
-}
+// ---------- workspace/follow 工作区流 ----------
 
 export interface WorkspaceView {
   workspaceId: string;
@@ -209,20 +98,80 @@ export interface WorkspaceView {
   sessionIds: string[];
 }
 
-export interface HistoryEntry {
-  event: SessionEvent;
-  view?: unknown;
+export interface WorkspaceFollowFrame {
+  type: 'baseline' | 'upsert' | 'remove' | 'order' | 'archived' | string;
+  value?: { items?: WorkspaceView[]; archivedSessionIds?: string[] };
+  workspace?: WorkspaceView;
+  workspaceId?: string;
+  workspaceIds?: string[];
+  archivedSessionIds?: string[];
 }
 
-/** 审批回应载荷（ClientResponse result.value）。 */
-export interface ApprovalResponsePayload {
-  sessionId: string;
-  approvalId: string;
-  outcome: 'allowed-once' | 'rejected';
+// ---------- $events 转发事件流 ----------
+
+/** 开场帧，绑定本代事件流的 clientId（瀑布回执必需）。 */
+export interface RemoteEventReadyFrame {
+  type: 'ready';
+  clientId: string;
+  host?: { home?: string };
 }
 
-/** 问答回应载荷（ClientResponse result.value）。 */
-export interface QuestionResponsePayload {
+export interface RemoteEventEmitFrame {
+  type: 'emit';
+  event: string;
+  args: unknown[];
+}
+
+/** 瀑布请求（审批/问答）：request 为投影后的 JSON 安全字段。 */
+export interface RemoteEventInvocationFrame {
+  type: 'waterfall';
+  event: string;
+  eventId: string;
+  agentId: string;
+  request: Record<string, unknown>;
+}
+
+export interface RemoteEventCancellationFrame {
+  type: 'cancel';
+  eventId: string;
+}
+
+export type RemoteEventFrame =
+  | RemoteEventReadyFrame
+  | RemoteEventEmitFrame
+  | RemoteEventInvocationFrame
+  | RemoteEventCancellationFrame;
+
+/** 审批瀑布 request（ApprovalRequestEvent 投影）。 */
+export interface ApprovalRequestPayload {
+  toolName?: string;
+  callId?: string;
+  reason?: string;
+}
+
+/** 问答瀑布 request（AskUserQuestionRequestEvent 投影）。 */
+export interface UserQuestionsRequestPayload {
+  questions?: {
+    id: string;
+    question: string;
+    detail?: string;
+    header?: string;
+    options?: { label: string; description?: string }[];
+    multiSelect?: boolean;
+  }[];
+}
+
+// ---------- 会话摘要（session/list） ----------
+
+export interface SessionSummary {
   sessionId: string;
-  answer: { answers: { id: string; selected: string[]; custom?: string }[] };
+  updatedAt: number;
+  running: boolean;
+  blank: boolean;
+  origin?: string;
+  cwd?: string;
+  projections?: {
+    asOfSeq: number;
+    values?: { title?: string | null; [key: string]: unknown };
+  };
 }

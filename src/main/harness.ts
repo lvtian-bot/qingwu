@@ -19,6 +19,8 @@ export class HarnessManager {
   private process: ChildProcess | null = null;
   private isStopping = false;
   private onExitCallback: ExitCallback | null = null;
+  /** 引擎启动日志打印的带 token Web 地址（0.1.2 起 Web 面强制 token 鉴权）；未解析到时退回裸地址。 */
+  private webUrl: string | null = null;
 
   constructor(options: HarnessManagerOptions = {}) {
     this.host = options.host || CONFIG.defaultHost;
@@ -26,7 +28,7 @@ export class HarnessManager {
   }
 
   getServiceUrl(): string {
-    return `http://${this.host}:${this.port}`;
+    return this.webUrl ?? `http://${this.host}:${this.port}`;
   }
 
   resolveBinPath(): string {
@@ -81,7 +83,17 @@ export class HarnessManager {
 
     child.stdout?.on('data', (data) => {
       const text = data.toString();
-      console.log(`[Harness stdout] ${text.trim()}`);
+      // 引擎以整行打印启动信息，按行分派避免 chunk 边界截断 token 地址。
+      const lines = text.split(/\r?\n/);
+      const pending = lines.pop() ?? '';
+      for (const line of lines) {
+        console.log(`[Harness stdout] ${line.trim()}`);
+        const match = line.match(/dsh web: (http:\/\/\S+token=\S+)/);
+        if (match) this.webUrl = match[1];
+      }
+      if (pending) {
+        console.log(`[Harness stdout] ${pending.trim()}`);
+      }
     });
 
     child.stderr?.on('data', (data) => {
@@ -108,7 +120,6 @@ export class HarnessManager {
 
   async waitForReady(timeoutMs = 25000, intervalMs = 300): Promise<boolean> {
     const startTime = Date.now();
-    const url = this.getServiceUrl();
 
     while (Date.now() - startTime < timeoutMs) {
       if (!this.process) {
@@ -116,7 +127,9 @@ export class HarnessManager {
       }
 
       const isReady = await new Promise<boolean>((resolve) => {
-        const req = http.get(url, (res) => {
+        // 就绪探测：解析到带 token 的地址后用它（0.1.2 以 303 跳转应答，<400 即就绪）；
+        // 未解析到时探测裸地址（0.1.1 直接 200）。
+        const req = http.get(this.getServiceUrl(), (res) => {
           if ((res.statusCode ?? 0) >= 200 && (res.statusCode ?? 0) < 400) {
             resolve(true);
           } else {
@@ -142,7 +155,7 @@ export class HarnessManager {
       await new Promise((resolve) => setTimeout(resolve, intervalMs));
     }
 
-    throw new Error(`等待 Harness 服务就绪超时 (${timeoutMs}ms): ${url}`);
+    throw new Error(`等待 Harness 服务就绪超时 (${timeoutMs}ms): ${this.getServiceUrl()}`);
   }
 
   onUnexpectedExit(callback: ExitCallback): void {

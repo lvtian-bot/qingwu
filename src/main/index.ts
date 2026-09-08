@@ -64,21 +64,18 @@ if (!gotTheLock) {
       : CONFIG.appName;
   });
 
-  ipcMain.handle('dsh:call', async (_event, method: string, payload: unknown) => {
-    const result = await dshBridge.call(method, payload);
-    // 历史页携带海量流式分片（单会话实测约 2.7 万条 chunk），IPC 传输前剥离：
-    // 历史渲染只消费成型的 assistant/message；chunk 仅用于实时流式草稿，
-    // 剥离唯一损失是"正在流式中的尾部部分文本"，后续阶段再做虚拟化分页。
-    if (method === 'session.history' && result.ok) {
-      const value = result.value as { events?: { event?: { type?: string } }[] };
-      if (Array.isArray(value?.events)) {
-        value.events = value.events.filter((entry) => entry.event?.type !== 'assistant/chunk');
-      }
-    }
+  ipcMain.handle('dsh:call', async (_event, endpoint: string, payload: unknown) => {
+    const result = await dshBridge.call(endpoint, payload);
     return result;
   });
-  ipcMain.handle('dsh:respond', (_event, rpcId: string, result: unknown) =>
-    dshBridge.respond(rpcId, result as Parameters<typeof dshBridge.respond>[1])
+  ipcMain.handle('dsh:stream-open', (_event, { endpoint, payload }) =>
+    dshBridge.openStream(endpoint, payload)
+  );
+  ipcMain.handle('dsh:stream-cancel', (_event, { streamId }) => {
+    dshBridge.cancelStream(streamId);
+  });
+  ipcMain.handle('dsh:event-result', (_event, { clientId, eventId, outcome }) =>
+    dshBridge.eventResult(clientId, eventId, outcome)
   );
 
   ipcMain.handle('ui:getMode', () => settings.get('uiMode'));
