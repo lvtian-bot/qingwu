@@ -2,6 +2,20 @@
 
 所有显著变更都记录在本文件中，格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## 0.0.9（2026-09-08）
+### ⚙️ 工程维护
+- 忽略 .zcode 工具目录
+### ✨ 新增
+- 自研界面阶段 1：引擎通信桥与对话界面骨架
+- 升级 dsh 0.1.2-rc.1 并迁移自研桥至 typert/gateway 契约
+### 🏗️ 构建与集成
+- 发布工作流在 master 顶端回写 CHANGELOG
+### 🐛 修复
+- 标题栏菜单 Esc 等无信号关闭路径的高亮残留
+### 📝 文档
+- 归档 v0.0.9 发布前累计已完成事项
+
+**完整对比**: [v0.0.8...v0.0.9](https://github.com/lvtian-bot/qingwu/compare/v0.0.8...v0.0.9)
 ## 0.0.8（2026-08-22）
 ### ♻️ 重构
 - 自有代码全量迁移 TypeScript
