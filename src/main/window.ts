@@ -148,6 +148,22 @@ export class WindowManager {
       }
     });
 
+    // 自研界面（主窗口）的外链：一律拒绝开新窗口，http(s) 转系统浏览器
+    win.webContents.setWindowOpenHandler(({ url: targetUrl }) => {
+      if (targetUrl.startsWith('http:') || targetUrl.startsWith('https:')) {
+        void shell.openExternal(targetUrl);
+      }
+      return { action: 'deny' };
+    });
+    win.webContents.on('will-navigate', (e, targetUrl) => {
+      if (targetUrl !== win.webContents.getURL()) {
+        e.preventDefault();
+        if (targetUrl.startsWith('http:') || targetUrl.startsWith('https:')) {
+          void shell.openExternal(targetUrl);
+        }
+      }
+    });
+
     if (process.env.ELECTRON_RENDERER_URL) {
       win.loadURL(process.env.ELECTRON_RENDERER_URL);
     } else {

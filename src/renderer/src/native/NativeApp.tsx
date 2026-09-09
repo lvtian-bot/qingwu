@@ -1,18 +1,26 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   ApprovalRequestPayload,
+  AssistantChunkEventData,
+  EditArgs,
   RemoteEventFrame,
   SessionEvent,
   SessionFollowFrame,
   SessionSummary,
   ToolCallEventData,
   ToolResultEventData,
+  TodoWriteArgs,
   UserQuestionsRequestPayload,
+  WriteArgs,
   WorkspaceFollowFrame,
   WorkspaceView,
 } from './protocol';
 import { Endpoints } from './protocol';
 import type { DshRpcResult, DshStreamItem, UiMode } from '../../../shared/types';
+import { Markdown } from './markdown';
+import { ToolCard, type ToolItem } from './ToolCard';
+import { RightPanel, type FileChangeEntry, type TodoEntry } from './RightPanel';
+import { usePanelWidth } from './usePanelWidth';
 import './native.css';
 
 const qingwu = window.qingwu;
@@ -30,14 +38,14 @@ async function rpc<T>(endpoint: string, payload: unknown): Promise<T> {
   return result.value;
 }
 
-/** 从消息内容块中提取可展示文本（忽略非文本块）。 */
-function textOf(content: unknown[]): string {
+/** 按块类型提取可展示文本（text / reasoning 块均携带 text 字段）。 */
+function textOf(content: unknown[], blockType: 'text' | 'reasoning'): string {
   return content
     .filter(
       (block): block is { type: string; text: string } =>
         typeof block === 'object' &&
         block !== null &&
-        (block as { type: unknown }).type === 'text' &&
+        (block as { type: unknown }).type === blockType &&
         typeof (block as { text?: unknown }).text === 'string'
     )
     .map((block) => block.text)
@@ -56,20 +64,16 @@ interface PendingQuestion extends UserQuestionsRequestPayload {
   clientId: string;
 }
 
-/** 工具调用条目：call 事件与 result 事件按 callId 配对。 */
-interface ToolItem {
-  callId: string;
-  name: string;
-  arguments: string;
-  resultText?: string;
-  isError?: boolean;
-  pending: boolean;
-}
-
 /** 会话内渲染条目。 */
 type ChatItem =
   | { kind: 'user'; key: string; text: string }
-  | { kind: 'assistant'; key: string; text: string; interrupted?: boolean }
+  | {
+      kind: 'assistant';
+      key: string;
+      text: string;
+      reasoning: string;
+      interrupted?: boolean;
+    }
   | { kind: 'tool'; key: string; tool: ToolItem };
 
 function foldChatItems(events: SessionEvent[]): ChatItem[] {
@@ -80,17 +84,19 @@ function foldChatItems(events: SessionEvent[]): ChatItem[] {
     if (event.type === 'user/message') {
       const data = event.data as { source?: { kind: string }; content?: unknown[] } | null;
       if (data?.source?.kind === 'user' && Array.isArray(data.content)) {
-        items.push({ kind: 'user', key: `u-${event.seq}`, text: textOf(data.content) });
+        items.push({ kind: 'user', key: `u-${event.seq}`, text: textOf(data.content, 'text') });
       }
     } else if (event.type === 'assistant/message') {
       const data = event.data as {
         message?: { content?: unknown[] };
         interrupted?: true;
       } | null;
+      const content = data?.message?.content;
       items.push({
         kind: 'assistant',
         key: `a-${event.seq}`,
-        text: data?.message?.content ? textOf(data.message.content) : '',
+        text: content ? textOf(content, 'text') : '',
+        reasoning: content ? textOf(content, 'reasoning') : '',
         interrupted: data?.interrupted,
       });
     } else if (event.type === 'tool/call') {
@@ -100,6 +106,7 @@ function foldChatItems(events: SessionEvent[]): ChatItem[] {
         name: data.name,
         arguments: data.arguments,
         pending: true,
+        callTime: event.time,
       };
       tools.set(data.callId, item);
       items.push({ kind: 'tool', key: `t-${event.seq}`, tool: item });
@@ -109,10 +116,11 @@ function foldChatItems(events: SessionEvent[]): ChatItem[] {
       if (block && block.type === 'tool-result') {
         const target = tools.get(block.toolCallId);
         const resultText = Array.isArray(block.content)
-          ? textOf(block.content as { type: string; text?: string }[])
+          ? textOf(block.content as unknown[], 'text')
           : '';
         if (target) {
           target.pending = false;
+          target.resultTime = event.time;
           target.resultText = resultText || (data.error ? `${data.error.name}: ${data.error.code}` : '');
           target.isError = Boolean(data.error) || Boolean(block.isError);
         } else {
@@ -126,6 +134,7 @@ function foldChatItems(events: SessionEvent[]): ChatItem[] {
               resultText,
               isError: Boolean(block.isError),
               pending: false,
+              resultTime: event.time,
             },
           });
         }
@@ -144,14 +153,36 @@ export function NativeApp() {
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [items, setItems] = useState<ChatItem[]>([]);
   const [draft, setDraft] = useState('');
+  /** 流式思考文本（reasoning-delta 累积）。 */
+  const [liveReasoning, setLiveReasoning] = useState('');
+  /** block-start(tool-call) 已宣告但 tool/call 事件未落地的提示态。 */
+  const [toolCalling, setToolCalling] = useState(false);
   const [input, setInput] = useState('');
   const [running, setRunning] = useState(false);
   const [approvals, setApprovals] = useState<PendingApproval[]>([]);
   const [questions, setQuestions] = useState<PendingQuestion[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  /** 右侧面板折叠态。 */
+  const [panelCollapsed, setPanelCollapsed] = useState(false);
+  /** 左右面板宽度（拖拽调节，localStorage 记忆，双击复位）。 */
+  const sidebarPanel = usePanelWidth({
+    storageKey: 'qingwu.native.sidebarWidth',
+    defaultWidth: 232,
+    min: 180,
+    max: 400,
+  });
+  const rightPanel = usePanelWidth({
+    storageKey: 'qingwu.native.panelWidth',
+    defaultWidth: 300,
+    min: 220,
+    max: 480,
+  });
   const eventsRef = useRef<SessionEvent[]>([]);
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const stickBottomRef = useRef(true);
   const currentIdRef = useRef<string | null>(null);
   const sessionStreamRef = useRef<string | null>(null);
   const eventsClientIdRef = useRef<string | null>(null);
@@ -175,6 +206,7 @@ export function NativeApp() {
 
   const appendEvent = useCallback((event: SessionEvent) => {
     eventsRef.current = [...eventsRef.current, event];
+    if (event.type === 'tool/call') setToolCalling(false);
     setItems(foldChatItems(eventsRef.current));
   }, []);
 
@@ -311,6 +343,9 @@ export function NativeApp() {
     eventsRef.current = [];
     setItems([]);
     setDraft('');
+    setLiveReasoning('');
+    setToolCalling(false);
+    stickBottomRef.current = true;
     setRunning(false);
     if (!currentId) return;
 
@@ -346,14 +381,21 @@ export function NativeApp() {
       if (frame.type === 'event') {
         const event = frame.event;
         if (event.type === 'assistant/chunk') {
-          const chunk = (event.data as { chunk?: { type?: string; text?: string } } | null)?.chunk;
-          if (chunk?.type === 'text-delta' && typeof chunk.text === 'string') {
+          const chunk = (event.data as AssistantChunkEventData | null)?.chunk;
+          if (!chunk) return;
+          if (chunk.type === 'text-delta' && typeof chunk.text === 'string') {
             setDraft((prev) => prev + chunk.text);
+          } else if (chunk.type === 'reasoning-delta' && typeof chunk.text === 'string') {
+            setLiveReasoning((prev) => prev + chunk.text);
+          } else if (chunk.type === 'block-start' && chunk.blockType === 'tool-call') {
+            setToolCalling(true);
           }
           return;
         }
         if (event.type === 'assistant/message') {
           setDraft('');
+          setLiveReasoning('');
+          setToolCalling(false);
         }
         appendEvent(event);
       }
@@ -369,10 +411,18 @@ export function NativeApp() {
     };
   }, [currentId, appendEvent]);
 
-  // 自动滚动到底部
+  // 自动滚动：仅当用户位于底部附近时贴底跟随
+  const handleScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    stickBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  }, []);
+
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ block: 'end' });
-  }, [items, draft, approvals, questions]);
+    if (stickBottomRef.current) {
+      bottomRef.current?.scrollIntoView({ block: 'end' });
+    }
+  }, [items, draft, liveReasoning, toolCalling, approvals, questions]);
 
   /** 子代理会话（主对话派生的辅助会话）不在主列表展示。 */
   const visibleSessions = useMemo(
@@ -404,6 +454,49 @@ export function NativeApp() {
     }
     return map;
   }, [workspaces]);
+
+  /** 当前会话工作目录（工具卡片相对路径基准）。 */
+  const currentCwd = useMemo(
+    () => sessions.find((s) => s.sessionId === currentId)?.cwd,
+    [sessions, currentId]
+  );
+
+  /** 右侧面板数据：todo_write 最新状态 + edit/write 文件聚合。 */
+  const panelData = useMemo(() => {
+    let todos: TodoEntry[] | null = null;
+    const files = new Map<string, FileChangeEntry>();
+    for (const event of eventsRef.current) {
+      if (event.type !== 'tool/call') continue;
+      const data = event.data as ToolCallEventData | null;
+      if (!data || typeof data.arguments !== 'string') continue;
+      try {
+        const args = JSON.parse(data.arguments) as EditArgs & WriteArgs & TodoWriteArgs;
+        if (data.name === 'todo_write') {
+          if (Array.isArray(args.todos)) todos = args.todos;
+        } else if (data.name === 'edit' || data.name === 'write') {
+          if (typeof args.file_path === 'string' && args.file_path) {
+            const entry: FileChangeEntry = files.get(args.file_path) ?? {
+              path: args.file_path,
+              edits: 0,
+              writes: 0,
+            };
+            if (data.name === 'edit') {
+              entry.edits += 1;
+              if (typeof args.old_string === 'string') {
+                entry.lastEdit = { oldStr: args.old_string, newStr: args.new_string ?? '' };
+              }
+            } else {
+              entry.writes += 1;
+            }
+            files.set(args.file_path, entry);
+          }
+        }
+      } catch {
+        // 参数非合法 JSON 时跳过该条
+      }
+    }
+    return { todos, fileChanges: Array.from(files.values()) };
+  }, [items]);
 
   const openSession = (sessionId: string) => {
     setCurrentId(sessionId);
@@ -472,6 +565,7 @@ export function NativeApp() {
     const text = input.trim();
     if (!text || !currentId) return;
     setInput('');
+    if (textareaRef.current) textareaRef.current.style.height = '';
     try {
       await rpc(Endpoints.sessionPrompt, {
         request: {
@@ -516,7 +610,7 @@ export function NativeApp() {
 
   return (
     <div className="native-app">
-      <aside className="native-sidebar">
+      <aside className="native-sidebar" style={{ width: sidebarPanel.width }}>
         <div className="native-sidebar-actions">
           <button className="native-new-session" onClick={() => void handleNewSession()}>
             ＋ 新会话
@@ -561,53 +655,69 @@ export function NativeApp() {
         </div>
       </aside>
 
+      <div
+        className="native-resizer"
+        role="separator"
+        aria-orientation="vertical"
+        title="拖动调节宽度，双击复位"
+        onPointerDown={(e) => sidebarPanel.startDrag(e, 1)}
+        onDoubleClick={sidebarPanel.reset}
+      />
+
       <main className="native-chat">
         {!currentId ? (
           <div className="native-empty">选择或新建一个会话开始</div>
         ) : (
           <>
-            <div className="native-messages">
-              {loadingHistory && <div className="native-hint">正在加载会话历史…</div>}
-              {items.map((item) => {
-                if (item.kind === 'user') {
-                  return (
-                    <div key={item.key} className="native-msg user">
-                      <div className="native-msg-role">你</div>
-                      <div className="native-msg-body">{item.text}</div>
-                    </div>
-                  );
-                }
-                if (item.kind === 'assistant') {
-                  return (
-                    <div key={item.key} className="native-msg assistant">
-                      <div className="native-msg-role">青梧</div>
-                      <div className="native-msg-body">
-                        {item.text || (item.interrupted ? '（已中断）' : '…')}
+            <div className="native-messages" ref={scrollRef} onScroll={handleScroll}>
+              <div className="native-messages-inner">
+                {loadingHistory && <div className="native-hint">正在加载会话历史…</div>}
+                {items.map((item) => {
+                  if (item.kind === 'user') {
+                    return (
+                      <div key={item.key} className="native-msg user">
+                        <div className="native-msg-body">{item.text}</div>
                       </div>
-                    </div>
-                  );
-                }
-                const tool = item.tool;
-                return (
-                  <details key={item.key} className={`native-tool${tool.isError ? ' error' : ''}`}>
-                    <summary>
-                      <span className="native-tool-name">{tool.name}</span>
-                      <span className="native-tool-status">
-                        {tool.pending ? '执行中…' : tool.isError ? '失败' : '完成'}
-                      </span>
-                    </summary>
-                    <pre className="native-tool-args">{tool.arguments}</pre>
-                    {tool.resultText && <pre className="native-tool-result">{tool.resultText}</pre>}
+                    );
+                  }
+                  if (item.kind === 'assistant') {
+                    if (!item.text && !item.reasoning && !item.interrupted) return null;
+                    return (
+                      <div key={item.key} className="native-msg assistant">
+                        {item.reasoning && (
+                          <details className="native-reasoning">
+                            <summary>思考过程</summary>
+                            <div className="native-reasoning-body">{item.reasoning}</div>
+                          </details>
+                        )}
+                        {(item.text || item.interrupted) && (
+                          <div className="native-msg-body">
+                            <Markdown text={item.text} />
+                            {item.interrupted && !item.text && <span className="native-muted">（已中断）</span>}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }
+                  return <ToolCard key={item.key} tool={item.tool} cwd={currentCwd} />;
+                })}
+                {liveReasoning && (
+                  <details open className="native-reasoning live">
+                    <summary>正在思考…</summary>
+                    <div className="native-reasoning-body">{liveReasoning}</div>
                   </details>
-                );
-              })}
-              {draft && (
-                <div className="native-msg assistant">
-                  <div className="native-msg-role">青梧</div>
-                  <div className="native-msg-body">{draft}</div>
-                </div>
-              )}
-              <div ref={bottomRef} />
+                )}
+                {toolCalling && !liveReasoning && <div className="native-tool-hint">正在调用工具…</div>}
+                {draft && (
+                  <div className="native-msg assistant">
+                    <div className="native-msg-body">
+                      <Markdown text={draft} />
+                      <span className="native-cursor" />
+                    </div>
+                  </div>
+                )}
+                <div ref={bottomRef} />
+              </div>
             </div>
 
             {(approvals.length > 0 || questions.length > 0) && (
@@ -649,30 +759,44 @@ export function NativeApp() {
             )}
 
             <div className="native-composer">
-              <textarea
-                value={input}
-                placeholder={currentId ? '输入消息，Enter 发送，Shift+Enter 换行' : ''}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-                    e.preventDefault();
-                    void handleSend();
-                  }
-                }}
-              />
-              {running ? (
-                <button className="native-send stop" onClick={() => void handleStop()}>
-                  停止
-                </button>
-              ) : (
-                <button
-                  className="native-send"
-                  disabled={!input.trim()}
-                  onClick={() => void handleSend()}
-                >
-                  发送
-                </button>
-              )}
+              <div className="native-composer-box">
+                <textarea
+                  ref={textareaRef}
+                  value={input}
+                  rows={1}
+                  placeholder={currentId ? '输入消息，Enter 发送，Shift+Enter 换行' : ''}
+                  onChange={(e) => {
+                    setInput(e.target.value);
+                    const el = e.target;
+                    el.style.height = 'auto';
+                    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                      e.preventDefault();
+                      void handleSend();
+                    }
+                  }}
+                />
+                {running ? (
+                  <button className="native-send stop" onClick={() => void handleStop()} title="停止">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">
+                      <rect x="6" y="6" width="12" height="12" rx="2" />
+                    </svg>
+                  </button>
+                ) : (
+                  <button
+                    className="native-send"
+                    disabled={!input.trim()}
+                    onClick={() => void handleSend()}
+                    title="发送"
+                  >
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M12 19V5M5 12l7-7 7 7" />
+                    </svg>
+                  </button>
+                )}
+              </div>
             </div>
           </>
         )}
@@ -682,6 +806,24 @@ export function NativeApp() {
           </div>
         )}
       </main>
+
+      {!panelCollapsed && (
+        <div
+          className="native-resizer"
+          role="separator"
+          aria-orientation="vertical"
+          title="拖动调节宽度，双击复位"
+          onPointerDown={(e) => rightPanel.startDrag(e, -1)}
+          onDoubleClick={rightPanel.reset}
+        />
+      )}
+      <RightPanel
+        collapsed={panelCollapsed}
+        width={rightPanel.width}
+        onToggle={() => setPanelCollapsed((v) => !v)}
+        todos={panelData.todos}
+        fileChanges={panelData.fileChanges}
+      />
     </div>
   );
 }

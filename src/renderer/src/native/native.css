@@ -1,4 +1,4 @@
-/* 自研界面：codex 风格极简布局，位于标题栏（35px）下方。 */
+/* 自研界面：Codex 风格近单色设计系统，位于标题栏（35px）下方。 */
 
 .native-app {
   position: fixed;
@@ -16,36 +16,52 @@
 
 :root {
   --native-bg: #ffffff;
-  --native-fg: #1f2328;
-  --native-muted: #6b7280;
-  --native-border: #e5e7eb;
-  --native-sidebar-bg: #f7f8fa;
-  --native-accent: #2563eb;
-  --native-user-bg: #eef2ff;
-  --native-tool-bg: #f8f9fb;
+  --native-fg: #0d0d0d;
+  --native-muted: #6e6e80;
+  --native-border: #e5e5e8;
+  --native-sidebar-bg: #f7f7f8;
+  --native-surface: #f6f6f7;
+  --native-surface-2: #ececee;
+  --native-hover: #ececee;
+  --native-active: #e2e2e6;
+  --native-accent: #0d0d0d;
+  --native-accent-fg: #ffffff;
+  --native-ok: #10a37f;
   --native-error: #dc2626;
-  --native-card-border: #d1d5db;
+  --native-card-border: #dcdce0;
+  --native-diff-add-bg: rgba(16, 163, 127, 0.08);
+  --native-diff-del-bg: rgba(220, 46, 42, 0.08);
+  --native-diff-add-fg: #067a5e;
+  --native-diff-del-fg: #b91c1c;
+  --native-mono: Consolas, 'Cascadia Code', 'Courier New', monospace;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --native-bg: #16181d;
-    --native-fg: #e6e8eb;
-    --native-muted: #9aa1ab;
-    --native-border: #2c2f36;
-    --native-sidebar-bg: #101216;
-    --native-accent: #4c8dff;
-    --native-user-bg: #23283a;
-    --native-tool-bg: #1c1f25;
+    --native-bg: #131313;
+    --native-fg: #ededed;
+    --native-muted: #9b9b9b;
+    --native-border: #232326;
+    --native-sidebar-bg: #0f0f0f;
+    --native-surface: #1a1a1d;
+    --native-surface-2: #232326;
+    --native-hover: #1a1a1d;
+    --native-active: #202024;
+    --native-accent: #ededed;
+    --native-accent-fg: #0d0d0d;
+    --native-ok: #34d399;
     --native-error: #f87171;
-    --native-card-border: #3a3f48;
+    --native-card-border: #2e2e33;
+    --native-diff-add-bg: rgba(52, 211, 153, 0.1);
+    --native-diff-del-bg: rgba(248, 113, 113, 0.1);
+    --native-diff-add-fg: #34d399;
+    --native-diff-del-fg: #f87171;
   }
 }
 
 /* ---------- 侧栏 ---------- */
 
 .native-sidebar {
-  width: 232px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -75,8 +91,7 @@
 
 .native-new-session:hover,
 .native-add-workspace:hover {
-  border-color: var(--native-accent);
-  color: var(--native-accent);
+  background: var(--native-hover);
 }
 
 .native-session-list {
@@ -117,11 +132,11 @@
 }
 
 .native-session-item:hover {
-  background: var(--native-tool-bg);
+  background: var(--native-hover);
 }
 
 .native-session-item.active {
-  background: var(--native-user-bg);
+  background: var(--native-active);
 }
 
 .native-session-title {
@@ -135,8 +150,9 @@
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--native-accent);
+  background: var(--native-ok);
   flex-shrink: 0;
+  animation: native-pulse 1.6s ease-in-out infinite;
 }
 
 /* ---------- 对话区 ---------- */
@@ -160,7 +176,12 @@
 .native-messages {
   flex: 1;
   overflow-y: auto;
-  padding: 20px 24px;
+  padding: 20px 24px 12px;
+}
+
+.native-messages-inner {
+  max-width: 768px;
+  margin: 0 auto;
 }
 
 .native-hint {
@@ -170,78 +191,504 @@
   padding: 12px;
 }
 
-.native-msg {
-  margin-bottom: 18px;
-  max-width: 780px;
-}
-
-.native-msg-role {
-  font-size: 12px;
-  color: var(--native-muted);
-  margin-bottom: 4px;
+/* 用户消息：浅底圆角块，无角色标签 */
+.native-msg.user {
+  margin: 18px 0;
 }
 
 .native-msg.user .native-msg-body {
-  background: var(--native-user-bg);
-  border-radius: 10px;
+  background: var(--native-surface);
+  border-radius: 12px;
   padding: 10px 14px;
   white-space: pre-wrap;
   word-break: break-word;
 }
 
+/* 助手消息：纯文本无气泡 */
+.native-msg.assistant {
+  margin: 18px 0;
+}
+
 .native-msg.assistant .native-msg-body {
-  white-space: pre-wrap;
+  line-height: 1.7;
   word-break: break-word;
-  line-height: 1.65;
 }
 
-/* 工具调用折叠条 */
-.native-tool {
-  margin: 8px 0;
-  border: 1px solid var(--native-border);
-  border-radius: 8px;
-  background: var(--native-tool-bg);
-  font-size: 13px;
+.native-muted {
+  color: var(--native-muted);
 }
 
-.native-tool summary {
-  display: flex;
+/* ---------- 思考过程 ---------- */
+
+.native-reasoning {
+  margin: 0 0 8px;
+  border-left: 2px solid var(--native-border);
+}
+
+.native-reasoning summary {
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 7px 12px;
+  gap: 4px;
+  padding: 2px 8px;
+  font-size: 12px;
+  color: var(--native-muted);
   cursor: pointer;
   user-select: none;
   list-style: none;
 }
 
-.native-tool summary::-webkit-details-marker {
+.native-reasoning summary::-webkit-details-marker {
   display: none;
 }
 
-.native-tool-name {
-  font-family: Consolas, 'Courier New', monospace;
+.native-reasoning summary::before {
+  content: '▸';
+  font-size: 10px;
+  transition: transform 0.15s ease;
+}
+
+.native-reasoning[open] summary::before {
+  transform: rotate(90deg);
+}
+
+.native-reasoning.live summary {
+  color: var(--native-fg);
+}
+
+.native-reasoning-body {
+  padding: 4px 10px 8px;
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--native-muted);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+/* ---------- 流式状态 ---------- */
+
+.native-cursor {
+  display: inline-block;
+  width: 8px;
+  height: 15px;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background: var(--native-fg);
+  animation: native-blink 1s steps(2) infinite;
+}
+
+.native-tool-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0;
+  font-size: 13px;
+  color: var(--native-muted);
+}
+
+.native-tool-hint::before {
+  content: '';
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--native-border);
+  border-top-color: var(--native-muted);
+  border-radius: 50%;
+  animation: native-spin 0.8s linear infinite;
+}
+
+@keyframes native-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+@keyframes native-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes native-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* ---------- Markdown 排版 ---------- */
+
+.native-md > :first-child {
+  margin-top: 0;
+}
+
+.native-md > :last-child {
+  margin-bottom: 0;
+}
+
+.native-md p {
+  margin: 0 0 10px;
+}
+
+.native-md h1,
+.native-md h2,
+.native-md h3,
+.native-md h4 {
+  margin: 18px 0 8px;
+  line-height: 1.35;
+  font-weight: 600;
+}
+
+.native-md h1 {
+  font-size: 1.3em;
+}
+
+.native-md h2 {
+  font-size: 1.18em;
+}
+
+.native-md h3 {
+  font-size: 1.06em;
+}
+
+.native-md ul,
+.native-md ol {
+  margin: 0 0 10px;
+  padding-left: 22px;
+}
+
+.native-md li {
+  margin: 3px 0;
+}
+
+.native-md blockquote {
+  margin: 0 0 10px;
+  padding: 2px 12px;
+  border-left: 3px solid var(--native-border);
+  color: var(--native-muted);
+}
+
+.native-md a {
+  color: var(--native-fg);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.native-md hr {
+  border: none;
+  border-top: 1px solid var(--native-border);
+  margin: 14px 0;
+}
+
+.native-md img {
+  max-width: 100%;
+}
+
+.native-md table {
+  border-collapse: collapse;
+  margin: 0 0 10px;
+  font-size: 13px;
+  display: block;
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.native-md th,
+.native-md td {
+  border: 1px solid var(--native-border);
+  padding: 5px 10px;
+  text-align: left;
+}
+
+.native-md th {
+  background: var(--native-surface);
+  font-weight: 600;
+}
+
+.native-md tr:nth-child(even) td {
+  background: var(--native-surface);
+}
+
+@media (prefers-color-scheme: dark) {
+  .native-md tr:nth-child(even) td {
+    background: transparent;
+  }
+}
+
+.native-md-code {
+  background: var(--native-surface);
+  border: 1px solid var(--native-border);
+  border-radius: 5px;
+  padding: 1px 5px;
+  font-family: var(--native-mono);
+  font-size: 0.9em;
+}
+
+/* ---------- 代码块（Shiki） ---------- */
+
+.native-codeblock {
+  margin: 10px 0;
+  border: 1px solid var(--native-border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.native-codeblock-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px 4px 12px;
+  background: var(--native-surface);
+  border-bottom: 1px solid var(--native-border);
+  font-size: 11px;
+  color: var(--native-muted);
+}
+
+.native-codeblock-copy {
+  border: none;
+  background: transparent;
+  color: var(--native-muted);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: 5px;
+}
+
+.native-codeblock-copy:hover {
+  background: var(--native-surface-2);
+  color: var(--native-fg);
+}
+
+.native-codeblock-body {
+  margin: 0;
+  overflow-x: auto;
+}
+
+.native-codeblock-body pre {
+  margin: 0;
+  padding: 10px 12px;
+  font-family: var(--native-mono);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.native-codeblock-body.plain pre {
+  background: var(--native-bg);
+}
+
+/* Shiki 双主题：暗色下切换到 --shiki-dark 变量 */
+@media (prefers-color-scheme: dark) {
+  .native-codeblock-body .shiki,
+  .native-codeblock-body .shiki span {
+    color: var(--shiki-dark) !important;
+    background-color: var(--shiki-dark-bg) !important;
+  }
+}
+
+/* ---------- 工具卡片 ---------- */
+
+.native-tool-card {
+  margin: 8px 0;
+  border: 1px solid var(--native-border);
+  border-radius: 10px;
+  background: var(--native-bg);
+  font-size: 13px;
+}
+
+.native-tool-card.error {
+  border-color: var(--native-error);
+}
+
+.native-tool-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px 7px 12px;
+  border: none;
+  background: transparent;
+  color: var(--native-fg);
+  cursor: pointer;
+  text-align: left;
+}
+
+.native-tool-head:hover {
+  background: var(--native-hover);
+}
+
+.native-tool-svg {
+  color: var(--native-muted);
+  flex-shrink: 0;
+}
+
+.native-tool-title {
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.native-tool-sub {
+  flex: 1;
+  min-width: 0;
+  color: var(--native-muted);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .native-tool-status {
-  color: var(--native-muted);
+  flex-shrink: 0;
   font-size: 12px;
+  color: var(--native-muted);
 }
 
-.native-tool.error .native-tool-status {
+.native-tool-pending {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.native-tool-pending .native-spinner {
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--native-border);
+  border-top-color: var(--native-muted);
+  border-radius: 50%;
+  animation: native-spin 0.8s linear infinite;
+}
+
+.native-tool-ok {
+  color: var(--native-muted);
+}
+
+.native-tool-fail {
   color: var(--native-error);
 }
 
-.native-tool-args,
-.native-tool-result {
-  margin: 0;
-  padding: 8px 12px;
+.native-tool-chevron {
+  flex-shrink: 0;
+  color: var(--native-muted);
+  transition: transform 0.15s ease;
+}
+
+.native-tool-chevron.open {
+  transform: rotate(180deg);
+}
+
+.native-tool-detail {
   border-top: 1px solid var(--native-border);
-  font-family: Consolas, 'Courier New', monospace;
+  padding: 8px 12px;
+}
+
+.native-tool-filepath {
+  font-family: var(--native-mono);
+  font-size: 11px;
+  color: var(--native-muted);
+  margin-bottom: 6px;
+  word-break: break-all;
+}
+
+.native-tool-command {
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  background: var(--native-surface);
+  border-radius: 6px;
+  font-family: var(--native-mono);
   font-size: 12px;
+  line-height: 1.55;
   white-space: pre-wrap;
   word-break: break-word;
-  max-height: 260px;
+}
+
+.native-tool-output {
+  margin: 0;
+  padding: 8px 10px;
+  background: var(--native-surface);
+  border-radius: 6px;
+  font-family: var(--native-mono);
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 280px;
   overflow-y: auto;
+}
+
+/* ---------- Diff 视图 ---------- */
+
+.native-diff {
+  border: 1px solid var(--native-border);
+  border-radius: 6px;
+  overflow-x: auto;
+  font-family: var(--native-mono);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.native-diff-line {
+  display: flex;
+  padding: 0 8px;
+  white-space: pre;
+}
+
+.native-diff-line.add {
+  background: var(--native-diff-add-bg);
+}
+
+.native-diff-line.add .native-diff-sign,
+.native-diff-line.add .native-diff-text {
+  color: var(--native-diff-add-fg);
+}
+
+.native-diff-line.del {
+  background: var(--native-diff-del-bg);
+}
+
+.native-diff-line.del .native-diff-sign,
+.native-diff-line.del .native-diff-text {
+  color: var(--native-diff-del-fg);
+}
+
+.native-diff-sign {
+  width: 16px;
+  flex-shrink: 0;
+  user-select: none;
+  color: var(--native-muted);
+}
+
+.native-diff-text {
+  min-width: 0;
+}
+
+/* ---------- 任务清单（卡片内） ---------- */
+
+.native-tool-todos {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.native-tool-todos li {
+  display: flex;
+  gap: 8px;
+  padding: 3px 0;
+  font-size: 12.5px;
+}
+
+.native-todo-done .native-todo-text {
+  color: var(--native-muted);
+  text-decoration: line-through;
+}
+
+.native-todo-in_progress .native-todo-mark {
+  color: var(--native-ok);
+}
+
+.native-todo-mark {
+  flex-shrink: 0;
+  width: 14px;
   color: var(--native-muted);
 }
 
@@ -252,6 +699,13 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.native-interactions .native-card {
+  max-width: 768px;
+  margin: 0 auto;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .native-card {
@@ -291,63 +745,265 @@
 }
 
 .native-card-actions button:hover {
-  border-color: var(--native-accent);
+  background: var(--native-hover);
 }
 
 .native-card-actions button.primary {
   background: var(--native-accent);
   border-color: var(--native-accent);
-  color: #fff;
+  color: var(--native-accent-fg);
 }
 
 /* ---------- 输入区 ---------- */
 
 .native-composer {
-  display: flex;
-  gap: 8px;
-  padding: 12px 24px 16px;
-  border-top: 1px solid var(--native-border);
+  padding: 8px 24px 16px;
 }
 
-.native-composer textarea {
+.native-composer-box {
+  max-width: 768px;
+  margin: 0 auto;
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  border: 1px solid var(--native-border);
+  border-radius: 14px;
+  background: var(--native-surface);
+  transition: border-color 0.15s ease;
+}
+
+.native-composer-box:focus-within {
+  border-color: var(--native-fg);
+}
+
+.native-composer-box textarea {
   flex: 1;
   resize: none;
   min-height: 44px;
-  max-height: 180px;
-  padding: 10px 12px;
-  border: 1px solid var(--native-border);
-  border-radius: 10px;
-  background: var(--native-bg);
+  max-height: 200px;
+  padding: 12px 48px 12px 14px;
+  border: none;
+  background: transparent;
   color: var(--native-fg);
   font-family: inherit;
   font-size: 14px;
   line-height: 1.5;
   outline: none;
+  box-sizing: border-box;
 }
 
-.native-composer textarea:focus {
-  border-color: var(--native-accent);
+.native-composer-box textarea::placeholder {
+  color: var(--native-muted);
 }
 
 .native-send {
-  align-self: flex-end;
-  padding: 10px 18px;
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border: none;
-  border-radius: 10px;
+  border-radius: 8px;
   background: var(--native-accent);
-  color: #fff;
-  font-size: 14px;
+  color: var(--native-accent-fg);
   cursor: pointer;
 }
 
 .native-send:disabled {
-  opacity: 0.45;
+  background: var(--native-surface-2);
+  color: var(--native-muted);
   cursor: default;
 }
 
 .native-send.stop {
   background: var(--native-error);
+  color: #ffffff;
 }
+
+/* ---------- 右侧面板 ---------- */
+
+.native-panel {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--native-border);
+  background: var(--native-sidebar-bg);
+  min-height: 0;
+}
+
+.native-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 12px 8px 16px;
+}
+
+.native-panel-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.native-panel-collapse,
+.native-panel-restore {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--native-muted);
+  cursor: pointer;
+}
+
+.native-panel-collapse:hover,
+.native-panel-restore:hover {
+  background: var(--native-hover);
+  color: var(--native-fg);
+}
+
+.native-panel-restore {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+}
+
+.native-panel-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 12px 16px;
+}
+
+.native-panel-section {
+  margin-bottom: 18px;
+}
+
+.native-panel-section-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--native-muted);
+  padding: 4px 4px 8px;
+  user-select: none;
+}
+
+.native-panel-count {
+  background: var(--native-surface-2);
+  border-radius: 8px;
+  padding: 0 6px;
+  font-size: 10px;
+  line-height: 16px;
+}
+
+.native-panel-empty {
+  font-size: 12px;
+  color: var(--native-muted);
+  padding: 4px;
+}
+
+.native-panel-todos {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.native-panel-todos li {
+  display: flex;
+  gap: 8px;
+  padding: 4px 6px;
+  font-size: 12.5px;
+  border-radius: 6px;
+}
+
+.native-panel-todos li.native-todo-in_progress {
+  background: var(--native-surface);
+}
+
+.native-panel-todos .native-todo-text {
+  min-width: 0;
+}
+
+.native-panel-file {
+  margin-bottom: 2px;
+}
+
+.native-panel-file-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--native-fg);
+  font-size: 12.5px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.native-panel-file-row:hover {
+  background: var(--native-hover);
+}
+
+.native-panel-file-row svg {
+  color: var(--native-muted);
+  flex-shrink: 0;
+}
+
+.native-panel-file-name {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--native-mono);
+  font-size: 12px;
+}
+
+.native-panel-file-meta {
+  flex-shrink: 0;
+  color: var(--native-muted);
+  font-size: 11px;
+}
+
+.native-panel-file-detail {
+  padding: 6px 8px 10px;
+}
+
+/* ---------- 面板拖拽条 ---------- */
+
+.native-resizer {
+  flex-shrink: 0;
+  width: 6px;
+  cursor: col-resize;
+  background: transparent;
+  touch-action: none;
+  z-index: 2;
+  transition: background-color 0.12s ease;
+}
+
+.native-resizer:hover,
+.native-resizer.dragging {
+  background: var(--native-border);
+}
+
+.native-resizer.dragging {
+  background: var(--native-muted);
+}
+
+/* 拖拽期间：全局禁用文本选择，指针样式保持一致 */
+body.native-resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+
+/* ---------- 错误提示 ---------- */
 
 .native-error {
   position: absolute;

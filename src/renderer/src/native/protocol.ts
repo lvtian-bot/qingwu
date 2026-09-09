@@ -29,7 +29,13 @@ export interface TextBlock {
   text: string;
 }
 
-export type ContentBlock = TextBlock | { type: string } & Record<string, unknown>;
+/** 思考块：文本同样落在 text 字段。 */
+export interface ReasoningBlock {
+  type: 'reasoning';
+  text: string;
+}
+
+export type ContentBlock = TextBlock | ReasoningBlock | { type: string } & Record<string, unknown>;
 
 /** journal 原始事件（SessionWireEvent）：type/seq/time/data，识别不了的忽略。 */
 export interface SessionEvent {
@@ -62,8 +68,51 @@ export interface ToolResultEventData {
 
 export interface AssistantChunkEventData {
   chunk:
+    | { type: 'block-start'; index: number; blockType: 'reasoning' | 'text' | 'tool-call' | string }
+    | { type: 'block-end'; index: number; block?: Record<string, unknown> }
     | { type: 'text-delta'; index: number; text: string }
+    | { type: 'reasoning-delta'; index: number; text: string }
+    | {
+        type: 'tool-call-delta';
+        index: number;
+        id?: string;
+        name?: string;
+        argumentsDelta?: string;
+      }
     | { type: string } & Record<string, unknown>;
+}
+
+// ---------- 工具调用参数（wire 实测结构，未知工具回退通用展示） ----------
+
+export interface PwshArgs {
+  command: string;
+  description?: string;
+}
+
+export interface ReadArgs {
+  file_path: string;
+  offset?: number;
+  limit?: number;
+}
+
+export interface PatternArgs {
+  pattern: string;
+  path?: string;
+}
+
+export interface EditArgs {
+  file_path: string;
+  old_string: string;
+  new_string: string;
+}
+
+export interface WriteArgs {
+  file_path: string;
+  content?: string;
+}
+
+export interface TodoWriteArgs {
+  todos: { content: string; status: string }[];
 }
 
 // ---------- session/follow 日志流 ----------
