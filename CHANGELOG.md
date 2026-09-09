@@ -2,6 +2,13 @@
 
 所有显著变更都记录在本文件中，格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## 0.1.0（2026-09-09）
+### ⚙️ 工程维护
+- 清理备用图标并忽略 .trae 工具目录
+### ✨ 新增
+- 自研界面 Codex 风格升级（Markdown 渲染/工具卡片/思考过程/右侧面板）
+
+**完整对比**: [v0.0.9...v0.1.0](https://github.com/lvtian-bot/qingwu/compare/v0.0.9...v0.1.0)
 ## 0.0.9（2026-09-08）
 ### ⚙️ 工程维护
 - 忽略 .zcode 工具目录
