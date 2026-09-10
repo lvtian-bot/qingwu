@@ -22,7 +22,6 @@ export interface RightPanelProps {
   collapsed: boolean;
   /** 面板宽度（拖拽调节），折叠态不消费。 */
   width: number;
-  onToggle: () => void;
   todos: TodoEntry[] | null;
   fileChanges: FileChangeEntry[];
 }
@@ -31,28 +30,15 @@ function basename(p: string): string {
   return p.split(/[\\/]/).filter(Boolean).pop() ?? p;
 }
 
-export function RightPanel({ collapsed, width, onToggle, todos, fileChanges }: RightPanelProps) {
+export function RightPanel({ collapsed, width, todos, fileChanges }: RightPanelProps) {
   const [expandedPath, setExpandedPath] = useState<string | null>(null);
 
-  if (collapsed) {
-    return (
-      <button className="native-panel-restore" onClick={onToggle} title="展开面板">
-        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <path d="M13 5l7 7-7 7M4 12h16" />
-        </svg>
-      </button>
-    );
-  }
+  if (collapsed) return null;
 
   return (
     <aside className="native-panel" style={{ width }}>
       <div className="native-panel-header">
         <span className="native-panel-title">工作区</span>
-        <button className="native-panel-collapse" onClick={onToggle} title="收起面板">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M11 19l-7-7 7-7M20 12H4" />
-          </svg>
-        </button>
       </div>
 
       <div className="native-panel-body">

@@ -16,11 +16,111 @@ export const Endpoints = {
   sessionCancel: 'session/cancel',
   sessionPage: 'session/page',
   sessionFollow: 'session/follow',
+  sessionModelCatalog: 'session/modelCatalog',
+  sessionSelectModel: 'session/selectModel',
+  commandsExecute: 'commands/execute',
+  settingsDescribe: 'settings/describe',
+  settingsMutate: 'settings/mutate',
   workspaceFollow: 'workspace/follow',
   workspaceCreate: 'workspace/create',
   directoryPickerPick: 'directoryPicker/pick',
   eventsResult: '$events/result',
 } as const;
+
+// ---------- 模型目录与选择（0.1.2 wire 实测形状） ----------
+
+/** 一次模型选择意图：provider + model + 可选推理强度。 */
+export interface ModelSelection {
+  provider: string;
+  model: string;
+  reasoningEffort?: string;
+}
+
+/** 推理强度档位（off/low/high/max…，id 稳定、name 面向展示）。 */
+export interface ModelReasoningEffort {
+  id: string;
+  name: string;
+  description?: string;
+}
+
+export interface ModelReasoning {
+  efforts: ModelReasoningEffort[];
+  defaultEffort?: string;
+}
+
+export interface ModelCatalogModel {
+  id: string;
+  name: string;
+  description?: string;
+  reasoning?: ModelReasoning;
+}
+
+export interface ModelProviderGroup {
+  id: string;
+  name: string;
+  models: ModelCatalogModel[];
+}
+
+/** session/modelCatalog 返回：provider 分组 + 未配置会话时的默认选择。 */
+export interface ModelCatalog {
+  default?: ModelSelection;
+  routableProviders?: string[];
+  groups: ModelProviderGroup[];
+}
+
+/** 会话投影 modelSelection：next = pending ?? lastUsed（生效/待生效选择）。 */
+export interface ModelSelectionProjection {
+  lastUsed: ModelSelection | null;
+  next: ModelSelection | null;
+}
+
+/** 权限预设选项（value 为 read-only / workspace-write / danger-full-access…）。 */
+export interface PresetOption {
+  value: string;
+  name: string;
+  description?: string;
+}
+
+/** 会话投影 permissions：可切换预设 + 当前生效值（custom 表示旋钮组合无预设）。 */
+export interface PermissionSelect {
+  options: PresetOption[];
+  currentValue: string;
+}
+
+/** commands/execute 返回：斜杠命令在宿主的执行结果。 */
+export interface CommandExecution {
+  commandId: string;
+  result: { kind: 'success'; text?: string } | { kind: 'error'; text: string };
+}
+
+// ---------- 设置命名空间（settings/describe、settings/mutate） ----------
+
+/** 一次路径寻址的设置写入：set 写入并创建中间对象。 */
+export interface SettingsPathOp {
+  op: 'set';
+  path: string[];
+  value: unknown;
+}
+
+/** 单个设置命名空间的 wire 视图（值为脱敏后的 JSON）。 */
+export interface SettingsNamespaceView {
+  /** 命名空间键（permission、llm-deepseek…）。 */
+  ns: string;
+  /** schemastery schema 序列化包络（nodeAtPath 的原始形态）。 */
+  schema: unknown;
+  /** 解析后的值（schema 默认 → 组合 base → 用户层）。 */
+  value: Record<string, unknown>;
+  applies?: 'live' | 'restart';
+  /** 读取时的用户段修订号，写入须回传以免覆盖并发修改。 */
+  revision: number;
+}
+
+/** settings/describe 返回：部署写入能力 + 全部命名空间视图。 */
+export interface SettingsDescribeValue {
+  /** provider 是否接受写入；false 时禁用全部写入控件。 */
+  writable: boolean;
+  namespaces: SettingsNamespaceView[];
+}
 
 // ---------- 会话事件（journal 原始事件，0.1.1 词汇保持兼容） ----------
 
@@ -221,6 +321,11 @@ export interface SessionSummary {
   cwd?: string;
   projections?: {
     asOfSeq: number;
-    values?: { title?: string | null; [key: string]: unknown };
+    values?: {
+      title?: string | null;
+      modelSelection?: ModelSelectionProjection;
+      permissions?: PermissionSelect;
+      [key: string]: unknown;
+    };
   };
 }

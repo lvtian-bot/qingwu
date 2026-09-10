@@ -1,12 +1,17 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type {
   ApprovalRequestPayload,
   AssistantChunkEventData,
   EditArgs,
+  ModelCatalog,
+  ModelSelection,
+  PermissionSelect,
+  PresetOption,
   RemoteEventFrame,
   SessionEvent,
   SessionFollowFrame,
   SessionSummary,
+  SettingsDescribeValue,
   ToolCallEventData,
   ToolResultEventData,
   TodoWriteArgs,
@@ -52,6 +57,398 @@ function textOf(content: unknown[], blockType: 'text' | 'reasoning'): string {
     .join('');
 }
 
+/** 毫秒 → 「3m 55s」/「42s」。 */
+function formatDuration(ms: number): string {
+  const total = Math.max(0, Math.round(ms / 1000));
+  const minutes = Math.floor(total / 60);
+  const seconds = total % 60;
+  return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+}
+
+/** 助手消息复制按钮：点击后 1.5s 内显示「已复制」。 */
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      className="native-msg-action"
+      title="复制回复"
+      onClick={() => {
+        void navigator.clipboard.writeText(text).then(() => {
+          setCopied(true);
+          window.setTimeout(() => setCopied(false), 1500);
+        });
+      }}
+    >
+      <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <rect x="9" y="9" width="13" height="13" rx="2" />
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+      </svg>
+      {copied && <span>已复制</span>}
+    </button>
+  );
+}
+
+interface ComposerProps {
+  input: string;
+  onInputChange: (value: string) => void;
+  onSend: () => void;
+  running: boolean;
+  onStop: () => void;
+  textareaRef: { current: HTMLTextAreaElement | null };
+  /** 工具行左侧控件（模型/强度/权限选择器）。 */
+  controls?: ReactNode;
+}
+
+/** 侧栏分组标题：点击折叠/展开会话列表。 */
+function GroupHeader({
+  title,
+  collapsed,
+  onToggle,
+}: {
+  title: string;
+  collapsed: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button className="native-group-title" onClick={onToggle} title={collapsed ? '展开分组' : '折叠分组'}>
+      <span className="native-group-title-text">{title}</span>
+      <svg
+        className={`native-group-chevron${collapsed ? ' collapsed' : ''}`}
+        viewBox="0 0 24 24"
+        width="12"
+        height="12"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M6 9l6 6 6-6" />
+      </svg>
+    </button>
+  );
+}
+
+/** 卡片式输入框：textarea + 底部工具行（左侧选择器 + 圆形发送/停止按钮），空态与底部共用。 */
+function Composer({ input, onInputChange, onSend, running, onStop, textareaRef, controls }: ComposerProps) {
+  return (
+    <div className="native-composer-box">
+      <textarea
+        ref={textareaRef}
+        value={input}
+        rows={1}
+        placeholder="输入消息，Enter 发送，Shift+Enter 换行"
+        onChange={(e) => {
+          onInputChange(e.target.value);
+          const el = e.target;
+          el.style.height = 'auto';
+          el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+            e.preventDefault();
+            onSend();
+          }
+        }}
+      />
+      <div className="native-composer-bar">
+        {/* 控件组自身占满工具行：权限贴左，模型与推理档位贴右（紧邻发送按钮） */}
+        {controls ?? <span style={{ flex: 1 }} />}
+        {running ? (
+          <button className="native-send stop" onClick={onStop} title="停止">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">
+              <rect x="6" y="6" width="12" height="12" rx="2" />
+            </svg>
+          </button>
+        ) : (
+          <button className="native-send" disabled={!input.trim()} onClick={onSend} title="发送">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M12 19V5M5 12l7-7 7 7" />
+            </svg>
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** 权限预设值的中文展示（未知值原样展示）。 */
+const PERMISSION_LABELS: Record<string, string> = {
+  'read-only': '仅可查看',
+  'workspace-write': '工作区内修改',
+  'danger-full-access': '完全权限',
+  custom: '自定义',
+};
+
+/** 推理强度档位的中文展示（未知档位回退目录提供的 name）。 */
+const EFFORT_LABELS: Record<string, string> = {
+  off: '关闭',
+  minimal: '最低',
+  low: '低',
+  medium: '中',
+  high: '高',
+  max: '最高',
+};
+
+function permissionLabel(value: string): string {
+  return PERMISSION_LABELS[value] ?? value;
+}
+
+/**
+ * 从 permission 命名空间的 schemastery 序列化 schema 解析 defaultPreset 可选档位。
+ * 官方设置行用 nodeAtPath(rehydrate(schema)) 取该 union 的 const 列表，这里直接走
+ * 序列化形态（refs 引用表 + dict/list 索引），结构不符预期时返回空数组。
+ */
+function permissionPresetsFromSchema(schema: unknown): PresetOption[] {
+  try {
+    const root = schema as
+      | { uid?: number; refs?: Record<string, unknown>; dict?: Record<string, unknown> }
+      | null;
+    const refs = root?.refs;
+    if (!root || !refs) return [];
+    const resolve = (node: unknown): Record<string, unknown> | null => {
+      const raw = typeof node === 'number' ? refs[String(node)] : node;
+      return typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>) : null;
+    };
+    const holder = [root, ...Object.values(refs)].find((node) => {
+      const dict = (node as { dict?: Record<string, unknown> } | null)?.dict;
+      return dict !== undefined && 'defaultPreset' in dict;
+    }) as { dict: Record<string, unknown> } | undefined;
+    const union = holder ? resolve(holder.dict.defaultPreset) : null;
+    if (!union || !Array.isArray(union.list)) return [];
+    const options: PresetOption[] = [];
+    for (const entry of union.list) {
+      const node = resolve(entry);
+      if (node && node.type === 'const' && typeof node.value === 'string') {
+        options.push({ value: node.value, name: node.value });
+      }
+    }
+    return options;
+  } catch {
+    return [];
+  }
+}
+
+interface ComposerControlsProps {
+  catalog: ModelCatalog | null;
+  selection: ModelSelection | null;
+  /** 权限选择；空态传新会话默认权限，无权限服务时传 null 隐藏控件。 */
+  permission: PermissionSelect | null;
+  /** 控件标题补充（空态标明"新会话默认权限"）。 */
+  permissionHint?: string;
+  onModelPick: (selection: ModelSelection) => void;
+  onEffortPick: (effortId: string) => void;
+  onPermissionPick: (value: string) => void;
+}
+
+/** 输入框工具行左侧：模型 / 推理强度 / 权限模式选择器（弹出层单开，点击外部关闭）。 */
+function ComposerControls({
+  catalog,
+  selection,
+  permission,
+  permissionHint,
+  onModelPick,
+  onEffortPick,
+  onPermissionPick,
+}: ComposerControlsProps) {
+  const [open, setOpen] = useState<'model' | 'effort' | 'permission' | null>(null);
+  /** danger-full-access 的风险确认态（对齐官方确认交互）。 */
+  const [confirmDanger, setConfirmDanger] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+
+  const model = useMemo(() => {
+    if (!catalog || !selection) return null;
+    return (
+      catalog.groups.find((g) => g.id === selection.provider)?.models.find(
+        (m) => m.id === selection.model
+      ) ?? null
+    );
+  }, [catalog, selection]);
+  const efforts = model?.reasoning?.efforts?.length ? model.reasoning.efforts : null;
+  const effortId = selection?.reasoningEffort ?? model?.reasoning?.defaultEffort;
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
+        setOpen(null);
+        setConfirmDanger(false);
+      }
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [open]);
+
+  // 权限与模型目录相互独立：任一可用即渲染控件组
+  if (!selection && !permission) return null;
+
+  const toggle = (menu: 'model' | 'effort' | 'permission') => {
+    setOpen((prev) => (prev === menu ? null : menu));
+    setConfirmDanger(false);
+  };
+
+  return (
+    <div className="native-composer-controls" ref={rootRef}>
+      {permission && (
+        <div className="native-picker">
+          <button
+            className={`native-pill${open === 'permission' ? ' active' : ''}`}
+            onClick={() => toggle('permission')}
+            title={permissionHint ?? '权限模式'}
+          >
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" />
+            </svg>
+            <span className="native-pill-text">
+              权限·{permissionLabel(permission.currentValue)}
+            </span>
+          </button>
+          {open === 'permission' && (
+            <div className="native-popover">
+              {permission.options.map((option) => (
+                <button
+                  key={option.value}
+                  className={`native-popover-item${permission.currentValue === option.value ? ' active' : ''}`}
+                  onClick={() => {
+                    if (option.value === 'danger-full-access' && !confirmDanger) {
+                      setConfirmDanger(true);
+                      return;
+                    }
+                    onPermissionPick(option.value);
+                    setOpen(null);
+                    setConfirmDanger(false);
+                  }}
+                  title={option.description}
+                >
+                  <span className="native-popover-item-name">
+                    {permissionLabel(option.value)}
+                  </span>
+                </button>
+              ))}
+              {confirmDanger && (
+                <div className="native-popover-confirm">
+                  <div className="native-popover-confirm-text">
+                    启用完全权限后将减少确认步骤，可直接执行敏感操作、文件修改或外部命令。仅建议在信任后续任务时使用。
+                  </div>
+                  <div className="native-popover-confirm-actions">
+                    <button
+                      className="native-popover-confirm-cancel"
+                      onClick={() => {
+                        setConfirmDanger(false);
+                        setOpen(null);
+                      }}
+                    >
+                      取消
+                    </button>
+                    <button
+                      className="native-popover-confirm-go"
+                      onClick={() => {
+                        onPermissionPick('danger-full-access');
+                        setOpen(null);
+                        setConfirmDanger(false);
+                      }}
+                    >
+                      我已了解风险，启用
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      <span className="native-composer-controls-spacer" />
+
+      <div className="native-picker native-picker-end">
+        <button
+          className={`native-pill${open === 'model' ? ' active' : ''}`}
+          onClick={() => toggle('model')}
+          title="选择模型"
+        >
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1" />
+          </svg>
+          <span className="native-pill-text">{model?.name ?? selection?.model ?? '选择模型'}</span>
+        </button>
+        {open === 'model' && (
+          <div className="native-popover">
+            {catalog ? (
+              catalog.groups.map((group) => (
+                <div key={group.id} className="native-popover-group">
+                  <div className="native-popover-group-title">{group.name}</div>
+                  {group.models.map((m) => (
+                    <button
+                      key={m.id}
+                      className={`native-popover-item${
+                        selection?.provider === group.id && selection?.model === m.id ? ' active' : ''
+                      }`}
+                      onClick={() => {
+                        onModelPick({ provider: group.id, model: m.id });
+                        setOpen(null);
+                      }}
+                      title={m.description}
+                    >
+                      <span className="native-popover-item-name">{m.name}</span>
+                      {m.description && (
+                        <span className="native-popover-item-desc">{m.description}</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              ))
+            ) : (
+              <div className="native-popover-empty">模型目录不可用</div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {efforts && (
+        <div className="native-picker native-picker-end">
+          <button
+            className={`native-pill${open === 'effort' ? ' active' : ''}`}
+            onClick={() => toggle('effort')}
+            title="推理强度"
+          >
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M12 3a6 6 0 0 0 0 12c0 2 0 3-2 4 1-2 0-2 2-2a6 6 0 0 0 0-12Z" />
+            </svg>
+            <span className="native-pill-text">
+              思考·{effortId ? (EFFORT_LABELS[effortId] ?? effortId) : '默认'}
+            </span>
+          </button>
+          {open === 'effort' && (
+            <div className="native-popover">
+              {efforts.map((effort) => (
+                <button
+                  key={effort.id}
+                  className={`native-popover-item${effortId === effort.id ? ' active' : ''}`}
+                  onClick={() => {
+                    onEffortPick(effort.id);
+                    setOpen(null);
+                  }}
+                  title={effort.description}
+                >
+                  <span className="native-popover-item-name">
+                    {EFFORT_LABELS[effort.id] ?? effort.name}
+                  </span>
+                  {effort.description && (
+                    <span className="native-popover-item-desc">{effort.description}</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+    </div>
+  );
+}
+
 /** 待决策审批（$events 瀑布）。 */
 interface PendingApproval extends ApprovalRequestPayload {
   eventId: string;
@@ -66,25 +463,36 @@ interface PendingQuestion extends UserQuestionsRequestPayload {
 
 /** 会话内渲染条目。 */
 type ChatItem =
-  | { kind: 'user'; key: string; text: string }
+  | { kind: 'user'; key: string; text: string; time: number }
   | {
       kind: 'assistant';
       key: string;
       text: string;
       reasoning: string;
       interrupted?: boolean;
+      /** 该 assistant/message 事件时间。 */
+      time: number;
+      /** 最近一条 user 消息时间（无则 null），用于计算用时。 */
+      startTime: number | null;
     }
   | { kind: 'tool'; key: string; tool: ToolItem };
 
 function foldChatItems(events: SessionEvent[]): ChatItem[] {
   const tools = new Map<string, ToolItem>();
   const items: ChatItem[] = [];
+  let lastUserTime: number | null = null;
 
   for (const event of events) {
     if (event.type === 'user/message') {
       const data = event.data as { source?: { kind: string }; content?: unknown[] } | null;
       if (data?.source?.kind === 'user' && Array.isArray(data.content)) {
-        items.push({ kind: 'user', key: `u-${event.seq}`, text: textOf(data.content, 'text') });
+        lastUserTime = event.time;
+        items.push({
+          kind: 'user',
+          key: `u-${event.seq}`,
+          text: textOf(data.content, 'text'),
+          time: event.time,
+        });
       }
     } else if (event.type === 'assistant/message') {
       const data = event.data as {
@@ -98,6 +506,8 @@ function foldChatItems(events: SessionEvent[]): ChatItem[] {
         text: content ? textOf(content, 'text') : '',
         reasoning: content ? textOf(content, 'reasoning') : '',
         interrupted: data?.interrupted,
+        time: event.time,
+        startTime: lastUserTime,
       });
     } else if (event.type === 'tool/call') {
       const data = event.data as ToolCallEventData;
@@ -165,6 +575,19 @@ export function NativeApp() {
   const [loadingHistory, setLoadingHistory] = useState(false);
   /** 右侧面板折叠态。 */
   const [panelCollapsed, setPanelCollapsed] = useState(false);
+  /** 会话搜索（纯前端标题过滤）。 */
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchText, setSearchText] = useState('');
+  /** 侧栏折叠的分组标题集合。 */
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  /** 模型目录（provider 分组 + 默认选择），拉取失败仅降级选择器。 */
+  const [modelCatalog, setModelCatalog] = useState<ModelCatalog | null>(null);
+  /** 空态（尚未建会话）待应用的模型选择，发送时随会话创建写入。 */
+  const [emptySelection, setEmptySelection] = useState<ModelSelection | null>(null);
+  /** 新会话默认权限（settings permission 命名空间 defaultPreset），空态选择器读写的对象。 */
+  const [defaultPermission, setDefaultPermission] = useState<
+    (PermissionSelect & { writable: boolean; revision: number }) | null
+  >(null);
   /** 左右面板宽度（拖拽调节，localStorage 记忆，双击复位）。 */
   const sidebarPanel = usePanelWidth({
     storageKey: 'qingwu.native.sidebarWidth',
@@ -216,6 +639,39 @@ export function NativeApp() {
     void refreshSessions();
     return qingwu.onUiModeChanged((mode) => setVisible(mode === 'native'));
   }, [refreshSessions]);
+
+  // 模型目录与界面生命周期解耦，失败静默降级（选择器显示目录不可用）
+  useEffect(() => {
+    rpc<ModelCatalog>(Endpoints.sessionModelCatalog, {})
+      .then(setModelCatalog)
+      .catch(() => setModelCatalog(null));
+  }, []);
+
+  /** 读取新会话默认权限（settings/describe 的 permission 命名空间）。 */
+  const refreshDefaultPermission = useCallback(async () => {
+    try {
+      const described = await rpc<SettingsDescribeValue>(Endpoints.settingsDescribe, {});
+      const view = described.namespaces.find((entry) => entry.ns === 'permission');
+      const current = view?.value.defaultPreset;
+      if (!view || typeof current !== 'string') {
+        setDefaultPermission(null);
+        return;
+      }
+      const options = permissionPresetsFromSchema(view.schema);
+      setDefaultPermission({
+        options: options.length > 0 ? options : [{ value: current, name: current }],
+        currentValue: current,
+        writable: described.writable,
+        revision: view.revision,
+      });
+    } catch {
+      setDefaultPermission(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshDefaultPermission();
+  }, [refreshDefaultPermission]);
 
   useEffect(() => {
     if (workspaces.length > 0 && !activeWorkspaceId) {
@@ -430,9 +886,21 @@ export function NativeApp() {
     [sessions]
   );
 
-  /** 按工作区（项目）分组：会话归属来自工作区注册表的 sessionIds 顺序。 */
+  /** 会话标题：AI 生成/用户命名的 title 投影优先，回退工作目录名。 */
+  const sessionTitle = (session: SessionSummary): string => {
+    const title = session.projections?.values?.title;
+    if (typeof title === 'string' && title.trim()) return title;
+    if (session.cwd) return session.cwd.split(/[\\/]/).filter(Boolean).pop() ?? '未命名';
+    return '未命名';
+  };
+
+  /** 按工作区（项目）分组：会话归属来自工作区注册表的 sessionIds 顺序；搜索词先做标题过滤。 */
   const sessionGroups = useMemo(() => {
-    const byId = new Map(visibleSessions.map((s) => [s.sessionId, s]));
+    const keyword = searchText.trim().toLowerCase();
+    const filtered = keyword
+      ? visibleSessions.filter((s) => sessionTitle(s).toLowerCase().includes(keyword))
+      : visibleSessions;
+    const byId = new Map(filtered.map((s) => [s.sessionId, s]));
     const grouped = workspaces
       .map((ws) => ({
         title: ws.title,
@@ -442,9 +910,9 @@ export function NativeApp() {
       }))
       .filter((g) => g.sessions.length > 0);
     const groupedIds = new Set(workspaces.flatMap((ws) => ws.sessionIds));
-    const ungrouped = visibleSessions.filter((s) => !groupedIds.has(s.sessionId));
+    const ungrouped = filtered.filter((s) => !groupedIds.has(s.sessionId));
     return { grouped, ungrouped };
-  }, [visibleSessions, workspaces]);
+  }, [visibleSessions, workspaces, searchText]);
 
   /** 会话 → 所属工作区映射（点击会话时更新活跃工作区）。 */
   const workspaceOfSession = useMemo(() => {
@@ -460,6 +928,92 @@ export function NativeApp() {
     () => sessions.find((s) => s.sessionId === currentId)?.cwd,
     [sessions, currentId]
   );
+
+  /** 当前会话标题（聊天标题栏展示）。 */
+  const currentTitle = useMemo(() => {
+    const session = sessions.find((s) => s.sessionId === currentId);
+    return session ? sessionTitle(session) : '';
+  }, [sessions, currentId]);
+
+  /** 当前生效的模型选择：会话投影优先（next 含待生效），空态用待应用选择或目录默认。 */
+  const currentModelSelection = useMemo<ModelSelection | null>(() => {
+    if (currentId) {
+      const projection = sessions.find((s) => s.sessionId === currentId)?.projections?.values
+        ?.modelSelection;
+      return projection?.next ?? projection?.lastUsed ?? modelCatalog?.default ?? null;
+    }
+    return emptySelection ?? modelCatalog?.default ?? null;
+  }, [currentId, sessions, emptySelection, modelCatalog]);
+
+  /** 权限选择器数据：会话内取该会话投影，空态取新会话默认（settings permission.defaultPreset）。 */
+  const currentPermission = useMemo<PermissionSelect | null>(() => {
+    if (currentId) {
+      return (
+        sessions.find((s) => s.sessionId === currentId)?.projections?.values?.permissions ?? null
+      );
+    }
+    return defaultPermission;
+  }, [currentId, sessions, defaultPermission]);
+
+  /** 应用模型选择到会话并刷新投影（reasoningEffort 缺省用模型默认档）。 */
+  const applyModelSelection = useCallback(
+    async (selection: ModelSelection, sessionId: string) => {
+      await rpc(Endpoints.sessionSelectModel, { request: { sessionId, ...selection } });
+      await refreshSessions();
+    },
+    [refreshSessions]
+  );
+
+  /** 选择模型：会话内立即生效（下一轮起），空态暂存随建会话写入；强度回落新模型默认档。 */
+  const handleModelPick = (selection: ModelSelection) => {
+    if (currentId) {
+      void applyModelSelection(selection, currentId).catch((err) =>
+        setError(err instanceof Error ? err.message : String(err))
+      );
+    } else {
+      setEmptySelection(selection);
+    }
+  };
+
+  /** 调整推理强度：在当前选择基础上覆盖 reasoningEffort。 */
+  const handleEffortPick = (effortId: string) => {
+    if (!currentModelSelection) return;
+    const selection = { ...currentModelSelection, reasoningEffort: effortId };
+    if (currentId) {
+      void applyModelSelection(selection, currentId).catch((err) =>
+        setError(err instanceof Error ? err.message : String(err))
+      );
+    } else {
+      setEmptySelection(selection);
+    }
+  };
+
+  /**
+   * 切换权限模式：会话内走宿主 /permission 命令（改该会话权限），
+   * 空态写 settings permission.defaultPreset（改后续新建会话的默认权限）。
+   */
+  const handlePermissionPick = (value: string) => {
+    if (currentId) {
+      void (async () => {
+        await rpc(Endpoints.commandsExecute, {
+          agentId: currentId,
+          line: `/permission ${value}`,
+          images: [],
+        });
+        await refreshSessions();
+      })().catch((err) => setError(err instanceof Error ? err.message : String(err)));
+      return;
+    }
+    if (!defaultPermission?.writable) return;
+    void (async () => {
+      await rpc(Endpoints.settingsMutate, {
+        ns: 'permission',
+        ops: [{ op: 'set', path: ['defaultPreset'], value }],
+        expectedRevision: defaultPermission.revision,
+      });
+      await refreshDefaultPermission();
+    })().catch((err) => setError(err instanceof Error ? err.message : String(err)));
+  };
 
   /** 右侧面板数据：todo_write 最新状态 + edit/write 文件聚合。 */
   const panelData = useMemo(() => {
@@ -504,29 +1058,22 @@ export function NativeApp() {
     if (wsId) setActiveWorkspaceId(wsId);
   };
 
-  /** 会话标题：AI 生成/用户命名的 title 投影优先，回退工作目录名。 */
-  const sessionTitle = (session: SessionSummary): string => {
-    const title = session.projections?.values?.title;
-    if (typeof title === 'string' && title.trim()) return title;
-    if (session.cwd) return session.cwd.split(/[\\/]/).filter(Boolean).pop() ?? '未命名';
-    return '未命名';
-  };
-
-  /** 在指定项目下落一个新会话：优先复用其空白会话（官方 connectWorkspace 语义）。 */
-  const createSessionIn = async (wsId: string) => {
+  /** 在指定项目下落一个新会话：优先复用其空白会话（官方 connectWorkspace 语义）。返回会话 id。 */
+  const createSessionIn = async (wsId: string): Promise<string> => {
     const ws = workspaces.find((w) => w.workspaceId === wsId);
     const reusable = ws?.sessionIds
       .map((id) => sessions.find((s) => s.sessionId === id))
       .find((s) => s?.blank && s.origin !== 'subagent');
     if (reusable) {
       setCurrentId(reusable.sessionId);
-      return;
+      return reusable.sessionId;
     }
     const value = await rpc<{ sessionId: string }>(Endpoints.sessionCreate, {
       request: { workspaceId: wsId },
     });
     await refreshSessions();
     setCurrentId(value.sessionId);
+    return value.sessionId;
   };
 
   /**
@@ -563,14 +1110,38 @@ export function NativeApp() {
 
   const handleSend = async () => {
     const text = input.trim();
-    if (!text || !currentId) return;
+    if (!text) return;
+    let sessionId = currentId;
+    if (!sessionId) {
+      if (!activeWorkspaceId) {
+        await handleAddWorkspace();
+        return;
+      }
+      try {
+        sessionId = await createSessionIn(activeWorkspaceId);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+        return;
+      }
+      // 空态选定的模型随会话创建写入；失败不阻断发送，回落默认模型
+      if (emptySelection) {
+        try {
+          await rpc(Endpoints.sessionSelectModel, {
+            request: { sessionId, ...emptySelection },
+          });
+        } catch {
+          // 保持发送流程继续
+        }
+        setEmptySelection(null);
+      }
+    }
     setInput('');
     if (textareaRef.current) textareaRef.current.style.height = '';
     try {
       await rpc(Endpoints.sessionPrompt, {
         request: {
           requestId: crypto.randomUUID(),
-          sessionId: currentId,
+          sessionId,
           mode: 'queue',
           content: [{ type: 'text', text }],
           clientTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -611,45 +1182,103 @@ export function NativeApp() {
   return (
     <div className="native-app">
       <aside className="native-sidebar" style={{ width: sidebarPanel.width }}>
-        <div className="native-sidebar-actions">
-          <button className="native-new-session" onClick={() => void handleNewSession()}>
-            ＋ 新会话
-          </button>
-          <button className="native-add-workspace" onClick={() => void handleAddWorkspace()}>
-            ＋ 项目
+        <div className="native-sidebar-brand">
+          <span>青梧</span>
+          <button
+            className="native-sidebar-search-toggle"
+            onClick={() => {
+              setSearchOpen((v) => !v);
+              setSearchText('');
+            }}
+            title="搜索会话"
+          >
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <circle cx="11" cy="11" r="7" />
+              <path d="M21 21l-4.35-4.35" />
+            </svg>
           </button>
         </div>
+        {searchOpen && (
+          <div className="native-sidebar-search">
+            <input
+              autoFocus
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              placeholder="搜索会话"
+            />
+          </div>
+        )}
+        <button className="native-nav-item" onClick={() => void handleNewSession()}>
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M12 20h9" />
+            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" />
+          </svg>
+          新会话
+        </button>
+        <button className="native-nav-item" onClick={() => void handleAddWorkspace()}>
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2Z" />
+            <path d="M12 11v6M9 14h6" />
+          </svg>
+          添加项目
+        </button>
         <div className="native-session-list">
           {sessionGroups.grouped.map((group) => (
             <div key={group.title} className="native-session-group">
-              <div className="native-group-title">{group.title}</div>
-              {group.sessions.map((session) => (
-                <button
-                  key={session.sessionId}
-                  className={`native-session-item${session.sessionId === currentId ? ' active' : ''}`}
-                  onClick={() => openSession(session.sessionId)}
-                  title={session.cwd ?? session.sessionId}
-                >
-                  <span className="native-session-title">{sessionTitle(session)}</span>
-                  {session.running && <span className="native-running-dot" />}
-                </button>
-              ))}
+              <GroupHeader
+                title={group.title}
+                collapsed={collapsedGroups.has(group.title)}
+                onToggle={() =>
+                  setCollapsedGroups((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(group.title)) next.delete(group.title);
+                    else next.add(group.title);
+                    return next;
+                  })
+                }
+              />
+              {!collapsedGroups.has(group.title) &&
+                group.sessions.map((session) => (
+                  <button
+                    key={session.sessionId}
+                    className={`native-session-item${session.sessionId === currentId ? ' active' : ''}`}
+                    onClick={() => openSession(session.sessionId)}
+                    title={session.cwd ?? session.sessionId}
+                  >
+                    <span className="native-session-title">{sessionTitle(session)}</span>
+                    {session.running && <span className="native-running-dot" />}
+                  </button>
+                ))}
             </div>
           ))}
           {sessionGroups.ungrouped.length > 0 && (
             <div className="native-session-group">
-              {sessionGroups.grouped.length > 0 && <div className="native-group-title">未分组</div>}
-              {sessionGroups.ungrouped.map((session) => (
-                <button
-                  key={session.sessionId}
-                  className={`native-session-item${session.sessionId === currentId ? ' active' : ''}`}
-                  onClick={() => openSession(session.sessionId)}
-                  title={session.cwd ?? session.sessionId}
-                >
-                  <span className="native-session-title">{sessionTitle(session)}</span>
-                  {session.running && <span className="native-running-dot" />}
-                </button>
-              ))}
+              {sessionGroups.grouped.length > 0 && (
+                <GroupHeader
+                  title="未分组"
+                  collapsed={collapsedGroups.has('未分组')}
+                  onToggle={() =>
+                    setCollapsedGroups((prev) => {
+                      const next = new Set(prev);
+                      if (next.has('未分组')) next.delete('未分组');
+                      else next.add('未分组');
+                      return next;
+                    })
+                  }
+                />
+              )}
+              {!collapsedGroups.has('未分组') &&
+                sessionGroups.ungrouped.map((session) => (
+                  <button
+                    key={session.sessionId}
+                    className={`native-session-item${session.sessionId === currentId ? ' active' : ''}`}
+                    onClick={() => openSession(session.sessionId)}
+                    title={session.cwd ?? session.sessionId}
+                  >
+                    <span className="native-session-title">{sessionTitle(session)}</span>
+                    {session.running && <span className="native-running-dot" />}
+                  </button>
+                ))}
             </div>
           )}
         </div>
@@ -666,9 +1295,50 @@ export function NativeApp() {
 
       <main className="native-chat">
         {!currentId ? (
-          <div className="native-empty">选择或新建一个会话开始</div>
+          <div className="native-empty">
+            <div className="native-empty-title">有什么可以帮你？</div>
+            <Composer
+              input={input}
+              onInputChange={setInput}
+              onSend={() => void handleSend()}
+              running={false}
+              onStop={() => void handleStop()}
+              textareaRef={textareaRef}
+              controls={
+                <ComposerControls
+                  catalog={modelCatalog}
+                  selection={currentModelSelection}
+                  permission={currentPermission}
+                  permissionHint="新会话默认权限"
+                  onModelPick={handleModelPick}
+                  onEffortPick={handleEffortPick}
+                  onPermissionPick={handlePermissionPick}
+                />
+              }
+            />
+          </div>
         ) : (
           <>
+            <div className="native-chat-header">
+              <div className="native-chat-header-left">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2Z" />
+                </svg>
+                <span className="native-chat-header-title">{currentTitle}</span>
+              </div>
+              <div className="native-chat-header-right">
+                <button
+                  className="native-icon-btn"
+                  onClick={() => setPanelCollapsed((v) => !v)}
+                  title={panelCollapsed ? '展开工作区面板' : '收起工作区面板'}
+                >
+                  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <rect x="3" y="4" width="18" height="16" rx="2" />
+                    <path d="M15 4v16" />
+                  </svg>
+                </button>
+              </div>
+            </div>
             <div className="native-messages" ref={scrollRef} onScroll={handleScroll}>
               <div className="native-messages-inner">
                 {loadingHistory && <div className="native-hint">正在加载会话历史…</div>}
@@ -694,6 +1364,13 @@ export function NativeApp() {
                           <div className="native-msg-body">
                             <Markdown text={item.text} />
                             {item.interrupted && !item.text && <span className="native-muted">（已中断）</span>}
+                          </div>
+                        )}
+                        {item.text && (
+                          <div className="native-msg-meta">
+                            {item.startTime != null && <span>用时 {formatDuration(item.time - item.startTime)}</span>}
+                            <span style={{ flex: 1 }} />
+                            <CopyButton text={item.text} />
                           </div>
                         )}
                       </div>
@@ -759,44 +1436,24 @@ export function NativeApp() {
             )}
 
             <div className="native-composer">
-              <div className="native-composer-box">
-                <textarea
-                  ref={textareaRef}
-                  value={input}
-                  rows={1}
-                  placeholder={currentId ? '输入消息，Enter 发送，Shift+Enter 换行' : ''}
-                  onChange={(e) => {
-                    setInput(e.target.value);
-                    const el = e.target;
-                    el.style.height = 'auto';
-                    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-                      e.preventDefault();
-                      void handleSend();
-                    }
-                  }}
-                />
-                {running ? (
-                  <button className="native-send stop" onClick={() => void handleStop()} title="停止">
-                    <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">
-                      <rect x="6" y="6" width="12" height="12" rx="2" />
-                    </svg>
-                  </button>
-                ) : (
-                  <button
-                    className="native-send"
-                    disabled={!input.trim()}
-                    onClick={() => void handleSend()}
-                    title="发送"
-                  >
-                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                      <path d="M12 19V5M5 12l7-7 7 7" />
-                    </svg>
-                  </button>
-                )}
-              </div>
+              <Composer
+                input={input}
+                onInputChange={setInput}
+                onSend={() => void handleSend()}
+                running={running}
+                onStop={() => void handleStop()}
+                textareaRef={textareaRef}
+                controls={
+                  <ComposerControls
+                    catalog={modelCatalog}
+                    selection={currentModelSelection}
+                    permission={currentPermission}
+                    onModelPick={handleModelPick}
+                    onEffortPick={handleEffortPick}
+                    onPermissionPick={handlePermissionPick}
+                  />
+                }
+              />
             </div>
           </>
         )}
@@ -820,7 +1477,6 @@ export function NativeApp() {
       <RightPanel
         collapsed={panelCollapsed}
         width={rightPanel.width}
-        onToggle={() => setPanelCollapsed((v) => !v)}
         todos={panelData.todos}
         fileChanges={panelData.fileChanges}
       />
