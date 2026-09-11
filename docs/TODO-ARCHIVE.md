@@ -2,6 +2,12 @@
 
 按版本归档已完成任务，保持 TODO.md 精炼聚焦。
 
+## v0.2.0 (2026-09-11)
+
+- [x] 窗口位置记忆：关闭时记录位置、尺寸与最大化状态，下次启动还原；最大化记录还原边界，取消最大化可回到原位置；还原时校验显示器可见性，不可见回退默认尺寸居中。 ✅ 2026-09-11（src/main/window.ts、src/main/window-state.ts；npm run check 通过；窗口生命周期行为待用户实际体验）
+- [x] userData 目录规范化：Electron 默认以 productName「青梧」作 userData 目录名，非 ASCII 路径在未来把路径传给引擎或第三方工具时有乱码隐患。新增 paths.ts 于其他模块求值前重定向到 %APPDATA%\qingwu，首次启动自动迁移旧目录中的自有配置（settings.json、window-state.json），Chromium 缓存留在旧目录重建；settings/window-state 路径改惰性求值，不依赖模块加载顺序；构建产物已核实重定向先于一切模块初始化执行。 ✅ 2026-09-11（src/main/paths.ts、src/main/index.ts、src/main/settings.ts、src/main/window-state.ts；npm run check 通过；迁移随本版本首次启动生效，待用户实际确认）
+- [x] 关于页引擎版本号过期：手写 harnessVersion 字段随依赖升级漂移（显示 0.1.1-rc.2，实际 0.1.5-rc.1）。改为运行时读取 dsh 包 package.json 真实版本（覆盖 dev 与 asar/asar.unpacked 形态），读取失败显示「未知」，删除手写字段。 ✅ 2026-09-11（src/main/about.ts、src/main/config.ts；npm run check 通过）
+
 ## v0.0.9 (2026-09-08)
 
 - [x] 自研界面（阶段 1：跑通主干）：主进程通信桥（fetch 转发 + 事件流转发）、界面骨架（会话列表、发消息、流式回复、审批卡）、「视图」菜单界面切换项；官方界面零改动。技术路线见 tech-architecture.md「UI 路线（2026-08-23 修订）」 ✅ 2026-08-23（npm run check 通过；RPC 信封格式已对真实引擎实测验证；界面交互待用户实际运行验证）
