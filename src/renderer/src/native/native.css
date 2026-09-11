@@ -42,14 +42,19 @@
   --native-diff-add-fg: #067a5e;
   --native-diff-del-fg: #b91c1c;
   --native-mono: Consolas, "Cascadia Code", "Courier New", monospace;
+  /* 滚动条（对齐 InkMark 设计系统：透明轨道 + 悬浮胶囊滑块） */
+  --native-scrollbar-w: 12px;
+  --native-scrollbar-thumb: rgba(0, 0, 0, 0.24);
+  --native-scrollbar-thumb-hover: rgba(0, 0, 0, 0.38);
+  --native-scrollbar-thumb-active: rgba(0, 0, 0, 0.54);
   /*
-   * 对话区与输入区的列宽：输入框 768，会话正文列比它窄 32px（两侧各内收
-   * 16px），与官方口径一致（官方 --dsh-composer-card-max-width =
-   * --dsh-chat-content-width + 32px）。等待回答/授权的卡片跟正文列等宽，
-   * 队列条与输入框等宽，都随这两个值走。
+   * 对话区与输入区的列宽：
+   * 首页输入框宽 700px；会话展开后输入框宽 740px、正文列宽 720px（两侧各内收 10px）。
+   * 等待回答/授权的卡片跟正文列等宽，队列条与输入框等宽。
    */
-  --native-composer-w: 768px;
-  --native-content-w: 736px;
+  --native-empty-composer-w: 700px;
+  --native-composer-w: 740px;
+  --native-content-w: 720px;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -77,7 +82,66 @@
     --native-diff-del-bg: rgba(248, 113, 113, 0.1);
     --native-diff-add-fg: #34d399;
     --native-diff-del-fg: #f87171;
+    --native-scrollbar-thumb: rgba(255, 255, 255, 0.18);
+    --native-scrollbar-thumb-hover: rgba(255, 255, 255, 0.32);
+    --native-scrollbar-thumb-active: rgba(255, 255, 255, 0.48);
   }
+}
+
+/* ---------- 全局滚动条：对齐 InkMark 设计 ---------- */
+
+*::-webkit-scrollbar,
+::-webkit-scrollbar {
+  width: var(--native-scrollbar-w) !important;
+  height: var(--native-scrollbar-w) !important;
+}
+
+*::-webkit-scrollbar-track,
+::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+
+*::-webkit-scrollbar-thumb,
+::-webkit-scrollbar-thumb {
+  border-radius: 9999px !important;
+  background-color: var(--native-scrollbar-thumb) !important;
+  border: 2px solid transparent !important;
+  background-clip: padding-box !important;
+  transition: background-color 0.15s ease;
+}
+
+*::-webkit-scrollbar-thumb:hover,
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--native-scrollbar-thumb-hover) !important;
+}
+
+*::-webkit-scrollbar-thumb:active,
+::-webkit-scrollbar-thumb:active {
+  background-color: var(--native-scrollbar-thumb-active) !important;
+}
+
+*::-webkit-scrollbar-corner,
+::-webkit-scrollbar-corner {
+  background: transparent !important;
+}
+
+/* 核心滚动容器显式绑定，保证所有滚动条统一采用 12px 悬浮胶囊 */
+.native-messages::-webkit-scrollbar,
+.native-session-list::-webkit-scrollbar,
+.native-panel-body::-webkit-scrollbar,
+.native-turn-process-items::-webkit-scrollbar,
+.native-reasoning-body::-webkit-scrollbar,
+.native-tool-input-pre::-webkit-scrollbar,
+.native-tool-output-pre::-webkit-scrollbar,
+.native-diff::-webkit-scrollbar,
+.native-diff-body::-webkit-scrollbar,
+.native-card.question::-webkit-scrollbar,
+.native-plan::-webkit-scrollbar,
+.native-popover::-webkit-scrollbar,
+.native-ws-chip-menu::-webkit-scrollbar,
+.native-composer-box textarea::-webkit-scrollbar {
+  width: var(--native-scrollbar-w) !important;
+  height: var(--native-scrollbar-w) !important;
 }
 
 /* ---------- 侧栏 ---------- */
@@ -413,6 +477,7 @@
 }
 
 .native-empty {
+  --native-composer-w: var(--native-empty-composer-w);
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -507,6 +572,7 @@
 .native-messages {
   flex: 1;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   padding: 20px 24px 12px;
 }
 
@@ -1226,26 +1292,21 @@
   color: var(--native-muted);
 }
 
-/* ---------- 审批 / 问答卡片 ---------- */
+/* ---------- 审批 / 问答卡片（顶替输入框槽位，输入框在等待期间不渲染） ---------- */
 
 .native-interactions {
-  padding: 0 24px 8px;
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
 .native-interactions .native-card {
-  max-width: var(--native-content-w);
-  margin: 0 auto;
   width: 100%;
   box-sizing: border-box;
 }
 
 /* 同一会话还有别的等待项：当前这条处理完会自动接上 */
 .native-pending-more {
-  max-width: var(--native-content-w);
-  margin: 0 auto;
   width: 100%;
   box-sizing: border-box;
   color: var(--native-muted);
@@ -1520,16 +1581,28 @@
   padding: 8px 24px 16px;
 }
 
-/* chip + 输入框的纵向组合（输入框上方的工作区上下文条） */
+/* chip 垫板 + 输入框的纵向组合（会话态为队列条 + 输入框） */
 .native-composer-stack {
   max-width: var(--native-composer-w);
   margin: 0 auto;
 }
 
+/*
+ * 工作区 chip 垫板：一块全圆角灰底板，输入框用负外边距叠住它的下沿——
+ * 输入框四角圆弧保持完整，圆角缺口里露出灰底，两者看起来是一体的。
+ * 条底 padding 44px 必须盖过「上移量 30px + 输入框 27px 圆角」的缺口深度。
+ */
 .native-ws-chip-wrap {
   position: relative;
   display: flex;
-  margin-bottom: 8px;
+  padding: 8px 12px 44px;
+  border-radius: 18px;
+  background: var(--native-surface);
+}
+
+/* 输入框上移叠在垫板下沿上（后绘制的白框盖住垫板底部） */
+.native-ws-chip-wrap + .native-composer-box {
+  margin-top: -30px;
 }
 
 .native-ws-chip {
@@ -1539,15 +1612,16 @@
   max-width: 240px;
   padding: 4px 10px;
   border: none;
-  border-radius: 999px;
-  background: var(--native-surface);
+  border-radius: 8px;
+  background: transparent;
   color: var(--native-muted);
   font-size: 12px;
   cursor: pointer;
 }
 
 .native-ws-chip:hover {
-  background: var(--native-hover);
+  /* 垫板本身已是 surface，悬停加深一档（dark 下 --native-hover 与 surface 同值，不能用） */
+  background: var(--native-surface-2);
   color: var(--native-fg);
 }
 
@@ -1557,10 +1631,10 @@
   text-overflow: ellipsis;
 }
 
-/* chip 菜单向下弹出 */
+/* chip 菜单向下弹出（垫板底 padding 44px，锚点内收到 chip 下沿 + 6px） */
 .native-ws-chip-menu {
   position: absolute;
-  top: calc(100% + 6px);
+  top: calc(100% - 38px);
   left: 0;
   min-width: 240px;
   max-width: 320px;

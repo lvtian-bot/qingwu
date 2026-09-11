@@ -8,6 +8,51 @@
       content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;"
     />
     <title>青梧</title>
+    <style id="inkmark-scrollbar">
+      :root {
+        --native-scrollbar-w: 12px;
+        --native-scrollbar-thumb: rgba(0, 0, 0, 0.24);
+        --native-scrollbar-thumb-hover: rgba(0, 0, 0, 0.38);
+        --native-scrollbar-thumb-active: rgba(0, 0, 0, 0.54);
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --native-scrollbar-thumb: rgba(255, 255, 255, 0.18);
+          --native-scrollbar-thumb-hover: rgba(255, 255, 255, 0.32);
+          --native-scrollbar-thumb-active: rgba(255, 255, 255, 0.48);
+        }
+      }
+
+      *::-webkit-scrollbar,
+      ::-webkit-scrollbar {
+        width: var(--native-scrollbar-w) !important;
+        height: var(--native-scrollbar-w) !important;
+      }
+      *::-webkit-scrollbar-track,
+      ::-webkit-scrollbar-track {
+        background: transparent !important;
+      }
+      *::-webkit-scrollbar-thumb,
+      ::-webkit-scrollbar-thumb {
+        border-radius: 9999px !important;
+        background-color: var(--native-scrollbar-thumb) !important;
+        border: 2px solid transparent !important;
+        background-clip: padding-box !important;
+        transition: background-color 0.15s ease;
+      }
+      *::-webkit-scrollbar-thumb:hover,
+      ::-webkit-scrollbar-thumb:hover {
+        background-color: var(--native-scrollbar-thumb-hover) !important;
+      }
+      *::-webkit-scrollbar-thumb:active,
+      ::-webkit-scrollbar-thumb:active {
+        background-color: var(--native-scrollbar-thumb-active) !important;
+      }
+      *::-webkit-scrollbar-corner,
+      ::-webkit-scrollbar-corner {
+        background: transparent !important;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>

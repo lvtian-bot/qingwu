@@ -3615,59 +3615,7 @@ export function NativeApp() {
               </div>
             </div>
 
-            {shownPending && (
-              <div className="native-interactions">
-                {shownPending.kind === "approval" ? (
-                  <div className="native-card approval">
-                    <div className="native-card-title">
-                      请求授权：{shownPending.approval.toolName ?? "工具"}
-                    </div>
-                    {shownPending.approval.reason && (
-                      <div className="native-card-text">
-                        {shownPending.approval.reason}
-                      </div>
-                    )}
-                    <div className="native-card-actions">
-                      <button
-                        className="primary"
-                        onClick={() =>
-                          void handleApproval(
-                            shownPending.approval,
-                            "allowed-once",
-                          )
-                        }
-                      >
-                        允许一次
-                      </button>
-                      <button
-                        onClick={() =>
-                          void handleApproval(shownPending.approval, "rejected")
-                        }
-                      >
-                        拒绝
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <QuestionCard
-                    key={shownPending.question.eventId}
-                    request={shownPending.question}
-                    onSubmit={(answers) =>
-                      handleQuestionAnswer(shownPending.question, answers)
-                    }
-                    onDismiss={() =>
-                      handleQuestionDismiss(shownPending.question)
-                    }
-                  />
-                )}
-                {morePending > 0 && (
-                  <div className="native-pending-more">
-                    另有 {morePending} 项等待处理，处理完这项后继续
-                  </div>
-                )}
-              </div>
-            )}
-
+            {/* 授权/问答等待期间顶替输入框（对齐各 harness 客户端：决策弹层占输入框的槽位） */}
             <div className="native-composer">
               <div className="native-composer-stack">
                 <QueueStrip
@@ -3676,7 +3624,62 @@ export function NativeApp() {
                   busyId={queueBusyId}
                   onAction={(item, action) => void handleQueueAction(item, action)}
                 />
-                <Composer
+                {shownPending ? (
+                  <div className="native-interactions">
+                    {shownPending.kind === "approval" ? (
+                      <div className="native-card approval">
+                        <div className="native-card-title">
+                          请求授权：{shownPending.approval.toolName ?? "工具"}
+                        </div>
+                        {shownPending.approval.reason && (
+                          <div className="native-card-text">
+                            {shownPending.approval.reason}
+                          </div>
+                        )}
+                        <div className="native-card-actions">
+                          <button
+                            className="primary"
+                            onClick={() =>
+                              void handleApproval(
+                                shownPending.approval,
+                                "allowed-once",
+                              )
+                            }
+                          >
+                            允许一次
+                          </button>
+                          <button
+                            onClick={() =>
+                              void handleApproval(
+                                shownPending.approval,
+                                "rejected",
+                              )
+                            }
+                          >
+                            拒绝
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <QuestionCard
+                        key={shownPending.question.eventId}
+                        request={shownPending.question}
+                        onSubmit={(answers) =>
+                          handleQuestionAnswer(shownPending.question, answers)
+                        }
+                        onDismiss={() =>
+                          handleQuestionDismiss(shownPending.question)
+                        }
+                      />
+                    )}
+                    {morePending > 0 && (
+                      <div className="native-pending-more">
+                        另有 {morePending} 项等待处理，处理完这项后继续
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <Composer
                   input={input}
                   onInputChange={handleInputChange}
                   onSend={() => void handleSend()}
@@ -3699,7 +3702,8 @@ export function NativeApp() {
                       onPermissionPick={handlePermissionPick}
                     />
                   }
-                />
+                  />
+                )}
               </div>
             </div>
           </>

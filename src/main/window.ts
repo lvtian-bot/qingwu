@@ -98,6 +98,39 @@ export class WindowManager {
     this.dshView = dshView;
     win.contentView.addChildView(dshView);
 
+    const DSH_SCROLLBAR_CSS = `
+      * {
+        scrollbar-width: thin;
+        scrollbar-color: rgba(128, 128, 128, 0.32) transparent;
+      }
+      ::-webkit-scrollbar {
+        width: 12px;
+        height: 12px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        border-radius: 9999px;
+        background-color: rgba(128, 128, 128, 0.32);
+        border: 2px solid transparent;
+        background-clip: padding-box;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background-color: rgba(128, 128, 128, 0.42);
+      }
+      ::-webkit-scrollbar-thumb:active {
+        background-color: rgba(128, 128, 128, 0.56);
+      }
+      ::-webkit-scrollbar-corner {
+        background: transparent;
+      }
+    `;
+
+    dshView.webContents.on('dom-ready', () => {
+      dshView.webContents.insertCSS(DSH_SCROLLBAR_CSS).catch(() => {});
+    });
+
     const updateViewBounds = () => {
       if (!this.mainWindow || win.isDestroyed() || !this.dshView) return;
       const [width, height] = win.getContentSize();
