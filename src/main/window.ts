@@ -4,6 +4,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { CONFIG } from './config';
 import { settings } from './settings';
+import { WindowStateManager } from './window-state';
 import type { UiMode } from '../shared/types';
 
 const TITLE_BAR_HEIGHT = 35;
@@ -18,6 +19,7 @@ export class WindowManager {
   dshView: WebContentsView | null = null;
   isQuitting = false;
   private serviceUrl: string | null = null;
+  private windowState = new WindowStateManager();
 
   constructor() {
     nativeTheme.on('updated', () => this.applyTitleBarOverlay());
@@ -45,11 +47,14 @@ export class WindowManager {
   createWindow(url: string): BrowserWindow {
     const icon = this.getIconPath();
     this.serviceUrl = url;
+    const lastState = this.windowState.load();
 
     const win = new BrowserWindow({
       title: CONFIG.appName,
-      width: CONFIG.window.width,
-      height: CONFIG.window.height,
+      width: lastState.width,
+      height: lastState.height,
+      x: lastState.x,
+      y: lastState.y,
       minWidth: CONFIG.window.minWidth,
       minHeight: CONFIG.window.minHeight,
       titleBarStyle: 'hidden',
@@ -75,6 +80,7 @@ export class WindowManager {
     this.applyTitleBarOverlay();
 
     win.on('close', (e) => {
+      this.windowState.save(win);
       if (!this.isQuitting && settings.get('closeToTray')) {
         e.preventDefault();
         win.hide();
@@ -171,6 +177,9 @@ export class WindowManager {
     }
 
     win.once('ready-to-show', () => {
+      if (lastState.isMaximized) {
+        win.maximize();
+      }
       updateViewBounds();
       win.show();
     });
