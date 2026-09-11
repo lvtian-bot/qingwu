@@ -819,7 +819,7 @@
   align-items: center;
   gap: 8px;
   margin: 6px 0;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--native-muted);
 }
 
@@ -1022,16 +1022,14 @@
 
 /* ---------- 工具卡片 ---------- */
 
+/* 工具调用行：无框平铺，与正文同左缘；失败态用图标变色示意 */
 .native-tool-card {
-  margin: 8px 0;
-  border: 1px solid var(--native-border);
-  border-radius: 10px;
-  background: var(--native-bg);
-  font-size: 13px;
+  margin: 2px 0;
+  font-size: 14px;
 }
 
-.native-tool-card.error {
-  border-color: var(--native-error);
+.native-tool-card.error .native-tool-svg {
+  color: var(--native-error);
 }
 
 .native-tool-head {
@@ -1039,7 +1037,7 @@
   align-items: center;
   gap: 8px;
   width: 100%;
-  padding: 7px 10px 7px 12px;
+  padding: 5px 8px 5px 0;
   border: none;
   background: transparent;
   color: var(--native-fg);
@@ -1068,7 +1066,7 @@
   flex: 1;
   min-width: 0;
   color: var(--native-muted);
-  font-size: 12px;
+  font-size: 13px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1076,7 +1074,7 @@
 
 .native-tool-status {
   flex-shrink: 0;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--native-muted);
 }
 
@@ -1113,9 +1111,9 @@
   transform: rotate(180deg);
 }
 
+/* 展开详情：去掉分隔线，缩进到标题文字下对齐（图标 14px + 间距 8px） */
 .native-tool-detail {
-  border-top: 1px solid var(--native-border);
-  padding: 8px 12px;
+  padding: 2px 8px 8px 22px;
 }
 
 .native-tool-filepath {
