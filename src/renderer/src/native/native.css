@@ -42,6 +42,14 @@
   --native-diff-add-fg: #067a5e;
   --native-diff-del-fg: #b91c1c;
   --native-mono: Consolas, "Cascadia Code", "Courier New", monospace;
+  /*
+   * 对话区与输入区的列宽：输入框 768，会话正文列比它窄 32px（两侧各内收
+   * 16px），与官方口径一致（官方 --dsh-composer-card-max-width =
+   * --dsh-chat-content-width + 32px）。等待回答/授权的卡片跟正文列等宽，
+   * 队列条与输入框等宽，都随这两个值走。
+   */
+  --native-composer-w: 768px;
+  --native-content-w: 736px;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -439,7 +447,7 @@
 
 .native-empty .native-composer-stack {
   width: 100%;
-  max-width: 768px;
+  max-width: var(--native-composer-w);
 }
 
 .native-chat-header {
@@ -503,7 +511,7 @@
 }
 
 .native-messages-inner {
-  max-width: 768px;
+  max-width: var(--native-content-w);
   margin: 0 auto;
 }
 
@@ -1065,7 +1073,7 @@
 }
 
 .native-interactions .native-card {
-  max-width: 768px;
+  max-width: var(--native-content-w);
   margin: 0 auto;
   width: 100%;
   box-sizing: border-box;
@@ -1073,7 +1081,7 @@
 
 /* 同一会话还有别的等待项：当前这条处理完会自动接上 */
 .native-pending-more {
-  max-width: 768px;
+  max-width: var(--native-content-w);
   margin: 0 auto;
   width: 100%;
   box-sizing: border-box;
@@ -1351,7 +1359,7 @@
 
 /* chip + 输入框的纵向组合（输入框上方的工作区上下文条） */
 .native-composer-stack {
-  max-width: 768px;
+  max-width: var(--native-composer-w);
   margin: 0 auto;
 }
 
@@ -1433,7 +1441,7 @@ body.native-sidebar-fused .titlebar::after {
 }
 
 .native-composer-box {
-  max-width: 768px;
+  max-width: var(--native-composer-w);
   margin: 0 auto;
   position: relative;
   display: flex;
