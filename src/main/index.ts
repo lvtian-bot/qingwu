@@ -20,10 +20,10 @@ if (!gotTheLock) {
   console.log('[Main] 已有应用实例正在运行，退出当前进程');
   app.quit();
 } else {
-  acquireHiddenConsole();
+  const hasConsole = acquireHiddenConsole();
   app.setAppUserModelId(CONFIG.appId || 'com.qingwu.desktop');
   const windowManager = new WindowManager();
-  const harnessManager = new HarnessManager();
+  const harnessManager = new HarnessManager({ hasConsole });
   const updateService = new UpdateService();
   const updateWindowManager = new UpdateWindowManager(() => windowManager.mainWindow);
   const trayManager = new TrayManager(windowManager, updateWindowManager);

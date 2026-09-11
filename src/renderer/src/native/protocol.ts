@@ -14,6 +14,7 @@ export const Endpoints = {
   sessionCreate: 'session/create',
   sessionPrompt: 'session/prompt',
   sessionCancel: 'session/cancel',
+  sessionUpdateQueue: 'session/updateQueue',
   sessionPage: 'session/page',
   sessionFollow: 'session/follow',
   sessionModelCatalog: 'session/modelCatalog',
@@ -25,7 +26,6 @@ export const Endpoints = {
   workspaceCreate: 'workspace/create',
   workspaceRename: 'workspace/rename',
   workspaceDelete: 'workspace/delete',
-  workspaceInsertSessionBefore: 'workspace/insertSessionBefore',
   directoryPickerPick: 'directoryPicker/pick',
   eventsResult: '$events/result',
 } as const;
@@ -75,6 +75,40 @@ export interface ModelCatalog {
 export interface ModelSelectionProjection {
   lastUsed: ModelSelection | null;
   next: ModelSelection | null;
+}
+
+// ---------- 会话投影：用量与上下文占用（dsh-token-meter） ----------
+
+/**
+ * 全量日志累计的提供方用量。四个桶互不重叠：推理 token 已含在 outputTokens 内，
+ * 不另计。官方 `turnUsage` 展示用的就是同一份数据的 last 采样。
+ */
+export interface TokenUsageProjection {
+  uncachedInputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+}
+
+/**
+ * 下一次请求的上下文占用：最近一次提供方采样的 prompt 大小，加上此后表面的
+ * 启发式增减。字段各自 last-wins（切模型时可能短时出现「新容量 + 旧压力」），
+ * 官方明确这是展示参考值、不是计费或准入依据。
+ */
+export interface ContextPressureProjection {
+  /** 最近一次请求的 prompt 大小（不含本轮输出）。提供方报告 usage 前缺省。 */
+  pressureTokens?: number;
+  /** 下一次请求 prompt 的预估：pressureTokens + 采样后表面的净增减。 */
+  projectedTokens?: number;
+  /** 最近记录的路线容量；提供方未声明时缺省，缺省即不显示占用。 */
+  contextWindow?: number;
+}
+
+/** 下一次请求的启发式构成（固定密度估算，三项之和与 projectedTokens 不同口径）。 */
+export interface ContextBreakdownProjection {
+  systemTokens: number;
+  toolsTokens: number;
+  messageTokens: number;
 }
 
 /** 权限预设选项（value 为 read-only / workspace-write / danger-full-access…）。 */
@@ -169,6 +203,30 @@ export interface ToolResultEventData {
   error?: { name: string; code: string };
 }
 
+/** 队列里的一条待发送消息（journal 事件 agent/inbox/spliced 的 inserted 元素）。 */
+export interface InboxMessage {
+  id?: string;
+  content?: ContentBlock[];
+  source?: { kind?: string; rpcId?: string };
+}
+
+/**
+ * agent/inbox/spliced：driver 拥有的 inbox 队列变更（durable）。
+ * target 区分「下一轮排队」与「下一步插话」，语义与 Array.prototype.splice 一致。
+ */
+export interface InboxSplicedEventData {
+  target: 'next-turn' | 'next-step';
+  start: number;
+  removedCount?: number;
+  inserted?: InboxMessage[];
+}
+
+/** session/updateQueue 的队列操作（edit 只接受纯文本内容）。 */
+export type QueueAction =
+  | { kind: 'edit'; content: ContentBlock[] }
+  | { kind: 'remove' }
+  | { kind: 'steer' };
+
 export interface AssistantChunkEventData {
   chunk:
     | { type: 'block-start'; index: number; blockType: 'reasoning' | 'text' | 'tool-call' | string }
@@ -232,6 +290,8 @@ export interface SessionFollowSnapshot {
   records: SessionHistoryRecord[];
   hasMore: boolean;
   projections?: { asOfSeq: number; values?: Record<string, unknown> };
+  /** 声明 assistantStream 后必然带回的在飞 attempt 基线（revision + 已产出的压实增量）。 */
+  assistantStream?: AssistantStreamBaseline;
 }
 
 export interface SessionFollowEventItem {
@@ -239,7 +299,85 @@ export interface SessionFollowEventItem {
   event: SessionEvent;
 }
 
-export type SessionFollowFrame = SessionFollowSnapshot | SessionFollowEventItem;
+/**
+ * 过程内 live 帧：0.1.5 起「正在输出的文本 / 正在思考的推理」只走这条路，
+ * 请求 follow 时必须声明 `assistantStream: true`，且帧 revision 逐帧 +1。
+ */
+export interface AssistantStreamFrameItem {
+  type: 'assistant-stream';
+  frame: AssistantStreamFrame;
+}
+
+export type SessionFollowFrame =
+  | SessionFollowSnapshot
+  | SessionFollowEventItem
+  | AssistantStreamFrameItem;
+
+// ---------- assistant 过程内流（0.1.5 起替代 durable assistant/chunk） ----------
+
+/** live 帧携带的块，与 assistant/chunk 的块词汇同形（text-delta / reasoning-delta…）。 */
+export type AssistantBlockDelta = AssistantChunkEventData['chunk'];
+
+/**
+ * 重连基线里的压实记录：把同一块的连续增量按 dt 压成一段，重放即还原在飞文本。
+ * （对应官方 ClientAssistantStream 的 expandAssistantStream 语义。）
+ */
+export type AssistantStreamRecord =
+  | { type: 'text-chunks'; time0: number; index: number; dt: number[]; texts: string[] }
+  | { type: 'reasoning-chunks'; time0: number; index: number; dt: number[]; texts: string[] }
+  | {
+      type: 'tool-call-chunks';
+      time0: number;
+      index: number;
+      dt: number[];
+      id: string;
+      name?: string;
+      args: string[];
+    }
+  | { type: 'chunk'; time: number; chunk: AssistantBlockDelta };
+
+/** 开场快照里的在飞 attempt（stream 为该 attempt 至今产出的压实增量）。 */
+export interface AssistantStreamAttempt {
+  attemptId: string;
+  startedAfterSeq: number;
+  turn: number;
+  step: number;
+  nextIndex: number;
+  stream: AssistantStreamRecord[];
+}
+
+export interface AssistantStreamBaseline {
+  revision: number;
+  activeAttempt?: AssistantStreamAttempt;
+}
+
+/** 过程内 live 帧：start 开启一次 attempt，chunk 增量，end 收束（committed 或 abandoned）。 */
+export type AssistantStreamFrame =
+  | {
+      type: 'start';
+      attemptId: string;
+      revision: number;
+      startedAfterSeq: number;
+      turn: number;
+      step: number;
+    }
+  | {
+      type: 'chunk';
+      attemptId: string;
+      revision: number;
+      index: number;
+      time: number;
+      chunk: AssistantBlockDelta;
+    }
+  | {
+      type: 'end';
+      attemptId: string;
+      revision: number;
+      index: number;
+      outcome:
+        | { kind: 'committed'; eventType: string; seq: number }
+        | { kind: 'abandoned' };
+    };
 
 // ---------- workspace/follow 工作区流 ----------
 
@@ -274,7 +412,14 @@ export interface RemoteEventEmitFrame {
   args: unknown[];
 }
 
-/** 瀑布请求（审批/问答）：request 为投影后的 JSON 安全字段。 */
+/**
+ * 瀑布请求（审批/问答）：request 为投影后的 JSON 安全字段。
+ *
+ * `agentId` 是发起该请求的 Agent 身份。引擎里 Agent id 恒等于 Session id
+ * （dsh-agent 装配时就断言 `id === session.id`，客户端作用域也按同一约定把
+ * Agent 身份当会话路由标签），所以它就是**归属会话 id**：待处理项必须按它
+ * 归位，否则同一张卡片会在所有会话里都显示。
+ */
 export interface RemoteEventInvocationFrame {
   type: 'waterfall';
   event: string;
@@ -310,7 +455,16 @@ export interface UserQuestionsRequestPayload {
     header?: string;
     options?: { label: string; description?: string }[];
     multiSelect?: boolean;
+    /** 呈现意图：plan-review 表示 detail 是待审批的计划，approve 指向批准它的选项 label。 */
+    intent?: { kind: string; approve?: string };
   }[];
+}
+
+/** 单题答案：selected 为选中的选项 label，custom 为自由文本（单选题两者互斥）。 */
+export interface UserQuestionAnswer {
+  id: string;
+  selected: string[];
+  custom?: string;
 }
 
 // ---------- 会话摘要（session/list） ----------
@@ -321,6 +475,8 @@ export interface SessionSummary {
   running: boolean;
   blank: boolean;
   origin?: string;
+  /** 父会话：只有子代理会话带（青梧界面不展示子代理会话，其待处理项归到这条上）。 */
+  parentSessionId?: string;
   cwd?: string;
   projections?: {
     asOfSeq: number;
@@ -328,6 +484,9 @@ export interface SessionSummary {
       title?: string | null;
       modelSelection?: ModelSelectionProjection;
       permissions?: PermissionSelect;
+      tokenUsage?: TokenUsageProjection;
+      contextPressure?: ContextPressureProjection;
+      contextBreakdown?: ContextBreakdownProjection;
       [key: string]: unknown;
     };
   };

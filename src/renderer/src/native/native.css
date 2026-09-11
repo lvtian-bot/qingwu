@@ -31,6 +31,8 @@
   --native-accent-fg: #ffffff;
   --native-ok: #10a37f;
   --native-error: #dc2626;
+  /* 「在等用户回答/授权」的提示色（侧栏会话标记）：不是错误，但需要人来看 */
+  --native-warn: #d97706;
   --native-user-bubble: #d9e7f8;
   --native-send: #2563eb;
   --native-send-fg: #ffffff;
@@ -58,6 +60,7 @@
     --native-accent-fg: #0d0d0d;
     --native-ok: #34d399;
     --native-error: #f87171;
+    --native-warn: #fbbf24;
     --native-user-bubble: #26364a;
     --native-send: #3b82f6;
     --native-send-fg: #ffffff;
@@ -241,6 +244,16 @@
   height: 7px;
   border-radius: 50%;
   background: var(--native-ok);
+  flex-shrink: 0;
+  animation: native-pulse 1.6s ease-in-out infinite;
+}
+
+/* 该会话正在等用户回答/授权：卡片只在它自己的会话里显示，这里给出「去哪答」的入口 */
+.native-waiting-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--native-warn);
   flex-shrink: 0;
   animation: native-pulse 1.6s ease-in-out infinite;
 }
@@ -1058,6 +1071,16 @@
   box-sizing: border-box;
 }
 
+/* 同一会话还有别的等待项：当前这条处理完会自动接上 */
+.native-pending-more {
+  max-width: 768px;
+  margin: 0 auto;
+  width: 100%;
+  box-sizing: border-box;
+  color: var(--native-muted);
+  font-size: 12px;
+}
+
 .native-card {
   border: 1px solid var(--native-card-border);
   border-radius: 10px;
@@ -1098,10 +1121,226 @@
   background: var(--native-hover);
 }
 
+/* 禁用态必须看得出来：否则「提交」未作答时被禁用，用户会以为点了没反应 */
+.native-card-actions button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.native-card-actions button:disabled:hover {
+  background: transparent;
+}
+
+.native-card-actions button.primary:disabled:hover {
+  background: var(--native-accent);
+}
+
 .native-card-actions button.primary {
   background: var(--native-accent);
   border-color: var(--native-accent);
   color: var(--native-accent-fg);
+}
+
+/* ---------- 提问卡片（一题一屏 / 多选 / 自由文本 / 计划审批） ---------- */
+
+/* 一次只显示一道题，高度自然就低；仍留限高兜底（长详情、计划正文），提交行吸底常驻 */
+.native-card.question {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.native-card-strip {
+  align-self: flex-start;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--native-accent);
+  color: var(--native-accent-fg);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.native-question {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* 题干头部：小标题在左、题号进度贴右（多题请求才有进度） */
+.native-question-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.native-question-progress {
+  margin-left: auto;
+  color: var(--native-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.native-question-header {
+  color: var(--native-muted);
+  font-size: 12px;
+}
+
+.native-question-title {
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.native-question-detail {
+  color: var(--native-muted);
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.native-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.native-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--native-card-border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--native-fg);
+  font-family: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.native-option:hover {
+  background: var(--native-hover);
+}
+
+.native-option.selected {
+  border-color: var(--native-accent);
+  background: var(--native-hover);
+}
+
+.native-option-mark {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+  border: 1px solid var(--native-muted);
+  border-radius: 50%;
+  color: var(--native-accent-fg);
+  font-size: 11px;
+  line-height: 14px;
+  text-align: center;
+}
+
+.native-option-mark.multi {
+  border-radius: 4px;
+}
+
+.native-option.selected .native-option-mark {
+  border-color: var(--native-accent);
+  background: var(--native-accent);
+}
+
+.native-option-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.native-option-label {
+  line-height: 1.4;
+}
+
+.native-option-desc {
+  color: var(--native-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.native-question-custom {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 10px;
+  border: 1px solid var(--native-card-border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--native-fg);
+  font-family: inherit;
+  font-size: 13px;
+  outline: none;
+}
+
+.native-question-footnote {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.native-question-skip {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--native-muted);
+  font-size: 12px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.native-question-hint {
+  color: var(--native-muted);
+  font-size: 12px;
+}
+
+/* 「放弃整组问题 / 讨论一下」：弱化的次要出口，不跟主按钮抢注意力 */
+.native-question-dismiss {
+  color: var(--native-muted);
+}
+
+/* 提交行吸底：长详情/多选项滚动时动作始终可见 */
+.native-question-submit {
+  position: sticky;
+  bottom: 0;
+  padding-top: 8px;
+  background: var(--native-bg);
+}
+
+/* 左侧信息（错误 / 已填进度）占满剩余宽度，动作按钮靠右成组 */
+.native-question-submit .native-question-hint,
+.native-question-submit .native-question-error {
+  flex: 1;
+  min-width: 0;
+}
+
+.native-question-error {
+  color: var(--native-error);
+  font-size: 12px;
+}
+
+/* 计划审批的按钮行：把「讨论一下」推到最右 */
+.native-question-spacer {
+  flex: 1;
+}
+
+/* 计划正文：限高内滚动 */
+.native-plan {
+  max-height: 40vh;
+  overflow-y: auto;
+  padding: 10px 12px;
+  border: 1px solid var(--native-card-border);
+  border-radius: 8px;
+  font-size: 13px;
 }
 
 /* ---------- 输入区 ---------- */
@@ -1205,22 +1444,27 @@ body.native-sidebar-fused .titlebar::after {
   box-shadow:
     0 4px 18px rgba(0, 0, 0, 0.07),
     0 1px 3px rgba(0, 0, 0, 0.04);
-  transition:
-    border-color 0.15s ease,
-    box-shadow 0.15s ease;
 }
 
-.native-composer-box:focus-within {
-  border-color: var(--native-fg);
-  box-shadow:
-    0 6px 22px rgba(0, 0, 0, 0.09),
-    0 1px 3px rgba(0, 0, 0, 0.04);
-}
+/*
+ * 输入框聚焦不改描边与投影：光标进出时外观保持恒定。
+ * 此处曾用 :focus-within 把描边换成 --native-fg（近黑）并加重投影，浅色下等于
+ * 一根硬黑线突然出现，与常态的浅灰描边反差过大；不要再按“聚焦提示”加回来。
+ */
 
 .native-composer-box textarea {
-  flex: 1;
+  /*
+   * 必须 flex-basis: auto。写成 flex: 1 时 flex-basis 是 0%，会盖掉行内 height，
+   * 输入框就永远停在最小高度、多行内容只能内部滚动（自适应高度的代码等于没生效）。
+   */
+  flex: 1 1 auto;
   resize: none;
-  min-height: 44px;
+  /*
+   * 最小高度按“两行可见”定：2 × 21px 行高（14px 字号 × 1.5）+ 12px 上内边距 + 4px 下内边距。
+   * 改字号或行高时同步改这里，否则空输入时第二行会被裁掉。
+   */
+  min-height: 58px;
+  /* 上限与 NativeApp.tsx 的 COMPOSER_MAX_HEIGHT 一致，超出后输入框内部滚动 */
   max-height: 200px;
   padding: 12px 16px 4px;
   border: none;
@@ -1242,6 +1486,96 @@ body.native-sidebar-fused .titlebar::after {
   align-items: center;
   gap: 6px;
   padding: 4px 10px 10px;
+}
+
+/* ---------- 待发送队列（排队中／插话中／发送中） ---------- */
+
+.native-queue {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.native-queue-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--native-border);
+  border-radius: 10px;
+  background: var(--native-surface);
+  font-size: 12px;
+}
+
+.native-queue-tag {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--native-hover);
+  color: var(--native-muted);
+  line-height: 18px;
+}
+
+.native-queue-text {
+  flex: 1;
+  min-width: 0;
+  color: var(--native-fg);
+  line-height: 18px;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.native-queue-edit {
+  flex: 1;
+  min-width: 0;
+  resize: vertical;
+  padding: 4px 8px;
+  border: 1px solid var(--native-border);
+  border-radius: 8px;
+  background: var(--native-bg);
+  color: var(--native-fg);
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  outline: none;
+}
+
+.native-queue-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 4px;
+}
+
+.native-queue-actions button {
+  padding: 2px 8px;
+  border: 1px solid var(--native-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--native-muted);
+  font-size: 12px;
+  line-height: 18px;
+  cursor: pointer;
+}
+
+.native-queue-actions button:hover:not(:disabled) {
+  background: var(--native-hover);
+  color: var(--native-fg);
+}
+
+.native-queue-actions button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.native-queue-actions button.primary {
+  background: var(--native-accent);
+  border-color: var(--native-accent);
+  color: var(--native-accent-fg);
 }
 
 /* 输入框工具行选择器（权限贴左，模型与推理强度贴右） */
@@ -1431,20 +1765,166 @@ body.native-sidebar-fused .titlebar::after {
   flex-shrink: 0;
 }
 
+/*
+ * 空输入时常显禁用态（灰底灰箭头），不隐藏：隐藏会让用户找不到发送入口，
+ * 与官方 DeepSeek 界面（常显变灰）不一致。禁用只由 disabled 决定。
+ */
 .native-send:disabled {
-  background: var(--native-surface-2);
+  background: var(--native-hover);
+  border: 1px solid var(--native-border);
   color: var(--native-muted);
   cursor: default;
-}
-
-/* 空输入时隐藏发送按钮（保持占位，布局稳定；运行中的停止按钮不受影响） */
-.native-send.empty {
-  visibility: hidden;
 }
 
 .native-send.stop {
   background: var(--native-error);
   color: #ffffff;
+}
+
+/* ---------- 上下文占用（环 + 构成面板，对齐官方 ContextMeter） ---------- */
+
+.native-meter {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.native-meter-trigger {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--native-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.native-meter-trigger:hover {
+  background: var(--native-hover);
+}
+
+.native-meter-track {
+  fill: none;
+  stroke: var(--native-border);
+  stroke-width: 2px;
+}
+
+.native-meter-fill {
+  fill: none;
+  stroke: var(--native-muted);
+  stroke-width: 2px;
+  stroke-linecap: round;
+}
+
+.native-meter-panel {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  z-index: 100;
+  box-sizing: border-box;
+  width: 264px;
+  padding: 12px;
+  border: 1px solid var(--native-border);
+  border-radius: 12px;
+  background: var(--native-bg);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.16);
+  color: var(--native-muted);
+  font-size: 12px;
+  line-height: 20px;
+  cursor: default;
+}
+
+.native-meter-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.native-meter-headline {
+  color: var(--native-muted);
+}
+
+.native-meter-percent {
+  color: var(--native-fg);
+  font-weight: 500;
+}
+
+.native-meter-figures {
+  margin-left: auto;
+  color: var(--native-fg);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.native-meter-bar {
+  display: flex;
+  gap: 1px;
+  height: 4px;
+  margin: 10px 0 12px;
+  border-radius: 999px;
+  background: var(--native-hover);
+  overflow: hidden;
+}
+
+.native-meter-segment {
+  flex-shrink: 0;
+  min-width: 2px;
+  height: 100%;
+  border-radius: 1px;
+  background: var(--native-muted);
+}
+
+/* 构成三色：系统提示词中性、工具定义紫、对话消息蓝（与官方取色同族） */
+.native-meter-segment.system,
+.native-meter-swatch.system {
+  background: #94a3b8;
+}
+
+.native-meter-segment.tools,
+.native-meter-swatch.tools {
+  background: #a78bfa;
+}
+
+.native-meter-segment.messages,
+.native-meter-swatch.messages {
+  background: #3b82f6;
+}
+
+.native-meter-rows {
+  margin: 6px 0 0;
+}
+
+.native-meter-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 0;
+}
+
+.native-meter-row dt {
+  display: inline-flex;
+  align-items: center;
+  color: var(--native-muted);
+}
+
+.native-meter-row dd {
+  margin: 0;
+  color: var(--native-fg);
+  font-variant-numeric: tabular-nums;
+}
+
+.native-meter-swatch {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 2px;
+  vertical-align: baseline;
 }
 
 /* ---------- 右侧面板 ---------- */

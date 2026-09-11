@@ -8,12 +8,19 @@ import {
 } from "react";
 import type {
   ApprovalRequestPayload,
+  AssistantBlockDelta,
   AssistantChunkEventData,
+  AssistantStreamRecord,
+  ContextBreakdownProjection,
+  ContextPressureProjection,
   EditArgs,
+  InboxMessage,
+  InboxSplicedEventData,
   ModelCatalog,
   ModelSelection,
   PermissionSelect,
   PresetOption,
+  QueueAction,
   RemoteEventFrame,
   SessionEvent,
   SessionFollowFrame,
@@ -22,6 +29,7 @@ import type {
   ToolCallEventData,
   ToolResultEventData,
   TodoWriteArgs,
+  UserQuestionAnswer,
   UserQuestionsRequestPayload,
   WriteArgs,
   WorkspaceFollowFrame,
@@ -67,6 +75,243 @@ function textOf(content: unknown[], blockType: "text" | "reasoning"): string {
     )
     .map((block) => block.text)
     .join("");
+}
+
+/**
+ * 把重连基线里的压实记录展开回逐条增量。
+ * 引擎（0.1.5 起）不再把过程内增量写进日志，中途切回正在输出的会话时，
+ * 「已经写了一段的文本」和「已经想了一段的推理」只能从开场基线的压实记录还原。
+ */
+function expandStreamRecords(
+  records: AssistantStreamRecord[],
+): AssistantBlockDelta[] {
+  const deltas: AssistantBlockDelta[] = [];
+  for (const record of records) {
+    if (!record || typeof record !== "object") continue;
+    if (record.type === "chunk") {
+      if (record.chunk) deltas.push(record.chunk);
+      continue;
+    }
+    const members =
+      record.type === "tool-call-chunks" ? record.args : record.texts;
+    if (!Array.isArray(members)) continue;
+    members.forEach((member) => {
+      if (typeof member !== "string") return;
+      if (record.type === "text-chunks") {
+        deltas.push({ type: "text-delta", index: record.index, text: member });
+      } else if (record.type === "reasoning-chunks") {
+        deltas.push({
+          type: "reasoning-delta",
+          index: record.index,
+          text: member,
+        });
+      } else {
+        deltas.push({
+          type: "tool-call-delta",
+          index: record.index,
+          id: record.id,
+          ...(record.name ? { name: record.name } : {}),
+          argumentsDelta: member,
+        });
+      }
+    });
+  }
+  return deltas;
+}
+
+/**
+ * 上下文占用（官方 contextOccupancy 口径）：分子优先用 projectedTokens
+ * （最后一次采样 + 采样后表面的启发式增减），拿不到采样或路线容量时不显示。
+ */
+function contextOccupancy(
+  pressure: ContextPressureProjection | undefined,
+): { percent: number; usedTokens: number; contextWindow: number } | null {
+  const usedTokens = pressure?.projectedTokens ?? pressure?.pressureTokens;
+  if (usedTokens === undefined || pressure?.contextWindow === undefined) return null;
+  return {
+    percent: Math.min(
+      100,
+      Math.round((usedTokens / pressure.contextWindow) * 100),
+    ),
+    usedTokens,
+    contextWindow: pressure.contextWindow,
+  };
+}
+
+/** 紧凑 token 计数（官方口径：<1e3 原样，<1e6 用 K，否则 M；≥100 取整否则一位小数）。 */
+function formatTokens(value: number): string {
+  const scaled = (candidate: number) =>
+    candidate >= 100
+      ? String(Math.round(candidate))
+      : String(Math.round(candidate * 10) / 10);
+  if (value < 1000) return String(value);
+  if (value < 1000000) return `${scaled(value / 1000)}K`;
+  return `${scaled(value / 1000000)}M`;
+}
+
+/** 构成行（顺序即进度条分段顺序，颜色与图例一致）。 */
+const CONTEXT_ROWS: {
+  key: keyof ContextBreakdownProjection;
+  label: string;
+  tint: string;
+}[] = [
+  { key: "systemTokens", label: "系统提示词", tint: "system" },
+  { key: "toolsTokens", label: "工具定义", tint: "tools" },
+  { key: "messageTokens", label: "对话消息", tint: "messages" },
+];
+
+/** 环几何：与官方一致（14px 视窗、2px 描边、半径 5.5）。 */
+const METER_RADIUS = 5.5;
+const METER_CIRCUMFERENCE = 2 * Math.PI * METER_RADIUS;
+
+/**
+ * 会移动上下文占用/用量投影的会话事件：request/context 带来路线容量、
+ * request/header 带来工具定义价格、assistant 结算带来提供方 usage 采样，
+ * 其余可见表面（消息、工具结果）改变表面 token 总量，压缩则成段替换表面。
+ */
+const CONTEXT_METER_EVENTS = new Set([
+  "request/context",
+  "request/header",
+  "assistant/message",
+  "assistant/attempt",
+  "tool/result",
+  "system/message",
+]);
+
+function movesContextMeter(type: string): boolean {
+  return CONTEXT_METER_EVENTS.has(type) || type.startsWith("compaction/");
+}
+
+/**
+ * 上下文占用环 + 构成面板（对齐官方 ContextMeter）：环贴发送按钮，
+ * 悬停显示百分比、点击展开系统提示词／工具定义／对话消息的构成。
+ * 提供方既没报压力也没报路线容量时整块不渲染（官方同此）。
+ */
+function ContextMeter({
+  pressure,
+  breakdown,
+}: {
+  pressure?: ContextPressureProjection;
+  breakdown?: ContextBreakdownProjection;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLSpanElement | null>(null);
+  const occupancy = contextOccupancy(pressure);
+  const available = occupancy !== null;
+
+  useEffect(() => {
+    if (!available && open) setOpen(false);
+  }, [available, open]);
+
+  // 点击面板外或按 Esc 收起（与官方同）
+  useEffect(() => {
+    if (!open || !available) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (
+        event.target instanceof Node &&
+        rootRef.current?.contains(event.target) === true
+      ) {
+        return;
+      }
+      setOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [available, open]);
+
+  if (occupancy === null) return null;
+
+  const percent = occupancy.percent;
+  const total = breakdown
+    ? breakdown.systemTokens + breakdown.toolsTokens + breakdown.messageTokens
+    : 0;
+  const segments =
+    !breakdown || total === 0
+      ? [{ key: "total", tint: "", width: percent }]
+      : CONTEXT_ROWS.map((row) => ({
+          key: row.key,
+          tint: row.tint,
+          width: (percent * breakdown[row.key]) / total,
+        })).filter((segment) => segment.width > 0);
+
+  return (
+    <span className="native-meter" ref={rootRef}>
+      <button
+        type="button"
+        className="native-meter-trigger"
+        aria-label={`上下文已用 ${percent}%`}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        title={`上下文已用 ${percent}%`}
+        onClick={() => setOpen(!open)}
+      >
+        <svg viewBox="0 0 14 14" width="14" height="14" aria-hidden="true">
+          <circle
+            className="native-meter-track"
+            cx="7"
+            cy="7"
+            r={METER_RADIUS}
+          />
+          <circle
+            className="native-meter-fill"
+            cx="7"
+            cy="7"
+            r={METER_RADIUS}
+            strokeDasharray={`${(METER_CIRCUMFERENCE * percent) / 100} ${METER_CIRCUMFERENCE}`}
+            transform="rotate(-90 7 7)"
+          />
+        </svg>
+      </button>
+      {open && (
+        <div className="native-meter-panel" role="dialog" aria-label="上下文已用">
+          <div className="native-meter-head">
+            <span className="native-meter-headline">上下文已用</span>
+            <span className="native-meter-percent">{percent}%</span>
+            <span className="native-meter-figures">
+              ~{formatTokens(occupancy.usedTokens)} /{" "}
+              {formatTokens(occupancy.contextWindow)}
+            </span>
+          </div>
+          <div className="native-meter-bar">
+            {segments.map((segment) => (
+              <div
+                key={segment.key}
+                className={
+                  segment.tint
+                    ? `native-meter-segment ${segment.tint}`
+                    : "native-meter-segment"
+                }
+                style={{ width: `${segment.width}%` }}
+              />
+            ))}
+          </div>
+          {breakdown && (
+            <dl className="native-meter-rows">
+              {CONTEXT_ROWS.map((row) => (
+                <div className="native-meter-row" key={row.key}>
+                  <dt>
+                    <span
+                      className={`native-meter-swatch ${row.tint}`}
+                      aria-hidden="true"
+                    />
+                    {row.label}
+                  </dt>
+                  <dd>~{formatTokens(breakdown[row.key])}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
+        </div>
+      )}
+    </span>
+  );
 }
 
 /** 毫秒 → 「3m 55s」/「42s」。 */
@@ -119,6 +364,8 @@ interface ComposerProps {
   textareaRef: { current: HTMLTextAreaElement | null };
   /** 工具行左侧控件（模型/强度/权限选择器）。 */
   controls?: ReactNode;
+  /** 上下文占用环（贴发送按钮；无提供方用量时自身不渲染）。 */
+  meter?: ReactNode;
 }
 
 /** 侧栏分组标题：点击折叠/展开会话列表（「未分组」等无工作区操作的分组用）。 */
@@ -351,8 +598,9 @@ function WorkspaceRow({
 }
 
 /**
- * 输入框上方的工作区 chip：点击弹出工作区列表 + 添加入口。
- * 空态选择新会话落点；会话内切换时把当前会话移动到目标工作区。
+ * 新会话引导页输入框上方的工作区 chip：点击弹出工作区列表 + 添加入口。
+ * 只出现在引导页——会话一旦开出（有消息），工作区归属从侧栏分组即可看清，
+ * 输入框上方不再常显项目名/选择器。
  */
 function WorkspaceChip({
   workspaces,
@@ -454,6 +702,20 @@ function WorkspaceChip({
   );
 }
 
+/** 输入框高度上限，与 .native-composer-box textarea 的 max-height 一致（超出后内部滚动）。 */
+const COMPOSER_MAX_HEIGHT = 200;
+
+/**
+ * 输入框随内容自适应高度：空态保持在 CSS 最小高度（两行），长文本长到上限为止。
+ * 内容变化不只有键盘输入（切换会话载入草稿、发送后清空、发送失败写回都会改 value），
+ * 所以按 value 统一拟合，不要只在 onChange 里调。
+ */
+function fitComposerHeight(el: HTMLTextAreaElement | null) {
+  if (!el) return;
+  el.style.height = "auto";
+  el.style.height = `${Math.min(el.scrollHeight, COMPOSER_MAX_HEIGHT)}px`;
+}
+
 /** 卡片式输入框：textarea + 底部工具行（左侧选择器 + 圆形发送/停止按钮），空态与底部共用。 */
 function Composer({
   input,
@@ -463,7 +725,13 @@ function Composer({
   onStop,
   textareaRef,
   controls,
+  meter,
 }: ComposerProps) {
+  // textareaRef 稳定，装填新元素时也会重跑，草稿首帧即按内容展开
+  useEffect(() => {
+    fitComposerHeight(textareaRef.current);
+  }, [input, textareaRef]);
+
   return (
     <div className="native-composer-box">
       <textarea
@@ -471,12 +739,7 @@ function Composer({
         value={input}
         rows={1}
         placeholder="询问任何问题"
-        onChange={(e) => {
-          onInputChange(e.target.value);
-          const el = e.target;
-          el.style.height = "auto";
-          el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
-        }}
+        onChange={(e) => onInputChange(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
             e.preventDefault();
@@ -487,7 +750,8 @@ function Composer({
       <div className="native-composer-bar">
         {/* 控件组自身占满工具行：权限贴左，模型与推理档位贴右（紧邻发送按钮） */}
         {controls ?? <span style={{ flex: 1 }} />}
-        {running ? (
+        {meter}
+        {running && !input.trim() ? (
           <button className="native-send stop" onClick={onStop} title="停止">
             <svg
               viewBox="0 0 24 24"
@@ -501,10 +765,11 @@ function Composer({
           </button>
         ) : (
           <button
-            className={`native-send${input.trim() ? "" : " empty"}`}
+            className="native-send"
             disabled={!input.trim()}
             onClick={onSend}
-            title="发送"
+            // 运行中有草稿时改为排队发送（与官方一致：同一位置按草稿是否可提交切换）
+            title={running ? "排队发送" : "发送"}
           >
             <svg
               viewBox="0 0 24 24"
@@ -521,6 +786,465 @@ function Composer({
             </svg>
           </button>
         )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * 待发送队列：排队中／插话中／发送中，行内可编辑、删除、插话。
+ * 条目来自引擎 inbox（agent/inbox/spliced 折出），pending 的是本地乐观回显。
+ */
+function QueueStrip({
+  items,
+  running,
+  busyId,
+  onAction,
+}: {
+  items: QueuedItem[];
+  running: boolean;
+  busyId: string | null;
+  onAction: (item: QueuedItem, action: QueueAction) => void;
+}) {
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editText, setEditText] = useState("");
+
+  if (items.length === 0) return null;
+
+  const submitEdit = (item: QueuedItem) => {
+    const text = editText.trim();
+    if (text) onAction(item, { kind: "edit", content: [{ type: "text", text }] });
+    setEditingId(null);
+  };
+
+  return (
+    <div className="native-queue">
+      {items.map((item) => {
+        const label = item.pending
+          ? "发送中"
+          : item.placement === "next-step"
+            ? "插话中"
+            : "排队中";
+        const busy = busyId === item.id;
+        const editing = editingId === item.id;
+        return (
+          <div key={item.id} className="native-queue-row">
+            <span className="native-queue-tag">{label}</span>
+            {editing ? (
+              <textarea
+                className="native-queue-edit"
+                value={editText}
+                rows={2}
+                autoFocus
+                onChange={(e) => setEditText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") {
+                    e.preventDefault();
+                    setEditingId(null);
+                  } else if (
+                    e.key === "Enter" &&
+                    !e.shiftKey &&
+                    !e.nativeEvent.isComposing
+                  ) {
+                    e.preventDefault();
+                    submitEdit(item);
+                  }
+                }}
+              />
+            ) : (
+              <span className="native-queue-text" title={item.text}>
+                {item.text}
+              </span>
+            )}
+            <span className="native-queue-actions">
+              {editing ? (
+                <>
+                  <button
+                    className="primary"
+                    disabled={busy || !editText.trim()}
+                    onClick={() => submitEdit(item)}
+                  >
+                    保存
+                  </button>
+                  <button onClick={() => setEditingId(null)}>取消</button>
+                </>
+              ) : (
+                <>
+                  {item.placement === "next-turn" && running && (
+                    <button
+                      disabled={busy || item.pending}
+                      title="打断当前轮，立刻按这条执行"
+                      onClick={() => onAction(item, { kind: "steer" })}
+                    >
+                      插话
+                    </button>
+                  )}
+                  <button
+                    disabled={busy || item.pending}
+                    onClick={() => {
+                      setEditingId(item.id);
+                      setEditText(item.text);
+                    }}
+                  >
+                    编辑
+                  </button>
+                  <button
+                    disabled={busy || item.pending}
+                    onClick={() => onAction(item, { kind: "remove" })}
+                  >
+                    删除
+                  </button>
+                </>
+              )}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** 一道题的暂存答案（skipped 表示用户显式跳过该题，提交空 selected）。 */
+interface QuestionDraft {
+  selected: string[];
+  custom: string;
+  skipped?: boolean;
+}
+
+/**
+ * 识别 plan-review 意图，选举条件与官方同宽：单题、声明意图、detail 存在、
+ * approve 指向现有选项 label。不满足时留在通用表单上（意图只改布局，不改可达答案）。
+ */
+function planReviewOf(
+  questions: NonNullable<UserQuestionsRequestPayload["questions"]>,
+): { item: (typeof questions)[number]; approve: string } | null {
+  if (questions.length !== 1) return null;
+  const item = questions[0];
+  const approve = item.intent?.kind === "plan-review" ? item.intent.approve : undefined;
+  if (!approve || !item.detail) return null;
+  if (!(item.options ?? []).some((option) => option.label === approve)) return null;
+  return { item, approve };
+}
+
+/**
+ * 提问卡片：一次只显示一道题（对齐官方 QuestionComposer）。
+ *
+ * 引擎一次最多带 4 道题，早先「一屏纵向铺开所有题」的写法会把输入区以上整块占满，
+ * 题目越多越难看清；官方口径是一题一屏 + 上一题/下一题 + 题号进度，最后一题才提交。
+ * 单选点选即翻到下一题（官方同款），多选与自由文本停在原题，随时可翻回去改。
+ * plan-review 意图仍走「计划审批」布局：计划用 markdown 滚动展示，决定按钮直接提交。
+ */
+function QuestionCard({
+  request,
+  onSubmit,
+  onDismiss,
+}: {
+  request: PendingQuestion;
+  onSubmit: (answers: UserQuestionAnswer[]) => Promise<boolean>;
+  onDismiss: () => Promise<boolean>;
+}) {
+  const questions = request.questions ?? [];
+  const [drafts, setDrafts] = useState<QuestionDraft[]>(() =>
+    questions.map(() => ({ selected: [], custom: "" })),
+  );
+  const [index, setIndex] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const plan = planReviewOf(questions);
+
+  if (questions.length === 0) return null;
+
+  const total = questions.length;
+  const at = Math.min(index, total - 1);
+  const question = questions[at];
+  const multi = question.multiSelect === true;
+  const emptyDraft = (): QuestionDraft => ({ selected: [], custom: "" });
+  const draftAt = (values: QuestionDraft[], item: number): QuestionDraft =>
+    values[item] ?? emptyDraft();
+  const draft = draftAt(drafts, at);
+
+  /** 已作答：选中了选项或写了「其他」（跳过是另一条出口，不算作答）。 */
+  const answered = (item: QuestionDraft) =>
+    item.selected.length > 0 || item.custom.trim() !== "";
+  const completed = (item: QuestionDraft) =>
+    item.skipped === true || answered(item);
+  const completedCount = questions.filter((_, item) =>
+    completed(draftAt(drafts, item)),
+  ).length;
+
+  /** 整组答案：跳过题回空 selected，单选填了「其他」就以自由文本为准。 */
+  const buildAnswers = (values: QuestionDraft[]): UserQuestionAnswer[] =>
+    questions.map((q, item) => {
+      const value = draftAt(values, item);
+      const custom = value.custom.trim();
+      return {
+        id: q.id,
+        selected:
+          value.skipped || (custom && q.multiSelect !== true)
+            ? []
+            : value.selected,
+        ...(custom ? { custom } : {}),
+      };
+    });
+
+  const dismiss = async () => {
+    if (submitting) return;
+    setSubmitting(true);
+    const ok = await onDismiss();
+    if (!ok) setSubmitting(false);
+  };
+
+  /** 提交整组答案：仍有未作答且未跳过的题时跳到那一题并提示（官方口径）。 */
+  const submit = async (values: QuestionDraft[]) => {
+    if (submitting) return;
+    const missing = questions.findIndex(
+      (_, item) => !completed(draftAt(values, item)),
+    );
+    if (missing >= 0) {
+      setIndex(missing);
+      setError(`请先完成第 ${missing + 1} 题`);
+      return;
+    }
+    setSubmitting(true);
+    const ok = await onSubmit(buildAnswers(values));
+    if (!ok) setSubmitting(false);
+  };
+
+  /** 改写当前题的暂存答案；nextIndex 用于单选题「选中即翻页」。 */
+  const updateDraft = (
+    update: (current: QuestionDraft) => QuestionDraft,
+    nextIndex = at,
+  ) => {
+    setDrafts((prev) =>
+      questions.map((_, item) =>
+        item === at ? update(draftAt(prev, item)) : draftAt(prev, item),
+      ),
+    );
+    setIndex(nextIndex);
+    setError(null);
+  };
+
+  const choose = (label: string) => {
+    updateDraft(
+      (item) =>
+        multi
+          ? {
+              ...item,
+              selected: item.selected.includes(label)
+                ? item.selected.filter((entry) => entry !== label)
+                : [...item.selected, label],
+              skipped: false,
+            }
+          : // 单选题：选中选项与自定义答案互斥
+            { selected: [label], custom: "", skipped: false },
+      // 单选点选即翻到下一题，最后一题留在原地等提交
+      !multi && at < total - 1 ? at + 1 : at,
+    );
+  };
+
+  const setCustom = (value: string) => {
+    updateDraft((item) => ({
+      ...item,
+      custom: value,
+      selected: multi ? item.selected : [],
+      skipped: false,
+    }));
+  };
+
+  /** 跳过当前题：该题回空 selected；已到最后一题则整组提交。 */
+  const skipQuestion = () => {
+    const next = questions.map((_, item) =>
+      item === at
+        ? { selected: [], custom: "", skipped: true }
+        : draftAt(drafts, item),
+    );
+    setDrafts(next);
+    setError(null);
+    if (at < total - 1) {
+      setIndex(at + 1);
+      return;
+    }
+    void submit(next);
+  };
+
+  /** 下一题：当前题须已作答（跳过是显式出口）；最后一题直接提交。 */
+  const continueFlow = () => {
+    if (!answered(draft)) {
+      setError("请先选择一个选项、填写「其他」，或点「跳过本题」");
+      return;
+    }
+    if (at < total - 1) {
+      setIndex(at + 1);
+      setError(null);
+      return;
+    }
+    void submit(drafts);
+  };
+
+  // plan-review：计划作为可滚动 markdown，决定按钮直接提交（官方口径：其余选项即拒绝）
+  if (plan) {
+    const others = (plan.item.options ?? []).filter(
+      (option) => option.label !== plan.approve,
+    );
+    /** 计划审批不走逐题暂存，按钮即整组答案（单题请求）。 */
+    const decide = async (label: string) => {
+      if (submitting) return;
+      setSubmitting(true);
+      const ok = await onSubmit([{ id: plan.item.id, selected: [label] }]);
+      if (!ok) setSubmitting(false);
+    };
+    return (
+      <div className="native-card question">
+        <div className="native-card-strip">计划审批</div>
+        {plan.item.header && (
+          <div className="native-question-header">{plan.item.header}</div>
+        )}
+        <div className="native-question-title">{plan.item.question}</div>
+        <div className="native-plan">
+          <Markdown text={plan.item.detail ?? ""} />
+        </div>
+        <div className="native-card-actions">
+          <button
+            className="primary"
+            disabled={submitting}
+            onClick={() => void decide(plan.approve)}
+          >
+            {plan.approve}
+          </button>
+          {others.map((option) => (
+            <button
+              key={option.label}
+              disabled={submitting}
+              title={option.description}
+              onClick={() => void decide(option.label)}
+            >
+              {option.label}
+            </button>
+          ))}
+          <span className="native-question-spacer" />
+          <button
+            className="native-question-dismiss"
+            disabled={submitting}
+            title="不选任何选项，直接说出你的想法"
+            onClick={() => void dismiss()}
+          >
+            讨论一下
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="native-card question">
+      <div className="native-question" key={question.id}>
+        <div className="native-question-head">
+          {question.header && (
+            <div className="native-question-header">{question.header}</div>
+          )}
+          {total > 1 && (
+            <div className="native-question-progress">
+              第 {at + 1} / {total} 题
+            </div>
+          )}
+        </div>
+        <div className="native-question-title">{question.question}</div>
+        {question.detail && (
+          <div className="native-question-detail">{question.detail}</div>
+        )}
+        {(question.options ?? []).length > 0 && (
+          <div className="native-options" role={multi ? "group" : "radiogroup"}>
+            {(question.options ?? []).map((option) => {
+              const active = draft.selected.includes(option.label);
+              return (
+                <button
+                  key={option.label}
+                  type="button"
+                  className={`native-option${active ? " selected" : ""}`}
+                  aria-pressed={active}
+                  disabled={submitting}
+                  onClick={() => choose(option.label)}
+                >
+                  <span className={`native-option-mark${multi ? " multi" : ""}`}>
+                    {active ? "✓" : ""}
+                  </span>
+                  <span className="native-option-body">
+                    <span className="native-option-label">{option.label}</span>
+                    {option.description && (
+                      <span className="native-option-desc">
+                        {option.description}
+                      </span>
+                    )}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+        <input
+          className="native-question-custom"
+          value={draft.custom}
+          disabled={submitting}
+          placeholder={multi ? "其他（可与上面同时选）" : "其他（自行输入）"}
+          onChange={(e) => setCustom(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
+            e.preventDefault();
+            continueFlow();
+          }}
+        />
+        <div className="native-question-footnote">
+          <button
+            type="button"
+            className="native-question-skip"
+            disabled={submitting}
+            onClick={skipQuestion}
+          >
+            {draft.skipped ? "已跳过" : "跳过本题"}
+          </button>
+          {multi && <span className="native-question-hint">可多选</span>}
+        </div>
+      </div>
+      <div className="native-card-actions native-question-submit">
+        {error ? (
+          <span className="native-question-error">{error}</span>
+        ) : (
+          total > 1 && (
+            <span className="native-question-hint">
+              已填 {completedCount} / {total}
+            </span>
+          )
+        )}
+        {total > 1 && (
+          <button
+            type="button"
+            disabled={submitting || at === 0}
+            onClick={() => {
+              setIndex(at - 1);
+              setError(null);
+            }}
+          >
+            上一题
+          </button>
+        )}
+        <button
+          type="button"
+          className="primary"
+          disabled={submitting}
+          onClick={continueFlow}
+        >
+          {submitting ? "提交中…" : at < total - 1 ? "下一题" : "提交"}
+        </button>
+        <span className="native-question-spacer" />
+        <button
+          type="button"
+          className="native-question-dismiss"
+          disabled={submitting}
+          title="放弃整组问题，改为直接说出你的想法"
+          onClick={() => void dismiss()}
+        >
+          放弃整组问题
+        </button>
       </div>
     </div>
   );
@@ -853,16 +1577,84 @@ function ComposerControls({
   );
 }
 
+/** 待处理项的呈现类别（决定同一会话内的优先级与侧栏提示文案）。 */
+type PendingKind = "approval" | "question" | "plan-review";
+
 /** 待决策审批（$events 瀑布）。 */
 interface PendingApproval extends ApprovalRequestPayload {
   eventId: string;
   clientId: string;
+  /**
+   * 归属会话 id：瀑布帧的 agentId。引擎里 Agent id 恒等于 Session id，
+   * 所以待处理项天然属于发起它的那个会话。
+   */
+  sessionId: string;
 }
 
 /** 待回答问答（$events 瀑布）。 */
 interface PendingQuestion extends UserQuestionsRequestPayload {
   eventId: string;
   clientId: string;
+  sessionId: string;
+}
+
+/**
+ * 归拢后的一条待处理项：类别 + 原载荷 + 归属会话（已解到根会话）。
+ * 同一会话内多条等待的优先级顺序与官方一致（计划审批 > 提问 > 授权）。
+ */
+type PendingEntry =
+  | { kind: "approval"; approval: PendingApproval; owner: string }
+  | { kind: "question" | "plan-review"; question: PendingQuestion; owner: string };
+
+/** 同一会话里只展示一条待处理项；多条并存时按此优先级取最高的那条。 */
+const PENDING_PRECEDENCE: Record<PendingKind, number> = {
+  approval: 0,
+  question: 1,
+  "plan-review": 2,
+};
+
+/** 侧栏会话行的等待提示（对齐官方 status.waitingApproval 等口径）。 */
+const PENDING_LABELS: Record<PendingKind, string> = {
+  approval: "等待授权",
+  question: "等待回答",
+  "plan-review": "计划待审",
+};
+
+/**
+ * 待处理项的所属会话：子代理会话的待处理项归到它的根会话。
+ *
+ * 青梧界面不展示子代理会话（见 visibleSessions），子代理请求审批时若按子会话
+ * 归位，那张卡片在界面上就没有任何入口可答，宿主会一直挂着等。会话不在列表里
+ * （已删除、帧缺 agentId）时原样返回，由调用方决定兜底。
+ */
+function ownerSessionOf(
+  sessionId: string,
+  byId: Map<string, SessionSummary>,
+): string {
+  let current = sessionId;
+  const seen = new Set<string>();
+  while (current && !seen.has(current)) {
+    seen.add(current);
+    const parent = byId.get(current)?.parentSessionId;
+    if (!parent) break;
+    current = parent;
+  }
+  return current;
+}
+
+/** 会话行的状态标记：等待回答/授权优先于「运行中」（对齐官方：待处理状态优先）。 */
+function SessionStatusMark({
+  running,
+  pending,
+}: {
+  running: boolean;
+  pending: PendingKind | null;
+}) {
+  if (pending) {
+    return <span className="native-waiting-dot" title={PENDING_LABELS[pending]} />;
+  }
+  if (running) return <span className="native-running-dot" />;
+  return null;
 }
 
 /** 会话内渲染条目。 */
@@ -963,9 +1755,118 @@ function foldChatItems(events: SessionEvent[]): ChatItem[] {
   return items;
 }
 
+/**
+ * 待发送条目：来自引擎 inbox（next-turn = 排队中，next-step = 插话中），
+ * 或来自本地乐观回显（pending，尚未被宿主确认）。
+ */
+interface QueuedItem {
+  /** 引擎消息 id（session/updateQueue 用它寻址）；回显为本地 id。 */
+  id: string;
+  /** 本机提交时铸的 requestId，用于回显退休。 */
+  rpcId?: string;
+  placement: "next-turn" | "next-step";
+  text: string;
+  pending?: boolean;
+}
+
+/**
+ * 从日志事件折出当前待发送队列。
+ *
+ * inbox 变更以 durable 事件 `agent/inbox/spliced` 记录（target/start/removedCount/inserted），
+ * 因此无需额外订阅控制流即可在切换会话、重连后重建队列。
+ * 只保留人提交的消息（source.kind === 'user'），跳过插件注入的上下文消息。
+ */
+function foldQueue(events: SessionEvent[]): {
+  queue: QueuedItem[];
+  rpcIds: Set<string>;
+} {
+  const lists: Record<"next-turn" | "next-step", InboxMessage[]> = {
+    "next-turn": [],
+    "next-step": [],
+  };
+  for (const event of events) {
+    if (event.type !== "agent/inbox/spliced") continue;
+    const data = event.data as InboxSplicedEventData | null;
+    if (!data || (data.target !== "next-turn" && data.target !== "next-step")) {
+      continue;
+    }
+    const list = lists[data.target];
+    const start = Math.min(Math.max(Number(data.start) || 0, 0), list.length);
+    const removed = Math.max(Number(data.removedCount) || 0, 0);
+    const inserted = Array.isArray(data.inserted) ? data.inserted : [];
+    list.splice(start, Math.min(removed, list.length - start), ...inserted);
+  }
+
+  const queue: QueuedItem[] = [];
+  const rpcIds = new Set<string>();
+  for (const placement of ["next-turn", "next-step"] as const) {
+    for (const message of lists[placement]) {
+      if (message.source?.kind !== "user") continue;
+      const rpcId = message.source.rpcId;
+      if (typeof rpcId === "string") rpcIds.add(rpcId);
+      queue.push({
+        id: message.id ?? `${placement}-${queue.length}`,
+        rpcId: typeof rpcId === "string" ? rpcId : undefined,
+        placement,
+        text: textOf(message.content ?? [], "text"),
+      });
+    }
+  }
+  return { queue, rpcIds };
+}
+
+/** 日志里已经落库的用户消息所携带的 requestId（回显退休用）。 */
+function foldUserRpcIds(events: SessionEvent[]): Set<string> {
+  const ids = new Set<string>();
+  for (const event of events) {
+    if (event.type !== "user/message") continue;
+    const data = event.data as { source?: { rpcId?: string } } | null;
+    const rpcId = data?.source?.rpcId;
+    if (typeof rpcId === "string") ids.add(rpcId);
+  }
+  return ids;
+}
+
+/**
+ * 合并一条工作区 upsert，顺序保持不动：已在列表里的就地替换（会话归属、标题变化
+ * 不改变它在侧栏的位置），新工作区插到最前——与宿主「新建工作区前插」的落点一致。
+ */
+function upsertWorkspace(
+  prev: WorkspaceView[],
+  workspace: WorkspaceView,
+): WorkspaceView[] {
+  const index = prev.findIndex((w) => w.workspaceId === workspace.workspaceId);
+  if (index < 0) return [workspace, ...prev];
+  const next = [...prev];
+  next[index] = workspace;
+  return next;
+}
+
+/**
+ * 应用宿主登记的权威顺序（order 帧）：按它重排已知工作区，未在名单内的保留在
+ * 原位、名单里尚未下发到本端的 id 自然略过，避免因为一次不完整的名单丢条目。
+ */
+function orderWorkspaces(
+  prev: WorkspaceView[],
+  workspaceIds: string[],
+): WorkspaceView[] {
+  const rank = new Map(workspaceIds.map((id, index) => [id, index]));
+  return [...prev].sort((a, b) => {
+    const left = rank.get(a.workspaceId);
+    const right = rank.get(b.workspaceId);
+    if (left === undefined && right === undefined) return 0;
+    if (left === undefined) return 1;
+    if (right === undefined) return -1;
+    return left - right;
+  });
+}
+
 export function NativeApp() {
   const [visible, setVisible] = useState(false);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
+  /** 会话列表最新快照：切换会话时据它播种运行态，避免把 sessions 纳入 effect 依赖。 */
+  const sessionsRef = useRef<SessionSummary[]>([]);
+  sessionsRef.current = sessions;
   const [workspaces, setWorkspaces] = useState<WorkspaceView[]>([]);
   /** 最近活跃工作区（对齐官方 New Session 语义：新会话落在这里）。 */
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(
@@ -979,7 +1880,18 @@ export function NativeApp() {
   /** block-start(tool-call) 已宣告但 tool/call 事件未落地的提示态。 */
   const [toolCalling, setToolCalling] = useState(false);
   const [input, setInput] = useState("");
+  /**
+   * 逐会话草稿（仅内存，重启不保留）：键为会话 id，无会话时用空串。
+   * 切换会话时切走保留、切回恢复，避免把 A 里没写完的半句话发到 B。
+   */
+  const composerDraftsRef = useRef<Map<string, string>>(new Map());
   const [running, setRunning] = useState(false);
+  /** 引擎 inbox 里的待发送队列（排队中／插话中），由 agent/inbox/spliced 折出。 */
+  const [queue, setQueue] = useState<QueuedItem[]>([]);
+  /** 本地乐观回显：提交当帧即显示，宿主落库或入队后退休。 */
+  const [echoes, setEchoes] = useState<QueuedItem[]>([]);
+  /** 正在处理的队列操作条目 id（按钮禁用态）。 */
+  const [queueBusyId, setQueueBusyId] = useState<string | null>(null);
   const [approvals, setApprovals] = useState<PendingApproval[]>([]);
   const [questions, setQuestions] = useState<PendingQuestion[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -1037,6 +1949,12 @@ export function NativeApp() {
         },
       );
       setSessions(listValue.items);
+      // 运行态以列表兜底对账：引擎的 api-session/status 只在 running↔idle
+      // 跳变时发出，切换会话与断线重连都不会重放，光靠事件会长期停在旧值。
+      const current = listValue.items.find(
+        (entry) => entry.sessionId === currentIdRef.current,
+      );
+      if (current) setRunning(current.running);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -1051,11 +1969,32 @@ export function NativeApp() {
     );
   }, [refreshSessions]);
 
-  const appendEvent = useCallback((event: SessionEvent) => {
-    eventsRef.current = [...eventsRef.current, event];
-    if (event.type === "tool/call") setToolCalling(false);
+  /** 用当前事件窗口重算对话、队列与回显退休（快照与增量共用一条路径）。 */
+  const refreshFromEvents = useCallback(() => {
     setItems(foldChatItems(eventsRef.current));
+    const folded = foldQueue(eventsRef.current);
+    setQueue(folded.queue);
+    // 回显退休：宿主已把这条提交落成 durable user/message 或队列项
+    const settled = new Set([...folded.rpcIds, ...foldUserRpcIds(eventsRef.current)]);
+    setEchoes((prev) => {
+      const kept = prev.filter(
+        (echo) => !echo.rpcId || !settled.has(echo.rpcId),
+      );
+      return kept.length === prev.length ? prev : kept;
+    });
   }, []);
+
+  const appendEvent = useCallback(
+    (event: SessionEvent) => {
+      eventsRef.current = [...eventsRef.current, event];
+      if (event.type === "tool/call") setToolCalling(false);
+      // 上下文占用/用量随这些事件变化。官方是客户端自己折投影，我们直接复用宿主
+      // 算好的投影列，所以要在这些事件到达时重取一次会话列表。
+      if (movesContextMeter(event.type)) scheduleRefresh();
+      refreshFromEvents();
+    },
+    [refreshFromEvents, scheduleRefresh],
+  );
 
   // 初始化：界面模式 + 会话列表；无活跃工作区时默认取第一个
   useEffect(() => {
@@ -1161,6 +2100,8 @@ export function NativeApp() {
         ) {
           const removedId = firstArg;
           setSessions((prev) => prev.filter((s) => s.sessionId !== removedId));
+          // 会话已删除，草稿桶一并清理（内存态，避免残留）
+          composerDraftsRef.current.delete(removedId);
           if (currentIdRef.current === removedId) {
             setCurrentId(null);
           }
@@ -1183,6 +2124,9 @@ export function NativeApp() {
         return;
       }
       if (frame.type === "waterfall") {
+        // agentId 就是归属会话 id（引擎里 Agent id 恒等于 Session id）：待处理项
+        // 必须带着它入库，渲染时才能只落在发起请求的那个会话里。
+        const sessionId = frame.agentId ?? "";
         if (frame.event === "approval/request") {
           const request = (frame.request ?? {}) as ApprovalRequestPayload;
           setApprovals((prev) =>
@@ -1194,6 +2138,7 @@ export function NativeApp() {
                     ...request,
                     eventId: frame.eventId,
                     clientId: eventsClientIdRef.current ?? "",
+                    sessionId,
                   },
                 ],
           );
@@ -1208,6 +2153,7 @@ export function NativeApp() {
                     ...request,
                     eventId: frame.eventId,
                     clientId: eventsClientIdRef.current ?? "",
+                    sessionId,
                   },
                 ],
           );
@@ -1226,23 +2172,13 @@ export function NativeApp() {
         return;
       }
       if (frame.type === "upsert" && frame.workspace) {
-        setWorkspaces((prev) => {
-          const rest = prev.filter(
-            (w) => w.workspaceId !== frame.workspace!.workspaceId,
-          );
-          return [...rest, frame.workspace!];
-        });
+        setWorkspaces((prev) => upsertWorkspace(prev, frame.workspace!));
       } else if (frame.type === "remove" && frame.workspaceId) {
         setWorkspaces((prev) =>
           prev.filter((w) => w.workspaceId !== frame.workspaceId),
         );
       } else if (frame.type === "order" && Array.isArray(frame.workspaceIds)) {
-        setWorkspaces((prev) => {
-          const byId = new Map(prev.map((w) => [w.workspaceId, w]));
-          return frame
-            .workspaceIds!.map((id) => byId.get(id))
-            .filter((w): w is WorkspaceView => Boolean(w));
-        });
+        setWorkspaces((prev) => orderWorkspaces(prev, frame.workspaceIds!));
       }
       // archived 增量只影响归档列表，当前界面不消费
     };
@@ -1284,25 +2220,77 @@ export function NativeApp() {
     setLiveReasoning("");
     setToolCalling(false);
     stickBottomRef.current = true;
-    setRunning(false);
+    setQueue([]);
+    setEchoes([]);
+    // 运行态从会话列表播种：进入一个正在跑的会话时必须立刻显示「停止」，
+    // 不能等 status 事件（它只在跳变时发出，切换会话不会重放）。
+    setRunning(
+      sessionsRef.current.find((entry) => entry.sessionId === currentId)
+        ?.running ?? false,
+    );
+    // 载入目标会话自己的草稿（上一个会话的草稿已在输入时写进各自的桶）
+    setInput(composerDraftsRef.current.get(currentId ?? "") ?? "");
     if (!currentId) return;
 
     setLoadingHistory(true);
     let cancelled = false;
-    void qingwu
-      .dshStreamOpen(Endpoints.sessionFollow, {
-        request: {
-          address: { kind: "session", sessionId: currentId },
-          maxMessages: 100,
-        },
-      })
-      .then((streamId) => {
-        if (cancelled) {
-          qingwu.dshStreamCancel(streamId);
-          return;
-        }
-        sessionStreamRef.current = streamId;
-      });
+    /** 本代连接的 live 帧 revision；null 表示开场基线未声明，此时不做跳号检查。 */
+    let assistantRevision: number | null = null;
+
+    /**
+     * 打开 follow 流。必须声明 assistantStream：0.1.5 起「正在输出的文本」与
+     * 「正在思考的推理」只走 opted-in 的 live 帧，不声明就只能等 settlement，
+     * 界面上表现为整段回复一次性出现、思考过程全程不可见。
+     */
+    const openFollow = () => {
+      void qingwu
+        .dshStreamOpen(Endpoints.sessionFollow, {
+          request: {
+            address: { kind: "session", sessionId: currentId },
+            maxMessages: 100,
+            assistantStream: true,
+          },
+        })
+        .then((streamId) => {
+          if (cancelled) {
+            qingwu.dshStreamCancel(streamId);
+            return;
+          }
+          sessionStreamRef.current = streamId;
+        });
+    };
+
+    /** revision 跳号（漏帧/重连）后本代流已不可信：重开一次，由新开场帧重建界面状态。 */
+    const resyncFollow = () => {
+      if (sessionStreamRef.current) {
+        qingwu.dshStreamCancel(sessionStreamRef.current);
+        sessionStreamRef.current = null;
+      }
+      assistantRevision = null;
+      setDraft("");
+      setLiveReasoning("");
+      setToolCalling(false);
+      openFollow();
+    };
+
+    /** 一条 live 增量折进流式展示态。 */
+    const applyAssistantChunk = (chunk: AssistantBlockDelta) => {
+      if (chunk.type === "text-delta" && typeof chunk.text === "string") {
+        setDraft((prev) => prev + chunk.text);
+      } else if (
+        chunk.type === "reasoning-delta" &&
+        typeof chunk.text === "string"
+      ) {
+        setLiveReasoning((prev) => prev + chunk.text);
+      } else if (
+        chunk.type === "block-start" &&
+        chunk.blockType === "tool-call"
+      ) {
+        setToolCalling(true);
+      }
+    };
+
+    openFollow();
 
     const handleFollowItem = ({ streamId, endpoint, value }: DshStreamItem) => {
       if (
@@ -1320,28 +2308,58 @@ export function NativeApp() {
           .filter((record) => record.type === "event")
           .map((record) => record.event);
         eventsRef.current = events;
-        setItems(foldChatItems(events));
+        refreshFromEvents();
         setLoadingHistory(false);
+        // 开场基线：把在飞 attempt 已经产出的增量补回流式展示，
+        // 否则切回正在输出的会话会空白到下一次 settlement 才出现整段回复。
+        assistantRevision = frame.assistantStream?.revision ?? null;
+        setDraft("");
+        setLiveReasoning("");
+        setToolCalling(false);
+        const pending = frame.assistantStream?.activeAttempt?.stream;
+        if (Array.isArray(pending)) {
+          for (const chunk of expandStreamRecords(pending)) {
+            applyAssistantChunk(chunk);
+          }
+        }
+        return;
+      }
+      if (frame.type === "assistant-stream") {
+        const live = frame.frame;
+        if (
+          assistantRevision !== null &&
+          live.revision !== assistantRevision + 1
+        ) {
+          resyncFollow();
+          return;
+        }
+        assistantRevision = live.revision;
+        if (live.type === "start") {
+          setDraft("");
+          setLiveReasoning("");
+          setToolCalling(false);
+          return;
+        }
+        if (live.type === "chunk") {
+          applyAssistantChunk(live.chunk);
+          return;
+        }
+        // end：committed 时紧随其后的 durable settlement 会清空流式态，此处不动避免闪空；
+        // 被放弃的 attempt 不会再有 settlement，必须就地清掉，否则残留半截文本。
+        if (live.outcome.kind === "abandoned") {
+          setDraft("");
+          setLiveReasoning("");
+          setToolCalling(false);
+        }
         return;
       }
       if (frame.type === "event") {
         const event = frame.event;
         if (event.type === "assistant/chunk") {
+          // 旧引擎（0.1.4 及以前）的过程内增量走 durable 事件，保留兼容。
           const chunk = (event.data as AssistantChunkEventData | null)?.chunk;
           if (!chunk) return;
-          if (chunk.type === "text-delta" && typeof chunk.text === "string") {
-            setDraft((prev) => prev + chunk.text);
-          } else if (
-            chunk.type === "reasoning-delta" &&
-            typeof chunk.text === "string"
-          ) {
-            setLiveReasoning((prev) => prev + chunk.text);
-          } else if (
-            chunk.type === "block-start" &&
-            chunk.blockType === "tool-call"
-          ) {
-            setToolCalling(true);
-          }
+          applyAssistantChunk(chunk);
           return;
         }
         if (event.type === "assistant/message") {
@@ -1361,7 +2379,7 @@ export function NativeApp() {
         sessionStreamRef.current = null;
       }
     };
-  }, [currentId, appendEvent]);
+  }, [currentId, appendEvent, refreshFromEvents]);
 
   // 自动滚动：仅当用户位于底部附近时贴底跟随
   const handleScroll = useCallback(() => {
@@ -1383,6 +2401,72 @@ export function NativeApp() {
     [sessions],
   );
 
+  /** 会话 id → 摘要（待处理项归位要按 parentSessionId 找根会话）。 */
+  const sessionById = useMemo(
+    () => new Map(sessions.map((s) => [s.sessionId, s])),
+    [sessions],
+  );
+
+  /**
+   * 待处理项按归属会话归拢：审批/问答只属于发起它的那个会话。
+   * `orphanPending` 是归属会话已不在列表里的项（例如会话被删除、帧缺 agentId）——
+   * 这类项在界面上没有任何入口可答，兜底显示在当前会话里，至少还能提交或放弃。
+   */
+  const { pendingBySession, orphanPending } = useMemo(() => {
+    const bySession = new Map<string, PendingEntry[]>();
+    const orphans: PendingEntry[] = [];
+    const push = (entry: PendingEntry) => {
+      if (!entry.owner || !sessionById.has(entry.owner)) {
+        orphans.push(entry);
+        return;
+      }
+      const list = bySession.get(entry.owner);
+      if (list) list.push(entry);
+      else bySession.set(entry.owner, [entry]);
+    };
+    for (const approval of approvals) {
+      push({
+        kind: "approval",
+        approval,
+        owner: ownerSessionOf(approval.sessionId, sessionById),
+      });
+    }
+    for (const question of questions) {
+      push({
+        kind: planReviewOf(question.questions ?? []) ? "plan-review" : "question",
+        question,
+        owner: ownerSessionOf(question.sessionId, sessionById),
+      });
+    }
+    // 同一会话内多条并存时只展示优先级最高的一条（对齐官方的 composer 位）
+    for (const list of bySession.values()) {
+      list.sort(
+        (a, b) => PENDING_PRECEDENCE[b.kind] - PENDING_PRECEDENCE[a.kind],
+      );
+    }
+    return { pendingBySession: bySession, orphanPending: orphans };
+  }, [approvals, questions, sessionById]);
+
+  /** 侧栏会话行的等待提示：该会话在等什么。 */
+  const pendingKindBySession = useMemo(() => {
+    const map = new Map<string, PendingKind>();
+    for (const [sessionId, list] of pendingBySession) {
+      const first = list[0];
+      if (first) map.set(sessionId, first.kind);
+    }
+    return map;
+  }, [pendingBySession]);
+
+  /**
+   * 当前展示的待处理项：本会话优先级最高的一条；本会话没有时退回兜底项。
+   * 同一批还有别的条目时用 `morePending` 提示条数（引擎按顺序等待，处理完接着出现）。
+   */
+  const currentPending =
+    (currentId ? pendingBySession.get(currentId) : undefined) ?? [];
+  const shownList = currentPending.length > 0 ? currentPending : orphanPending;
+  const shownPending = shownList[0] ?? null;
+  const morePending = shownList.length - 1;
+
   /** 会话标题：AI 生成/用户命名的 title 投影优先，回退工作目录名。 */
   const sessionTitle = (session: SessionSummary): string => {
     const title = session.projections?.values?.title;
@@ -1392,7 +2476,12 @@ export function NativeApp() {
     return "未命名";
   };
 
-  /** 按工作区分组：会话归属来自工作区注册表的 sessionIds 顺序；搜索词先做标题过滤。 */
+  /**
+   * 按工作区分组：分组顺序取工作区的登记顺序（新建项目在最前，之后不再变动）；
+   * 组内会话取该项目的会话登记顺序（先建的在上，不看最近更新——官方默认走
+   * 「最近更新」会把正在用的会话顶上，青梧固定顺序，列表不随使用漂移；
+   * 哪天要排序方式切换或拖动排序，见 TODO 同名事项）。搜索词先做标题过滤。
+   */
   const sessionGroups = useMemo(() => {
     const keyword = searchText.trim().toLowerCase();
     const filtered = keyword
@@ -1427,6 +2516,15 @@ export function NativeApp() {
   /** 当前会话工作目录（工具卡片相对路径基准）。 */
   const currentCwd = useMemo(
     () => sessions.find((s) => s.sessionId === currentId)?.cwd,
+    [sessions, currentId],
+  );
+
+  /**
+   * 当前会话的用量/上下文投影（占用环数据源）。来自 session/list 的投影列，
+   * 与官方 useProjection 同源同口径；引擎未报采样或路线容量时环不渲染。
+   */
+  const currentProjections = useMemo(
+    () => sessions.find((s) => s.sessionId === currentId)?.projections?.values,
     [sessions, currentId],
   );
 
@@ -1677,8 +2775,11 @@ export function NativeApp() {
   };
 
   /**
-   * 工作区 chip 选择：空态切换新会话落点；会话内把当前会话移动到目标工作区
-   * （workspace/insertSessionBefore 省略 beforeSessionId 即追加到末尾）。
+   * 引导页工作区 chip 选择：切换新会话落点——在目标工作区建/复用一个空白会话再切过去。
+   * 引擎不支持给已有会话改工作区归属：工作区归属在会话创建时按 cwd 写死，而
+   * workspace/insertSessionBefore 只受理该项目已登记的会话，跨项目一律 workspace/move-invalid。
+   * 因此这里对齐官方 openWorkspace 语义——换的是落点而不是会话本身：未发送的草稿随人迁移，
+   * 原来那个空白会话留在原工作区，下次进入该工作区时被复用。
    */
   const handleWorkspaceChipPick = (workspaceId: string) => {
     if (!currentId) {
@@ -1686,13 +2787,19 @@ export function NativeApp() {
       return;
     }
     if (workspaceOfSession.get(currentId) === workspaceId) return;
-    void rpc(Endpoints.workspaceInsertSessionBefore, {
-      request: { workspaceId, sessionId: currentId },
-    })
-      .then(() => setActiveWorkspaceId(workspaceId))
-      .catch((err) =>
-        setError(err instanceof Error ? err.message : String(err)),
-      );
+    void (async () => {
+      const previousId = currentId;
+      const nextId = await createSessionIn(workspaceId);
+      setActiveWorkspaceId(workspaceId);
+      if (nextId === previousId) return;
+      // 草稿随人走：旧会话的草稿落到目标会话，旧桶清空，避免回头再进它时又冒出来
+      const pending = composerDraftsRef.current.get(previousId);
+      if (pending === undefined) return;
+      composerDraftsRef.current.set(nextId, pending);
+      composerDraftsRef.current.delete(previousId);
+    })().catch((err) =>
+      setError(err instanceof Error ? err.message : String(err)),
+    );
   };
 
   const handleSend = async () => {
@@ -1724,11 +2831,24 @@ export function NativeApp() {
       }
     }
     setInput("");
-    if (textareaRef.current) textareaRef.current.style.height = "";
+    // 发出即清空该会话的草稿桶；失败时再写回（输入框高度由 Composer 按 value 重算）
+    composerDraftsRef.current.delete(sessionId);
+    // 乐观回显：提交当帧就显示，宿主落库或入队后由 refreshFromEvents 退休
+    const requestId = crypto.randomUUID();
+    setEchoes((prev) => [
+      ...prev,
+      {
+        id: `echo-${requestId}`,
+        rpcId: requestId,
+        placement: "next-turn",
+        text,
+        pending: true,
+      },
+    ]);
     try {
       await rpc(Endpoints.sessionPrompt, {
         request: {
-          requestId: crypto.randomUUID(),
+          requestId,
           sessionId,
           mode: "queue",
           content: [{ type: "text", text }],
@@ -1738,29 +2858,125 @@ export function NativeApp() {
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setInput(text);
+      composerDraftsRef.current.set(sessionId, text);
+      setEchoes((prev) => prev.filter((echo) => echo.rpcId !== requestId));
     }
   };
+
+  /** 队列条目变更（编辑／删除／插话）：成功后由 agent/inbox/spliced 回推队列。 */
+  const handleQueueAction = async (
+    item: QueuedItem,
+    action: QueueAction,
+  ) => {
+    if (!currentId || item.pending) return;
+    setQueueBusyId(item.id);
+    try {
+      await rpc(Endpoints.sessionUpdateQueue, {
+        request: { sessionId: currentId, itemId: item.id, action },
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setQueueBusyId(null);
+    }
+  };
+
+  /**
+   * 输入变化：立即把内容写进当前会话的草稿桶（无会话时用空串键），
+   * 这样切换会话时无需在 effect 里回头保存上一个会话的内容。
+   */
+  const handleInputChange = useCallback((value: string) => {
+    setInput(value);
+    const key = currentIdRef.current ?? "";
+    if (value) composerDraftsRef.current.set(key, value);
+    else composerDraftsRef.current.delete(key);
+  }, []);
 
   const handleApproval = async (
     approval: PendingApproval,
     outcome: "allowed-once" | "rejected",
   ) => {
-    setApprovals((prev) => prev.filter((a) => a.eventId !== approval.eventId));
-    await qingwu.dshEventResult(approval.clientId, approval.eventId, {
+    const clientId = approval.clientId || eventsClientIdRef.current || "";
+    if (!clientId) {
+      setError("与引擎的事件流尚未就绪，请稍后重试");
+      return;
+    }
+    const result = await qingwu.dshEventResult(clientId, approval.eventId, {
       kind: "result",
       value: outcome,
     });
+    if (!result.ok) {
+      setError(`授权回执提交失败：${result.error.message}`);
+      return;
+    }
+    setApprovals((prev) => prev.filter((a) => a.eventId !== approval.eventId));
   };
 
-  const handleQuestion = async (
+  /**
+   * 回答一个提问请求：一次提交该请求下所有题目的答案（引擎按题回填，缺题会变成不完整回答）。
+   * 回执用的 clientId 优先取请求携带值，为空时回落到当前事件流（重连竞态下可能尚未写入）。
+   */
+  const handleQuestionAnswer = async (
     question: PendingQuestion,
-    questionId: string,
-    label: string,
-  ) => {
-    await qingwu.dshEventResult(question.clientId, question.eventId, {
-      kind: "result",
-      value: { answers: [{ id: questionId, selected: [label] }] },
-    });
+    answers: UserQuestionAnswer[],
+  ): Promise<boolean> => {
+    const clientId = question.clientId || eventsClientIdRef.current || "";
+    if (!clientId) {
+      setError("与引擎的事件流尚未就绪，请稍后重试");
+      return false;
+    }
+    try {
+      const result = await qingwu.dshEventResult(clientId, question.eventId, {
+        kind: "result",
+        value: { answers },
+      });
+      if (!result.ok) {
+        setError(`回答提交失败：${result.error.message}`);
+        return false;
+      }
+      setQuestions((prev) =>
+        prev.filter((q) => q.eventId !== question.eventId),
+      );
+      return true;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      return false;
+    }
+  };
+
+  /**
+   * 放弃整个提问等待（ASK_CANCELLED）：宿主按「用户要求自己说」处理，
+   * 让编辑器归位，用户可以直接输入想法（plan-review 时模型会留在计划模式等消息）。
+   */
+  const handleQuestionDismiss = async (
+    question: PendingQuestion,
+  ): Promise<boolean> => {
+    const clientId = question.clientId || eventsClientIdRef.current || "";
+    if (!clientId) {
+      setError("与引擎的事件流尚未就绪，请稍后重试");
+      return false;
+    }
+    try {
+      const result = await qingwu.dshEventResult(clientId, question.eventId, {
+        kind: "rejected",
+        error: {
+          name: "UserQuestionError",
+          message: "the user dismissed the question to speak instead",
+          code: "ASK_CANCELLED",
+        },
+      });
+      if (!result.ok) {
+        setError(`取消失败：${result.error.message}`);
+        return false;
+      }
+      setQuestions((prev) =>
+        prev.filter((q) => q.eventId !== question.eventId),
+      );
+      return true;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      return false;
+    }
   };
 
   const handleStop = async () => {
@@ -1889,9 +3105,12 @@ export function NativeApp() {
                           <span className="native-session-title">
                             {sessionTitle(session)}
                           </span>
-                          {session.running && (
-                            <span className="native-running-dot" />
-                          )}
+                          <SessionStatusMark
+                            running={session.running}
+                            pending={
+                              pendingKindBySession.get(session.sessionId) ?? null
+                            }
+                          />
                         </button>
                       ))}
                   </div>
@@ -1924,9 +3143,12 @@ export function NativeApp() {
                         <span className="native-session-title">
                           {sessionTitle(session)}
                         </span>
-                        {session.running && (
-                          <span className="native-running-dot" />
-                        )}
+                        <SessionStatusMark
+                          running={session.running}
+                          pending={
+                            pendingKindBySession.get(session.sessionId) ?? null
+                          }
+                        />
                       </button>
                     ))}
                 </div>
@@ -2006,11 +3228,17 @@ export function NativeApp() {
                 />
                 <Composer
                   input={input}
-                  onInputChange={setInput}
+                  onInputChange={handleInputChange}
                   onSend={() => void handleSend()}
                   running={false}
                   onStop={() => void handleStop()}
                   textareaRef={textareaRef}
+                  meter={
+                    <ContextMeter
+                      pressure={currentProjections?.contextPressure}
+                      breakdown={currentProjections?.contextBreakdown}
+                    />
+                  }
                   controls={
                     <ComposerControls
                       catalog={modelCatalog}
@@ -2152,8 +3380,12 @@ export function NativeApp() {
                   );
                 })}
                 {liveReasoning && (
-                  <details open className="native-reasoning live">
-                    <summary>正在思考…</summary>
+                  // 思考中展开跟随；正文一开始输出就收起（对齐官方「思考」行的行为）
+                  <details
+                    open={!draft}
+                    className={draft ? "native-reasoning" : "native-reasoning live"}
+                  >
+                    <summary>{draft ? "思考过程" : "正在思考…"}</summary>
                     <div className="native-reasoning-body">{liveReasoning}</div>
                   </details>
                 )}
@@ -2172,79 +3404,80 @@ export function NativeApp() {
               </div>
             </div>
 
-            {(approvals.length > 0 || questions.length > 0) && (
+            {shownPending && (
               <div className="native-interactions">
-                {approvals.map((approval) => (
-                  <div key={approval.eventId} className="native-card approval">
+                {shownPending.kind === "approval" ? (
+                  <div className="native-card approval">
                     <div className="native-card-title">
-                      请求授权：{approval.toolName ?? "工具"}
+                      请求授权：{shownPending.approval.toolName ?? "工具"}
                     </div>
-                    {approval.reason && (
-                      <div className="native-card-text">{approval.reason}</div>
+                    {shownPending.approval.reason && (
+                      <div className="native-card-text">
+                        {shownPending.approval.reason}
+                      </div>
                     )}
                     <div className="native-card-actions">
                       <button
                         className="primary"
                         onClick={() =>
-                          void handleApproval(approval, "allowed-once")
+                          void handleApproval(
+                            shownPending.approval,
+                            "allowed-once",
+                          )
                         }
                       >
                         允许一次
                       </button>
                       <button
                         onClick={() =>
-                          void handleApproval(approval, "rejected")
+                          void handleApproval(shownPending.approval, "rejected")
                         }
                       >
                         拒绝
                       </button>
                     </div>
                   </div>
-                ))}
-                {questions.map((question) =>
-                  (question.questions ?? []).map((q) => (
-                    <div
-                      key={`${question.eventId}-${q.id}`}
-                      className="native-card question"
-                    >
-                      <div className="native-card-title">{q.question}</div>
-                      {q.detail && (
-                        <div className="native-card-text">{q.detail}</div>
-                      )}
-                      <div className="native-card-actions">
-                        {(q.options ?? []).map((option) => (
-                          <button
-                            key={option.label}
-                            onClick={() =>
-                              void handleQuestion(question, q.id, option.label)
-                            }
-                          >
-                            {option.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )),
+                ) : (
+                  <QuestionCard
+                    key={shownPending.question.eventId}
+                    request={shownPending.question}
+                    onSubmit={(answers) =>
+                      handleQuestionAnswer(shownPending.question, answers)
+                    }
+                    onDismiss={() =>
+                      handleQuestionDismiss(shownPending.question)
+                    }
+                  />
+                )}
+                {morePending > 0 && (
+                  <div className="native-pending-more">
+                    另有 {morePending} 项等待处理，处理完这项后继续
+                  </div>
                 )}
               </div>
             )}
 
             <div className="native-composer">
               <div className="native-composer-stack">
-                <WorkspaceChip
-                  workspaces={workspaces}
-                  currentId={chipWorkspaceId}
-                  fallbackLabel="未分组"
-                  onPick={handleWorkspaceChipPick}
-                  onAdd={() => void handleAddWorkspace()}
+                <QueueStrip
+                  items={[...queue, ...echoes]}
+                  running={running}
+                  busyId={queueBusyId}
+                  onAction={(item, action) => void handleQueueAction(item, action)}
                 />
                 <Composer
                   input={input}
-                  onInputChange={setInput}
+                  onInputChange={handleInputChange}
                   onSend={() => void handleSend()}
                   running={running}
                   onStop={() => void handleStop()}
                   textareaRef={textareaRef}
+                  meter={
+                    <ContextMeter
+                      pressure={currentProjections?.contextPressure}
+                      breakdown={currentProjections?.contextBreakdown}
+                    />
+                  }
                   controls={
                     <ComposerControls
                       catalog={modelCatalog}

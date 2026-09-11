@@ -78,6 +78,32 @@ export class DshBridge {
 
   /** 一元 RPC：POST /api/<endpoint>，payload 为具名参数，桥统一包 {args} 信封。 */
   async call(endpoint: string, payload: unknown): Promise<DshRpcResult<unknown>> {
+    return this.post(endpoint, { args: payload });
+  }
+
+  /**
+   * 回应 $events 瀑布（审批/问答）：POST /api/$events/result。
+   *
+   * 载荷同样必须走 {args} 信封：网关的 parseRemoteEventResultPayload 只接受
+   * 「恰好一个 plain-object args 字段」的载荷，少了这层包装会被直接拒绝。
+   * 这里曾经漏掉包装，导致青梧界面的审批/问答回执全部静默失败（宿主一直挂着、
+   * 界面却以为已提交），只有切到官方界面才能回答。
+   */
+  async eventResult(
+    clientId: string,
+    eventId: string,
+    outcome: unknown
+  ): Promise<DshRpcResult<unknown>> {
+    return this.post(REMOTE_EVENT_RESULT_ENDPOINT, {
+      args: { clientId, eventId, outcome },
+    });
+  }
+
+  /** POST /api/<endpoint> 的统一实现：校验 endpoint、铸造 rpcId、解析 RemoteResult。 */
+  private async post(
+    endpoint: string,
+    payload: unknown
+  ): Promise<DshRpcResult<unknown>> {
     if (!ENDPOINT_PATTERN.test(endpoint)) {
       return {
         ok: false,
@@ -88,7 +114,7 @@ export class DshBridge {
       type: 'client-request',
       rpcId: randomUUID(),
       method: endpoint,
-      payload: { args: payload },
+      payload,
     };
     let response: Response;
     try {
@@ -145,35 +171,6 @@ export class DshBridge {
   cancelStream(streamId: string): void {
     this.streams.delete(streamId);
     this.sendWhenOpen({ type: 'cancel', streamId });
-  }
-
-  /** 回应 $events 瀑布（审批/问答）：POST /api/$events/result，载荷不走 args 包装。 */
-  async eventResult(clientId: string, eventId: string, outcome: unknown): Promise<void> {
-    if (!ENDPOINT_PATTERN.test(REMOTE_EVENT_RESULT_ENDPOINT)) return;
-    const envelope: ClientRequestEnvelope = {
-      type: 'client-request',
-      rpcId: randomUUID(),
-      method: REMOTE_EVENT_RESULT_ENDPOINT,
-      payload: { clientId, eventId, outcome },
-    };
-    try {
-      const response = await fetch(
-        new URL(`/api/${REMOTE_EVENT_RESULT_ENDPOINT}`, this.getServiceUrl()),
-        {
-          method: 'POST',
-          headers: {
-            'content-type': 'application/json',
-            ...(this.authCookie ? { cookie: this.authCookie } : {}),
-          },
-          body: JSON.stringify(envelope),
-        }
-      );
-      if (!response.ok) {
-        console.error(`[DshBridge] 事件回执失败: HTTP ${response.status}`);
-      }
-    } catch (err) {
-      console.error('[DshBridge] 事件回执失败:', err);
-    }
   }
 
   /**

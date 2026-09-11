@@ -13,7 +13,8 @@
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
-    "dist": "npm run build && electron-builder --win --x64"
+    "runtime:node": "node scripts/fetch-node-runtime.cjs",
+    "dist": "npm run build && npm run runtime:node && electron-builder --win --x64"
   },
   "dependencies": {
     "@deepseek-ai/cordis-plugin-group": "^1.0.1",
@@ -98,6 +99,13 @@
     ],
     "asar": true,
     "npmRebuild": false,
+    "beforePack": "scripts/before-pack.cjs",
+    "extraResources": [
+      {
+        "from": "build/node-runtime/node.exe",
+        "to": "node/node.exe"
+      }
+    ],
     "asarUnpack": [
       "node_modules/**"
     ],

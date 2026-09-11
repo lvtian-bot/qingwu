@@ -9,13 +9,35 @@ import { CONFIG } from './config';
 interface HarnessManagerOptions {
   host?: string;
   port?: number;
+  /** 主进程此刻是否已有控制台（含从终端继承的）；见 console.ts。 */
+  hasConsole?: boolean;
+}
+
+/** 引擎运行时解析结果。 */
+interface EngineRuntime {
+  command: string;
+  env: NodeJS.ProcessEnv;
+  /** true = 控制台子系统程序（node.exe），可继承主进程隐藏控制台；false = 退回 electron.exe。 */
+  consoleSubsystem: boolean;
+  /** 日志展示用的来源说明。 */
+  source: string;
 }
 
 type ExitCallback = (code: number | null, signal: NodeJS.Signals | null) => void;
 
+/** 在 PATH 中按序查找可执行文件（不派生子进程，避免自身弹窗）。 */
+function findExecutablesOnPath(name: string): string[] {
+  const separator = process.platform === 'win32' ? ';' : ':';
+  return (process.env.PATH ?? '')
+    .split(separator)
+    .filter((dir) => dir.length > 0)
+    .map((dir) => path.join(dir, name));
+}
+
 export class HarnessManager {
   private readonly host: string;
   private readonly port: number;
+  private readonly hasConsole: boolean;
   private process: ChildProcess | null = null;
   private isStopping = false;
   private onExitCallback: ExitCallback | null = null;
@@ -25,6 +47,7 @@ export class HarnessManager {
   constructor(options: HarnessManagerOptions = {}) {
     this.host = options.host || CONFIG.defaultHost;
     this.port = options.port || CONFIG.defaultPort;
+    this.hasConsole = options.hasConsole ?? false;
   }
 
   getServiceUrl(): string {
@@ -48,6 +71,53 @@ export class HarnessManager {
     return path.join(app.getAppPath(), relativePath);
   }
 
+  /**
+   * 解析引擎运行时：优先使用控制台子系统（console subsystem）的 Node。
+   *
+   * 为什么不能直接用 electron.exe：它是 GUI 子系统程序，而 **GUI 进程不继承
+   * 父进程的控制台**。dsh 用 process.execPath 逐层派生 Windows Job runner 与
+   * windows-acl runner，整条链因此都没有控制台，最后那条 pwsh 只能自己新建
+   * 一个可见控制台窗口——表现为 Agent 每执行一条命令就闪一个黑窗。
+   * 换成控制台子系统的 node.exe 后，引擎、runner 与 pwsh 全部继承主进程
+   * acquireHiddenConsole() 申请并隐藏的那个控制台，窗口不再出现。
+   *
+   * 找不到 Node 运行时（例如未执行 npm run runtime:node 的开发机）时退回原有
+   * electron.exe + ELECTRON_RUN_AS_NODE 方式，行为与修复前一致。
+   */
+  private resolveRuntime(): EngineRuntime {
+    const nativeEnv = { ...process.env };
+    delete nativeEnv.ELECTRON_RUN_AS_NODE;
+
+    const candidates = app.isPackaged
+      ? [path.join(process.resourcesPath ?? '', 'node', 'node.exe')]
+      : [
+          path.join(app.getAppPath(), 'build', 'node-runtime', 'node.exe'),
+          process.env.npm_node_execpath ?? '',
+          ...findExecutablesOnPath('node.exe'),
+        ];
+
+    for (const candidate of candidates) {
+      if (!candidate || !fs.existsSync(candidate)) continue;
+      return {
+        command: candidate,
+        env: nativeEnv,
+        consoleSubsystem: true,
+        source: candidate,
+      };
+    }
+
+    console.warn(
+      '[Harness] 未找到控制台子系统的 Node 运行时，退回 Electron 运行时：' +
+        'Agent 执行命令时仍会新建可见控制台窗口（见 docs/tech-architecture.md）'
+    );
+    return {
+      command: process.execPath,
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+      consoleSubsystem: false,
+      source: `${process.execPath} (ELECTRON_RUN_AS_NODE)`,
+    };
+  }
+
   async start(): Promise<void> {
     const binPath = this.resolveBinPath();
     if (!fs.existsSync(binPath)) {
@@ -55,6 +125,8 @@ export class HarnessManager {
     }
 
     console.log(`[Harness] 启动引擎: ${binPath} (Host: ${this.host}, Port: ${this.port})`);
+    const runtime = this.resolveRuntime();
+    console.log(`[Harness] 引擎运行时: ${runtime.source}`);
 
     const args = [
       '--expose-internals',
@@ -65,19 +137,24 @@ export class HarnessManager {
       '--no-open'
     ];
 
-    const env = {
-      ...process.env,
-      ELECTRON_RUN_AS_NODE: '1'
-    };
+    // windowsHide 会剥掉子进程的控制台（CREATE_NO_WINDOW）：控制台子系统运行时
+    // 必须保留继承，否则 dsh 派生出的 pwsh 仍会各自新建可见控制台窗口。
+    // 只有主进程确实没有控制台时，才用它兜住「引擎自己新建一个可见控制台窗口」。
+    const windowsHide = runtime.consoleSubsystem ? !this.hasConsole : true;
+    if (runtime.consoleSubsystem && !this.hasConsole) {
+      console.warn(
+        '[Harness] 主进程没有控制台，引擎将不继承隐藏控制台：Agent 执行命令仍会闪窗'
+      );
+    }
 
-    const child = spawn(process.execPath, args, {
-      env,
+    const child = spawn(runtime.command, args, {
+      env: runtime.env,
       // 引擎工作目录：无项目会话的 cwd 落点。用程序目录会把 AI 的文件
       // 读写引进安装目录，故取用户主目录（官方 web 无此问题：开发者
       // 总是从项目目录启动，cwd 天然正确；桌面应用必须显式指定）。
       cwd: app.getPath('home'),
       stdio: ['pipe', 'pipe', 'pipe'],
-      windowsHide: true
+      windowsHide
     });
     this.process = child;
 

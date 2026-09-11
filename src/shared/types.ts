@@ -63,8 +63,12 @@ export interface QingwuApi {
   dshStreamCancel: (streamId: string) => void;
   /** 订阅逻辑流下行项（item/error/end 统一投递），返回取消函数。 */
   onDshStreamItem: (listener: (item: DshStreamItem) => void) => () => void;
-  /** 回应 $events 瀑布事件（审批/问答，POST /api/$events/result）。 */
-  dshEventResult: (clientId: string, eventId: string, outcome: unknown) => Promise<void>;
+  /** 回应 $events 瀑布事件（审批/问答，POST /api/$events/result）；失败以 RemoteResult 形态回传，调用方必须处理。 */
+  dshEventResult: (
+    clientId: string,
+    eventId: string,
+    outcome: unknown
+  ) => Promise<DshRpcResult<unknown>>;
 
   getUiMode: () => Promise<UiMode>;
   setUiMode: (mode: UiMode) => Promise<void>;

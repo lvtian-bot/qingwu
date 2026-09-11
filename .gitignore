@@ -2,6 +2,7 @@ node_modules/
 dist/
 out/
 release/
+build/node-runtime/
 .npm-cache/
 *.log
 .DS_Store

@@ -22,7 +22,7 @@ Harness 引擎（Agent / Session / Tools / LLM / Sandbox / Skills）
 
 1. 引擎随包内置并锁定版本：App 锁定某个 dsh 版本，测试确认后再发布；不依赖用户环境的全局安装，避免版本不一致问题。dsh 当前快速迭代，升级需单独验证。
 2. 不合并源码：Harness 作为依赖使用，不 fork 进本仓库，保持引擎与产品代码独立。
-3. 运行方式：以 ELECTRON_RUN_AS_NODE=1 运行 dsh 的 CLI 入口（lib/bin.js），避免依赖 .bin 脚本在打包后的路径问题。
+3. 运行方式（2026-09-11 修订）：用**控制台子系统（console subsystem）的官方 Node 运行时装包内启动** dsh 的 CLI 入口（`lib/bin.js`），避免依赖 .bin 脚本在打包后的路径问题。原方案是用 `ELECTRON_RUN_AS_NODE=1` 跑 Electron 自带运行时，但它会让 Agent 每执行一条命令闪一个黑窗：electron.exe 是 GUI 子系统程序，而 **GUI 进程不继承父进程的控制台**，dsh 又用 `process.execPath` 逐层派生 Windows Job runner 与 windows-acl runner，整条链因此都没有控制台，最后那条 pwsh（控制台子系统）只能自己新建一个可见控制台窗口；引擎升级到 0.1.5-rc.1 后该缺陷暴露（0.1.5-rc.2 仍未改变派生方式），主进程 `acquireHiddenConsole()` 的隐藏控制台也只能覆盖主进程自己的控制台子进程。改用 node.exe 后，引擎、runner 与 pwsh 全部继承主进程那个隐藏控制台。要点：运行时版本与 Electron 内置 Node 对齐（当前 24.18.1，升级 Electron 时用 `scripts/fetch-node-runtime.cjs` 顶部常量同步）；由该脚本按官方 SHASUMS256.txt 校验后解到 `build/node-runtime/`（不入库），打包经 `extraResources` 落到 `resources/node/node.exe`，打包前钩子 `scripts/before-pack.cjs` 保证就绪且失败即打包失败（避免静默产出会闪窗的包）；主进程确实拿不到控制台或找不到 Node 运行时的场景退回 Electron 方式，行为与修复前一致。代价：安装包体积增加约 35 MB（node.exe 解包 88 MB）。运维注意：引擎的控制台是命令执行的依赖（受限子进程必须共享宿主控制台），**不要终止引擎控制台对应的 conhost**——宿主控制台被杀后，命令会以 `STATUS_DLL_INIT_FAILED (0xC0000142)` 失败，需重启应用才能恢复。
 4. 端口：dsh web 默认 127.0.0.1:3080；当前直接使用，后续做设置页再改为可配置。
 5. 与引擎的抽象边界：UI 与引擎之间保持抽象，不把界面代码直接长在 Harness 内部 API 上，为后续换引擎保留可能。
 
@@ -58,7 +58,7 @@ Harness 引擎（Agent / Session / Tools / LLM / Sandbox / Skills）
 ## 已核实项（V0.0.1 验证结论）
 
 1. **端口与参数支持**：已验证 dsh web 支持 `--port <port>`（传 0 可由系统自动分配）、`--host <host>` 以及 `--no-open`（禁止自动唤起外部默认浏览器）。
-2. **依赖与打包机制**：Harness 及其配套插件包通过 npm dependencies 内置；打包配置使用 `asarUnpack: ["node_modules/**"]`，在生产环境以 `ELECTRON_RUN_AS_NODE=1` 及 `--expose-internals` 启动，完整兼容所有原生预编译模块（koffi、node-pty）。
+2. **依赖与打包机制**：Harness 及其配套插件包通过 npm dependencies 内置；打包配置使用 `asarUnpack: ["node_modules/**"]`，启动参数为 `--expose-internals`，完整兼容所有原生预编译模块（koffi、node-pty）。执行该入口的运行时自 2026-09-11 起改为随包的控制台子系统 Node（见「关键决策 3」），此前为 `ELECTRON_RUN_AS_NODE=1` + Electron 内置运行时。
 3. **Profile 初始化与系统兼容**：dsh 内置 healProfilesModuleFallback 软链机制；已落地 Windows 下 Directory Junction 的安全解除与更新补丁（scripts/patch-dsh.js），无需用户手动介入。
 
 ## 已核实项（2026-08-20 补充：安装耗时与 asar 收窄）
