@@ -46,4 +46,5 @@
 - 遵循 Conventional Commits：类型前缀 + 中文主题（feat / fix / perf / refactor / docs / test / chore / build / ci）。
 - 标题尽量简短，总长不超过 100 字符；正文换行后说明动机与机制。
 - 版本发布提交固定为 chore: release vX.Y.Z；CHANGELOG.md 由发布流程生成，不手工编辑。
+- 版本号一律从最后一位逐位递增（如 0.1.0 → 0.1.1 → 0.1.2），即使包含新功能也不升中间位；发布前须向用户报出拟用版本号并取得明确同意。
 - 对外可见的表述（提交主题会进入公开 CHANGELOG 与 GitHub Releases）使用产品用语：界面统一称「青梧界面」，与「DeepSeek 界面」相对；「自研界面」等工程用语仅用于内部技术文档与代码注释。
