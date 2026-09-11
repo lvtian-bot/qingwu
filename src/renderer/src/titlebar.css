@@ -3,7 +3,6 @@
   --titlebar-fg: #cdd6f4;
   --titlebar-menu-idle-fg: #a6adc8;
   --titlebar-border: #313244;
-  --titlebar-title-fg: #7f849c;
   --titlebar-hover-bg: #283349;
   --titlebar-hover-fg: #cdd6f4;
   --titlebar-active-bg: #283349;
@@ -14,7 +13,8 @@
   height: 35px;
   background-color: var(--titlebar-bg);
   color: var(--titlebar-fg);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
   font-size: 12px;
   box-sizing: border-box;
   border-bottom: 1px solid var(--titlebar-border);
@@ -33,7 +33,6 @@
     --titlebar-fg: #1a1a1a;
     --titlebar-menu-idle-fg: #6b6b6b;
     --titlebar-border: #e2e2e4;
-    --titlebar-title-fg: #9a9a9a;
     --titlebar-hover-bg: #d4e3f8;
     --titlebar-hover-fg: #1a1a1a;
     --titlebar-active-bg: #d4e3f8;
@@ -78,7 +77,9 @@
   padding: 4px 8px;
   border-radius: 4px;
   cursor: default;
-  transition: background-color 0.1s ease, color 0.1s ease;
+  transition:
+    background-color 0.1s ease,
+    color 0.1s ease;
   line-height: 1;
 }
 
@@ -92,26 +93,8 @@
   color: var(--titlebar-active-fg);
 }
 
-.titlebar-center {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  padding: 0 12px;
-  overflow: hidden;
-  pointer-events: none;
-}
-
-.titlebar-title {
-  color: var(--titlebar-title-fg);
-  font-size: 12px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 .titlebar-controls-spacer {
+  margin-left: auto;
   width: 138px;
   height: 100%;
   flex-shrink: 0;

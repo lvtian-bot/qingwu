@@ -23,6 +23,9 @@ export const Endpoints = {
   settingsMutate: 'settings/mutate',
   workspaceFollow: 'workspace/follow',
   workspaceCreate: 'workspace/create',
+  workspaceRename: 'workspace/rename',
+  workspaceDelete: 'workspace/delete',
+  workspaceInsertSessionBefore: 'workspace/insertSessionBefore',
   directoryPickerPick: 'directoryPicker/pick',
   eventsResult: '$events/result',
 } as const;

@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
-import type { MouseEvent } from 'react';
-import './titlebar.css';
+import { useEffect, useRef, useState } from "react";
+import type { MouseEvent } from "react";
+import "./titlebar.css";
 
-const MENU_ITEMS = ['文件', '编辑', '视图', '帮助'] as const;
+const MENU_ITEMS = ["文件", "编辑", "视图", "帮助"] as const;
 type MenuName = (typeof MENU_ITEMS)[number];
 
 function QingwuIcon() {
@@ -35,7 +35,6 @@ function QingwuIcon() {
 }
 
 export function TitleBar() {
-  const [title, setTitle] = useState('青梧');
   const [activeMenu, setActiveMenu] = useState<MenuName | null>(null);
   const [isFullScreen, setIsFullScreen] = useState(false);
   const disarmPointerGuardRef = useRef<() => void>(() => {});
@@ -55,26 +54,16 @@ export function TitleBar() {
       setActiveMenu(null);
     };
     const disarm = () => {
-      window.removeEventListener('mousemove', onPointer, true);
-      window.removeEventListener('mousedown', onPointer, true);
+      window.removeEventListener("mousemove", onPointer, true);
+      window.removeEventListener("mousedown", onPointer, true);
       disarmPointerGuardRef.current = () => {};
     };
-    window.addEventListener('mousemove', onPointer, true);
-    window.addEventListener('mousedown', onPointer, true);
+    window.addEventListener("mousemove", onPointer, true);
+    window.addEventListener("mousedown", onPointer, true);
     disarmPointerGuardRef.current = disarm;
   };
 
   useEffect(() => {
-    if (window.qingwu?.getTitle) {
-      window.qingwu.getTitle().then((initialTitle) => {
-        if (initialTitle) setTitle(initialTitle);
-      });
-    }
-
-    const unsubTitle = window.qingwu?.onTitleChanged?.((newTitle) => {
-      setTitle(newTitle || '青梧');
-    });
-
     const unsubMenu = window.qingwu?.onMenuClosed?.(() => {
       clearActiveMenu();
     });
@@ -85,13 +74,15 @@ export function TitleBar() {
 
     return () => {
       disarmPointerGuardRef.current();
-      unsubTitle?.();
       unsubMenu?.();
       unsubFs?.();
     };
   }, []);
 
-  const handleMenuClick = (menuName: MenuName, e: MouseEvent<HTMLButtonElement>) => {
+  const handleMenuClick = (
+    menuName: MenuName,
+    e: MouseEvent<HTMLButtonElement>,
+  ) => {
     const rect = e.currentTarget.getBoundingClientRect();
     setActiveMenu(menuName);
     armPointerGuard();
@@ -117,17 +108,15 @@ export function TitleBar() {
             <button
               key={item}
               type="button"
-              className={"titlebar-menu-item" + (activeMenu === item ? " active" : "")}
+              className={
+                "titlebar-menu-item" + (activeMenu === item ? " active" : "")
+              }
               onClick={(e) => handleMenuClick(item, e)}
             >
               {item}
             </button>
           ))}
         </nav>
-      </div>
-
-      <div className="titlebar-center">
-        <span className="titlebar-title">{title}</span>
       </div>
 
       <div className="titlebar-controls-spacer" aria-hidden="true" />

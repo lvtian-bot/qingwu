@@ -9,7 +9,7 @@
   display: flex;
   background: var(--native-bg);
   color: var(--native-fg);
-  font-family: -apple-system, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
   font-size: 14px;
   z-index: 1;
 }
@@ -19,7 +19,10 @@
   --native-fg: #0d0d0d;
   --native-muted: #6e6e80;
   --native-border: #e5e5e8;
-  --native-sidebar-bg: #f7f7f8;
+  /* 侧栏浅蓝（与标题栏浅色底同值，标题栏左段融合无色差） */
+  --native-sidebar-bg: #eef4f9;
+  /* 右侧面板保持中性灰，不随侧栏浅蓝 */
+  --native-panel-bg: #f7f7f8;
   --native-surface: #f6f6f7;
   --native-surface-2: #ececee;
   --native-hover: #ececee;
@@ -36,7 +39,7 @@
   --native-diff-del-bg: rgba(220, 46, 42, 0.08);
   --native-diff-add-fg: #067a5e;
   --native-diff-del-fg: #b91c1c;
-  --native-mono: Consolas, 'Cascadia Code', 'Courier New', monospace;
+  --native-mono: Consolas, "Cascadia Code", "Courier New", monospace;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -45,7 +48,8 @@
     --native-fg: #ededed;
     --native-muted: #9b9b9b;
     --native-border: #232326;
-    --native-sidebar-bg: #0f0f0f;
+    --native-sidebar-bg: #181825;
+    --native-panel-bg: #0f0f0f;
     --native-surface: #1a1a1d;
     --native-surface-2: #232326;
     --native-hover: #1a1a1d;
@@ -156,7 +160,7 @@
 }
 
 .native-session-group {
-  margin-bottom: 10px;
+  margin-bottom: 6px;
 }
 
 .native-group-title {
@@ -199,8 +203,8 @@
   align-items: center;
   gap: 8px;
   width: 100%;
-  padding: 8px 10px;
-  margin-bottom: 2px;
+  padding: 5px 10px;
+  margin-bottom: 1px;
   border: none;
   border-radius: 6px;
   background: transparent;
@@ -219,6 +223,12 @@
   background: var(--native-active);
 }
 
+/* 工作区分组下的会话：缩进到与工作区名文字左对齐（左 padding 8 + 图标 15 + gap 6），
+ * 体现从属于该文件夹；未分组会话不缩进 */
+.native-session-group-ws .native-session-item {
+  padding-left: 29px;
+}
+
 .native-session-title {
   flex: 1;
   white-space: nowrap;
@@ -233,6 +243,142 @@
   background: var(--native-ok);
   flex-shrink: 0;
   animation: native-pulse 1.6s ease-in-out infinite;
+}
+
+/* ---------- 侧栏工作区行（对齐 ChatGPT 桌面版项目分组） ---------- */
+
+/* 常态与会话条目同底（透明），仅保留 hover 反馈；展开/收起由文件夹开合图标表达 */
+.native-ws-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin-bottom: 1px;
+  padding-right: 2px;
+  border-radius: 8px;
+}
+
+.native-ws-row:hover {
+  background: var(--native-hover);
+}
+
+.native-ws-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px 4px 8px;
+  border: none;
+  background: transparent;
+  color: var(--native-fg);
+  font-size: 14px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.native-ws-icon {
+  color: var(--native-muted);
+  flex-shrink: 0;
+}
+
+.native-ws-title {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+}
+
+/* 悬停浮现的操作按钮（visibility 占位，保持行宽稳定） */
+.native-ws-act {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin-left: 2px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--native-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  visibility: hidden;
+}
+
+.native-ws-row:hover .native-ws-act,
+.native-ws-act.visible {
+  visibility: visible;
+}
+
+.native-ws-act:hover {
+  background: var(--native-surface-2);
+  color: var(--native-fg);
+}
+
+.native-ws-rename {
+  flex: 1;
+  min-width: 0;
+  margin: 4px 6px;
+  padding: 4px 8px;
+  border: 1px solid var(--native-border);
+  border-radius: 6px;
+  background: var(--native-bg);
+  color: var(--native-fg);
+  font-size: 14px;
+  outline: none;
+}
+
+/* 「···」操作菜单（向下弹出） */
+.native-ws-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 4px;
+  min-width: 200px;
+  padding: 6px;
+  border: 1px solid var(--native-border);
+  border-radius: 12px;
+  background: var(--native-bg);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.14);
+  z-index: 40;
+}
+
+.native-ws-menu-delete .native-popover-item-name {
+  color: var(--native-error);
+}
+
+.native-ws-confirm-text {
+  padding: 6px 8px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--native-muted);
+}
+
+.native-ws-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 4px 6px 6px;
+}
+
+.native-ws-confirm-cancel,
+.native-ws-confirm-go {
+  padding: 4px 10px;
+  border: none;
+  border-radius: 7px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.native-ws-confirm-cancel {
+  background: var(--native-hover);
+  color: var(--native-fg);
+}
+
+.native-ws-confirm-go {
+  background: var(--native-error);
+  color: #ffffff;
 }
 
 /* ---------- 对话区 ---------- */
@@ -254,6 +400,22 @@
   gap: 16px;
   padding: 24px;
   color: var(--native-muted);
+  /* 问候语/输入框区域淡径向光晕 */
+  background: radial-gradient(
+    460px 280px at 50% 38%,
+    rgba(37, 99, 235, 0.055),
+    transparent 72%
+  );
+}
+
+@media (prefers-color-scheme: dark) {
+  .native-empty {
+    background: radial-gradient(
+      460px 280px at 50% 38%,
+      rgba(59, 130, 246, 0.05),
+      transparent 72%
+    );
+  }
 }
 
 .native-empty-title {
@@ -262,7 +424,7 @@
   color: var(--native-fg);
 }
 
-.native-empty .native-composer-box {
+.native-empty .native-composer-stack {
   width: 100%;
   max-width: 768px;
 }
@@ -430,7 +592,7 @@
 }
 
 .native-reasoning summary::before {
-  content: '▸';
+  content: "▸";
   font-size: 10px;
   transition: transform 0.15s ease;
 }
@@ -476,7 +638,7 @@
 }
 
 .native-tool-hint::before {
-  content: '';
+  content: "";
   width: 12px;
   height: 12px;
   border: 2px solid var(--native-border);
@@ -948,6 +1110,89 @@
   padding: 8px 24px 16px;
 }
 
+/* chip + 输入框的纵向组合（输入框上方的工作区上下文条） */
+.native-composer-stack {
+  max-width: 768px;
+  margin: 0 auto;
+}
+
+.native-ws-chip-wrap {
+  position: relative;
+  display: flex;
+  margin-bottom: 8px;
+}
+
+.native-ws-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 240px;
+  padding: 4px 10px;
+  border: none;
+  border-radius: 999px;
+  background: var(--native-surface);
+  color: var(--native-muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.native-ws-chip:hover {
+  background: var(--native-hover);
+  color: var(--native-fg);
+}
+
+.native-ws-chip-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* chip 菜单向下弹出 */
+.native-ws-chip-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 240px;
+  max-width: 320px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--native-border);
+  border-radius: 12px;
+  background: var(--native-surface);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.14);
+  z-index: 30;
+}
+
+.native-ws-chip-menu-sep {
+  height: 1px;
+  margin: 5px 4px;
+  background: var(--native-border);
+}
+
+/* ---------- 标题栏左侧融合 ---------- */
+
+/*
+ * native 界面且侧栏展开时（NativeApp 给 body 加 .native-sidebar-fused 并注入
+ * --native-sidebar-w），标题栏左段下边线不画、只补右段分隔线，配合侧栏与标题栏
+ * 背景同色值（浅 #eef4f9 / 深 #181825）实现视觉融合。注意不要再用绝对定位
+ * 色块铺左段：positioned 伪元素绘制在静态定位的菜单之上，会盖住菜单文字。
+ */
+body.native-sidebar-fused .titlebar {
+  border-bottom-color: transparent;
+}
+
+body.native-sidebar-fused .titlebar::after {
+  content: "";
+  position: absolute;
+  left: var(--native-sidebar-w, 0);
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: var(--titlebar-border);
+  pointer-events: none;
+}
+
 .native-composer-box {
   max-width: 768px;
   margin: 0 auto;
@@ -955,14 +1200,21 @@
   display: flex;
   flex-direction: column;
   border: 1px solid var(--native-border);
-  border-radius: 20px;
+  border-radius: 27px;
   background: var(--native-bg);
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
-  transition: border-color 0.15s ease;
+  box-shadow:
+    0 4px 18px rgba(0, 0, 0, 0.07),
+    0 1px 3px rgba(0, 0, 0, 0.04);
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 .native-composer-box:focus-within {
   border-color: var(--native-fg);
+  box-shadow:
+    0 6px 22px rgba(0, 0, 0, 0.09),
+    0 1px 3px rgba(0, 0, 0, 0.04);
 }
 
 .native-composer-box textarea {
@@ -992,7 +1244,7 @@
   padding: 4px 10px 10px;
 }
 
-/* 工具行左侧选择器（模型 / 推理强度 / 权限） */
+/* 输入框工具行选择器（权限贴左，模型与推理强度贴右） */
 .native-composer-controls {
   display: flex;
   align-items: center;
@@ -1185,6 +1437,11 @@
   cursor: default;
 }
 
+/* 空输入时隐藏发送按钮（保持占位，布局稳定；运行中的停止按钮不受影响） */
+.native-send.empty {
+  visibility: hidden;
+}
+
 .native-send.stop {
   background: var(--native-error);
   color: #ffffff;
@@ -1197,7 +1454,7 @@
   display: flex;
   flex-direction: column;
   border-left: 1px solid var(--native-border);
-  background: var(--native-sidebar-bg);
+  background: var(--native-panel-bg);
   min-height: 0;
 }
 
