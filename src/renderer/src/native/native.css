@@ -9,7 +9,8 @@
   display: flex;
   background: var(--native-bg);
   color: var(--native-fg);
-  font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  /* 雅黑优先：英数字也走雅黑自带字形，不再被 Segoe UI 截走（产品口径，勿改回） */
+  font-family: "Microsoft YaHei", -apple-system, "Segoe UI", sans-serif;
   font-size: 14px;
   z-index: 1;
 }
@@ -21,12 +22,17 @@
   --native-border: #e5e5e8;
   /* 侧栏浅蓝（与标题栏浅色底同值，标题栏左段融合无色差） */
   --native-sidebar-bg: #eef4f9;
+  /* 侧栏条目悬浮/选中：与侧栏底同色相的半透明压暗（选中档对齐 Codex 实测 ≈ 压暗 5%）；
+   * 不用中性灰——灰色压在浅蓝底上色相脱节，条目会显得又灰又重 */
+  --native-sidebar-hover: rgba(0, 0, 0, 0.035);
+  --native-sidebar-active: rgba(0, 0, 0, 0.05);
+  /* 侧栏正文用柔灰不用主文黑（Codex 侧栏实测 ≈#3a3c3f），减轻整栏压迫感 */
+  --native-sidebar-fg: #3a3c3f;
   /* 右侧面板保持中性灰，不随侧栏浅蓝 */
   --native-panel-bg: #f7f7f8;
   --native-surface: #f6f6f7;
   --native-surface-2: #ececee;
   --native-hover: #ececee;
-  --native-active: #e2e2e6;
   --native-accent: #0d0d0d;
   --native-accent-fg: #ffffff;
   --native-ok: #10a37f;
@@ -64,11 +70,13 @@
     --native-muted: #9b9b9b;
     --native-border: #232326;
     --native-sidebar-bg: #181825;
+    --native-sidebar-hover: rgba(255, 255, 255, 0.035);
+    --native-sidebar-active: rgba(255, 255, 255, 0.05);
+    --native-sidebar-fg: #d4d6d9;
     --native-panel-bg: #0f0f0f;
     --native-surface: #1a1a1d;
     --native-surface-2: #232326;
     --native-hover: #1a1a1d;
-    --native-active: #202024;
     --native-accent: #ededed;
     --native-accent-fg: #0d0d0d;
     --native-ok: #34d399;
@@ -178,7 +186,7 @@
 }
 
 .native-sidebar-search-toggle:hover {
-  background: var(--native-hover);
+  background: var(--native-sidebar-hover);
   color: var(--native-fg);
 }
 
@@ -213,14 +221,14 @@
   border: none;
   border-radius: 8px;
   background: transparent;
-  color: var(--native-fg);
-  font-size: 14px;
+  color: var(--native-sidebar-fg);
+  font-size: 15px;
   cursor: pointer;
   text-align: left;
 }
 
 .native-nav-item:hover {
-  background: var(--native-hover);
+  background: var(--native-sidebar-hover);
 }
 
 .native-nav-item svg {
@@ -283,19 +291,19 @@
   border: none;
   border-radius: 6px;
   background: transparent;
-  color: var(--native-fg);
-  font-size: 14px;
+  color: var(--native-sidebar-fg);
+  font-size: 15px;
   cursor: pointer;
   text-align: left;
   overflow: hidden;
 }
 
 .native-session-item:hover {
-  background: var(--native-hover);
+  background: var(--native-sidebar-hover);
 }
 
 .native-session-item.active {
-  background: var(--native-active);
+  background: var(--native-sidebar-active);
 }
 
 /* 工作区分组下的会话：缩进到与工作区名文字左对齐（左 padding 8 + 图标 15 + gap 6），
@@ -343,7 +351,7 @@
 }
 
 .native-ws-row:hover {
-  background: var(--native-hover);
+  background: var(--native-sidebar-hover);
 }
 
 .native-ws-main {
@@ -355,8 +363,8 @@
   padding: 4px 6px 4px 8px;
   border: none;
   background: transparent;
-  color: var(--native-fg);
-  font-size: 14px;
+  color: var(--native-sidebar-fg);
+  font-size: 15px;
   cursor: pointer;
   text-align: left;
 }
@@ -398,7 +406,8 @@
 }
 
 .native-ws-act:hover {
-  background: var(--native-surface-2);
+  /* 行内小按钮：叠在行悬浮底之上需深一档，沿用选中档保证色相一致 */
+  background: var(--native-sidebar-active);
   color: var(--native-fg);
 }
 
@@ -600,7 +609,7 @@
   border-radius: 18px;
   padding: 10px 16px;
   max-width: 80%;
-  font-size: 15px;
+  font-size: 14px;
   line-height: 1.65;
   white-space: pre-wrap;
   word-break: break-word;
@@ -612,7 +621,7 @@
 }
 
 .native-msg.assistant .native-msg-body {
-  font-size: 15px;
+  font-size: 14px;
   line-height: 1.75;
   word-break: break-word;
 }
