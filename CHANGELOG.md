@@ -2,7 +2,7 @@
 
 所有显著变更都记录在本文件中，格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
-## 0.2.0（2026-09-11）
+## 未发布
 ### ♻️ 重构
 - UserData 重定向至 ASCII 目录并自动迁移旧配置
 ### ⚙️ 工程维护
@@ -18,7 +18,7 @@
 - 提交与对外表述补充青梧界面用语规范
 - 归档 v0.2.0 发布前累计已完成事项
 
-**完整对比**: [v0.1.0...v0.2.0](https://github.com/lvtian-bot/qingwu/compare/v0.1.0...v0.2.0)
+**完整对比**: [v0.1.0...](https://github.com/lvtian-bot/qingwu/compare/v0.1.0...)
 ## 0.1.0（2026-09-09）
 ### ⚙️ 工程维护
 - 清理备用图标并忽略 .trae 工具目录
