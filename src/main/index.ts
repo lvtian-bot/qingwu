@@ -1,3 +1,4 @@
+import './paths';
 import { app, dialog, ipcMain, shell } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
 import { acquireHiddenConsole } from './console';

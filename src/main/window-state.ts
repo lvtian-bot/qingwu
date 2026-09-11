@@ -15,7 +15,15 @@ export interface WindowState {
 
 /** 窗口状态持久化：关闭时记录位置、尺寸与最大化状态，下次启动还原。 */
 export class WindowStateManager {
-  private readonly filePath = path.join(app.getPath('userData'), 'window-state.json');
+  private filePath: string | null = null;
+
+  /** 惰性求值：等 paths.ts 完成 userData 重定向后再取目录。 */
+  private getFilePath(): string {
+    if (!this.filePath) {
+      this.filePath = path.join(app.getPath('userData'), 'window-state.json');
+    }
+    return this.filePath;
+  }
 
   /** 读取上次保存的窗口状态；无记录、损坏或不在任何显示器内时回退默认值。 */
   load(): WindowState {
@@ -25,8 +33,9 @@ export class WindowStateManager {
       isMaximized: false,
     };
     try {
-      if (!fs.existsSync(this.filePath)) return defaults;
-      const raw = JSON.parse(fs.readFileSync(this.filePath, 'utf-8')) as Partial<WindowState>;
+      const filePath = this.getFilePath();
+      if (!fs.existsSync(filePath)) return defaults;
+      const raw = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as Partial<WindowState>;
       const rawWidth = typeof raw.width === 'number' ? raw.width : NaN;
       const rawHeight = typeof raw.height === 'number' ? raw.height : NaN;
       if (!Number.isFinite(rawWidth) || !Number.isFinite(rawHeight)) return defaults;
@@ -59,7 +68,7 @@ export class WindowStateManager {
       if (win.isDestroyed()) return;
       const { x, y, width, height } = win.getNormalBounds();
       const state: WindowState = { x, y, width, height, isMaximized: win.isMaximized() };
-      fs.writeFileSync(this.filePath, JSON.stringify(state, null, 2), 'utf-8');
+      fs.writeFileSync(this.getFilePath(), JSON.stringify(state, null, 2), 'utf-8');
     } catch (err) {
       console.error('[WindowState] 保存窗口状态失败:', err);
     }

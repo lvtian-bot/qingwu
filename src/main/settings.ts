@@ -16,13 +16,12 @@ type SettingsListener = (
 ) => void;
 
 class SettingsManager {
-  private configPath: string;
+  private configPath: string | null = null;
   private settings: AppSettings;
   private listeners = new Set<SettingsListener>();
   private loaded = false;
 
   constructor() {
-    this.configPath = path.join(app.getPath('userData'), 'settings.json');
     this.settings = {
       closeToTray: true,
       uiMode: 'official',
@@ -31,11 +30,20 @@ class SettingsManager {
     this.loaded = false;
   }
 
+  /** 惰性求值：等 paths.ts 完成 userData 重定向后再取目录。 */
+  private getConfigPath(): string {
+    if (!this.configPath) {
+      this.configPath = path.join(app.getPath('userData'), 'settings.json');
+    }
+    return this.configPath;
+  }
+
   load() {
     if (this.loaded) return;
+    const configPath = this.getConfigPath();
     try {
-      if (fs.existsSync(this.configPath)) {
-        const raw = fs.readFileSync(this.configPath, 'utf-8');
+      if (fs.existsSync(configPath)) {
+        const raw = fs.readFileSync(configPath, 'utf-8');
         const parsed: unknown = JSON.parse(raw);
         if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
           this.settings = { ...this.settings, ...(parsed as Partial<AppSettings>) };
@@ -53,11 +61,12 @@ class SettingsManager {
 
   save() {
     try {
-      const dir = path.dirname(this.configPath);
+      const configPath = this.getConfigPath();
+      const dir = path.dirname(configPath);
       if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
       }
-      fs.writeFileSync(this.configPath, JSON.stringify(this.settings, null, 2), 'utf-8');
+      fs.writeFileSync(configPath, JSON.stringify(this.settings, null, 2), 'utf-8');
     } catch (err) {
       console.error('[Settings] 保存配置失败:', err);
     }
