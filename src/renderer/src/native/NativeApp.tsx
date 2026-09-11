@@ -10,6 +10,7 @@ import type {
   ApprovalRequestPayload,
   AssistantBlockDelta,
   AssistantChunkEventData,
+  AssistantMessageData,
   AssistantStreamRecord,
   ContextBreakdownProjection,
   ContextPressureProjection,
@@ -42,6 +43,8 @@ import type {
   UiMode,
 } from "../../../shared/types";
 import { Markdown } from "./markdown";
+import { ChevronDownIcon } from "./native-icons";
+import { ReasoningRow } from "./ReasoningRow";
 import { ToolCard, type ToolItem } from "./ToolCard";
 import { RightPanel, type FileChangeEntry, type TodoEntry } from "./RightPanel";
 import { usePanelWidth } from "./usePanelWidth";
@@ -352,6 +355,126 @@ function CopyButton({ text }: { text: string }) {
       </svg>
       {copied && <span>已复制</span>}
     </button>
+  );
+}
+
+/**
+ * 整轮过程折叠行（对齐官方「已思考 · N 次工具调用」）：
+ * 一轮收束后，把答复之前的思考与执行收进这一行，点开才铺开。
+ */
+function TurnProcessRow({
+  toolCount,
+  messageCount,
+  open,
+  onToggle,
+}: {
+  toolCount: number;
+  messageCount: number;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  const labels: string[] = [];
+  if (toolCount > 0) labels.push(`${toolCount} 次工具调用`);
+  if (messageCount > 0) labels.push(`${messageCount} 条消息`);
+  return (
+    <button
+      type="button"
+      className="native-turn-process"
+      data-open={open || undefined}
+      aria-expanded={open}
+      onClick={onToggle}
+    >
+      <span className="native-turn-process-label">
+        {labels.length === 0 ? "已思考" : labels.join(" · ")}
+      </span>
+      <ChevronDownIcon className="native-turn-process-chevron" />
+    </button>
+  );
+}
+
+/** 一条助手消息的正文与元信息行。 */
+function AssistantBody({ item }: { item: Extract<ChatItem, { kind: "assistant" }> }) {
+  return (
+    <>
+      {(item.text || item.interrupted) && (
+        <div className="native-msg-body">
+          <Markdown text={item.text} />
+          {item.interrupted && !item.text && (
+            <span className="native-muted">（已中断）</span>
+          )}
+        </div>
+      )}
+      {item.text && (
+        <div className="native-msg-meta">
+          {item.startTime != null && (
+            <span>用时 {formatDuration(item.time - item.startTime)}</span>
+          )}
+          <span style={{ flex: 1 }} />
+          <CopyButton text={item.text} />
+        </div>
+      )}
+    </>
+  );
+}
+
+/**
+ * 一轮会话的渲染：按轮次把过程与答复分开——过程（思考、工具调用、中间消息）
+ * 在轮次收束后收进折叠行，答复永远直接显示。
+ */
+function TurnItems({
+  view,
+  cwd,
+}: {
+  view: TurnView;
+  cwd?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const renderItem = (item: MarkedChatItem, showReasoning = true) => {
+    if (item.kind === "tool") {
+      return <ToolCard key={item.key} tool={item.tool} cwd={cwd} />;
+    }
+    if (item.kind === "assistant") {
+      // 思考行的显示由调用方决定：过程折叠行收起时，思考已经由那一行代表，
+      // 答复里再挂一条「思考」就是同一段推理重复两遍（对齐官方：过程行接管）。
+      if (!item.text && !(showReasoning && item.reasoning) && !item.interrupted) {
+        return null;
+      }
+      return (
+        <div key={item.key} className="native-msg assistant">
+          {showReasoning && item.reasoning && (
+            <ReasoningRow text={item.reasoning} />
+          )}
+          <AssistantBody item={item} />
+        </div>
+      );
+    }
+    return (
+      <div key={item.key} className="native-msg user">
+        <div className="native-msg-body">{item.text}</div>
+      </div>
+    );
+  };
+
+  // 没收束完整一轮（运行中、或整轮没有答复）时照旧逐条显示，不折叠
+  if (!view.foldable || !view.answer) {
+    return <>{view.items.map((item) => renderItem(item))}</>;
+  }
+  return (
+    <>
+      <TurnProcessRow
+        toolCount={view.toolCount}
+        messageCount={view.messageCount}
+        open={open}
+        onToggle={() => setOpen((value) => !value)}
+      />
+      {open && (
+        <div className="native-turn-process-items">
+          {view.context.map((item) => renderItem(item))}
+        </div>
+      )}
+      {/* 折叠行收起时思考由它代表，展开后答复里的思考行照常显示 */}
+      {renderItem(view.answer, open)}
+    </>
   );
 }
 
@@ -1673,31 +1796,128 @@ type ChatItem =
     }
   | { kind: "tool"; key: string; tool: ToolItem };
 
-function foldChatItems(events: SessionEvent[]): ChatItem[] {
+/**
+ * 带轮次归属的渲染条目。
+ *
+ * turn 是该条目的引擎轮次（日志里 turn/start、assistant/message、tool/call 都带），
+ * tier 标出它在一轮里的位置：
+ * - answer：这一轮的正式回答，永远直接显示；
+ * - context：回答之前的思考与执行过程（思考块、工具卡片、中间消息），
+ *   轮次结束后收进「已思考 · N 次工具调用」折叠行；
+ * - 未标记：正在跑的轮次里的条目，一律直接显示，不做折叠。
+ */
+type MarkedChatItem = ChatItem & {
+  turn: number;
+  tier?: "answer" | "context";
+};
+
+/** 一轮的聚合视图：轮内条目 + 该轮是否收束 + 折叠行计数。 */
+interface TurnView {
+  turn: number;
+  items: MarkedChatItem[];
+  /** 这一轮的正式回答（无则 null：运行中的轮次、或整轮只有过程没有答复）。 */
+  answer: MarkedChatItem | null;
+  /** 回答之前的过程条目。 */
+  context: MarkedChatItem[];
+  toolCount: number;
+  messageCount: number;
+  /** 轮次已收束、有答复、且过程里有内容：这一轮以过程折叠行呈现。 */
+  foldable: boolean;
+  /** 回答条目的 key（据它把 answer 从 items 里取出来）。 */
+  answerKey: string | null;
+}
+
+/**
+ * 把条目按轮次聚合，并算出每轮的过程折叠视图。
+ *
+ * 折叠只在轮次收束（收到 turn/end）后启用：尚未收束的轮次照旧逐条显示，
+ * 过程条目在「回答之前」才是过程，回答之后的条目（异常收尾的补充消息）
+ * 照旧直接显示，不会被吞掉。
+ */
+function groupTurns(
+  items: MarkedChatItem[],
+  endedTurns: Set<number>,
+): TurnView[] {
+  const turns: TurnView[] = [];
+  const indexByTurn = new Map<number, number>();
+  for (const item of items) {
+    let index = indexByTurn.get(item.turn);
+    if (index === undefined) {
+      index = turns.length;
+      indexByTurn.set(item.turn, index);
+      turns.push({
+        turn: item.turn,
+        items: [],
+        answer: null,
+        context: [],
+        toolCount: 0,
+        messageCount: 0,
+        foldable: false,
+        answerKey: null,
+      });
+    }
+    const view = turns[index];
+    view.items.push(item);
+    if (item.tier === "answer") {
+      view.answerKey = item.key;
+    } else if (item.tier === "context") {
+      view.context.push(item);
+      if (item.kind === "tool") view.toolCount += 1;
+      else if (item.kind === "assistant") view.messageCount += 1;
+    }
+  }
+  for (const view of turns) {
+    if (view.answerKey === null) continue;
+    view.answer = view.items.find((item) => item.key === view.answerKey) ?? null;
+    if (!endedTurns.has(view.turn)) continue;
+    // 过程里没有可收的东西（例如整轮只有工具卡片）：不收，避免折叠行点开是空的
+    view.foldable =
+      view.context.length > 0 ||
+      Boolean(view.answer && view.answer.kind === "assistant" && view.answer.reasoning);
+  }
+  return turns;
+}
+
+function foldChatItems(events: SessionEvent[]): TurnView[] {
   const tools = new Map<string, ToolItem>();
-  const items: ChatItem[] = [];
+  const items: MarkedChatItem[] = [];
+  /** 已经收到 turn/end 的轮次：只有这些轮次收进折叠行。 */
+  const endedTurns = new Set<number>();
   let lastUserTime: number | null = null;
+  /** 当前事件所属轮次：优先 turn/start 声明，其次沿用上一条已知轮次。 */
+  let turn = 0;
 
   for (const event of events) {
+    if (event.type === "turn/start") {
+      const data = event.data as { turn?: number } | null;
+      if (typeof data?.turn === "number") turn = data.turn;
+      continue;
+    }
+    if (event.type === "turn/end") {
+      const data = event.data as { turn?: number } | null;
+      if (typeof data?.turn === "number") endedTurns.add(data.turn);
+      continue;
+    }
     if (event.type === "user/message") {
       const data = event.data as {
         source?: { kind: string };
         content?: unknown[];
       } | null;
       if (data?.source?.kind === "user" && Array.isArray(data.content)) {
+        const eventTurn = (event.data as { turn?: number } | null)?.turn;
+        if (typeof eventTurn === "number") turn = eventTurn;
         lastUserTime = event.time;
         items.push({
           kind: "user",
           key: `u-${event.seq}`,
           text: textOf(data.content, "text"),
           time: event.time,
+          turn,
         });
       }
     } else if (event.type === "assistant/message") {
-      const data = event.data as {
-        message?: { content?: unknown[] };
-        interrupted?: true;
-      } | null;
+      const data = event.data as AssistantMessageData | null;
+      if (typeof data?.turn === "number") turn = data.turn;
       const content = data?.message?.content;
       items.push({
         kind: "assistant",
@@ -1707,9 +1927,11 @@ function foldChatItems(events: SessionEvent[]): ChatItem[] {
         interrupted: data?.interrupted,
         time: event.time,
         startTime: lastUserTime,
+        turn,
       });
     } else if (event.type === "tool/call") {
       const data = event.data as ToolCallEventData;
+      if (typeof data.turn === "number") turn = data.turn;
       const item: ToolItem = {
         callId: data.callId,
         name: data.name,
@@ -1718,7 +1940,7 @@ function foldChatItems(events: SessionEvent[]): ChatItem[] {
         callTime: event.time,
       };
       tools.set(data.callId, item);
-      items.push({ kind: "tool", key: `t-${event.seq}`, tool: item });
+      items.push({ kind: "tool", key: `t-${event.seq}`, tool: item, turn });
     } else if (event.type === "tool/result") {
       const data = event.data as ToolResultEventData;
       const block = data.message?.content?.[0];
@@ -1747,12 +1969,35 @@ function foldChatItems(events: SessionEvent[]): ChatItem[] {
               pending: false,
               resultTime: event.time,
             },
+            turn,
           });
         }
       }
     }
   }
-  return items;
+
+  // 一轮里最后一条有正文的助手消息就是这一轮的答复；它之前的条目都是过程。
+  // 只有已经收到 turn/end 的轮次才收：正在跑的轮次中途也可能已经有一条答复，
+  // 那时收起来会把后面还在跑的过程挡在外面（且运行中用户正要看过程）。
+  const marked = groupTurns(items, endedTurns);
+  for (const view of marked) {
+    if (!view.foldable) continue;
+    let answerIndex = -1;
+    for (let index = view.items.length - 1; index >= 0; index -= 1) {
+      const item = view.items[index];
+      if (item.kind === "assistant" && item.text.trim() !== "") {
+        answerIndex = index;
+        break;
+      }
+    }
+    if (answerIndex < 0) continue;
+    view.items.forEach((item, index) => {
+      if (index === answerIndex) item.tier = "answer";
+      else if (index < answerIndex) item.tier = "context";
+    });
+  }
+
+  return groupTurns(items, endedTurns);
 }
 
 /**
@@ -1873,10 +2118,15 @@ export function NativeApp() {
     null,
   );
   const [currentId, setCurrentId] = useState<string | null>(null);
-  const [items, setItems] = useState<ChatItem[]>([]);
+  const [items, setItems] = useState<TurnView[]>([]);
   const [draft, setDraft] = useState("");
   /** 流式思考文本（reasoning-delta 累积）。 */
   const [liveReasoning, setLiveReasoning] = useState("");
+  /**
+   * 在飞块是否仍是思考块：思考增量置真，文本/工具调用块开始后置假。只决定
+   * 折叠行的摘取哪一行、要不要扫光（对齐官方「推理块是否仍是流式尾巴」的判据）。
+   */
+  const [reasoningActive, setReasoningActive] = useState(false);
   /** block-start(tool-call) 已宣告但 tool/call 事件未落地的提示态。 */
   const [toolCalling, setToolCalling] = useState(false);
   const [input, setInput] = useState("");
@@ -2218,6 +2468,7 @@ export function NativeApp() {
     setItems([]);
     setDraft("");
     setLiveReasoning("");
+    setReasoningActive(false);
     setToolCalling(false);
     stickBottomRef.current = true;
     setQueue([]);
@@ -2236,6 +2487,14 @@ export function NativeApp() {
     let cancelled = false;
     /** 本代连接的 live 帧 revision；null 表示开场基线未声明，此时不做跳号检查。 */
     let assistantRevision: number | null = null;
+
+    /** 清空流式展示态（切换会话／重连／开场基线／开始与放弃 attempt 共用）。 */
+    const resetStreamingDisplay = () => {
+      setDraft("");
+      setLiveReasoning("");
+      setReasoningActive(false);
+      setToolCalling(false);
+    };
 
     /**
      * 打开 follow 流。必须声明 assistantStream：0.1.5 起「正在输出的文本」与
@@ -2267,26 +2526,33 @@ export function NativeApp() {
         sessionStreamRef.current = null;
       }
       assistantRevision = null;
-      setDraft("");
-      setLiveReasoning("");
-      setToolCalling(false);
+      resetStreamingDisplay();
       openFollow();
     };
 
-    /** 一条 live 增量折进流式展示态。 */
+    /**
+     * 一条 live 增量折进流式展示态。
+     *
+     * 在飞块是不是思考块，首选 block-start 的声明：推理块开始的当口先按思考态
+     * 渲染，一旦文本块或工具调用块开始，思考就已经是过去完成的过程，折叠行随之
+     * 从「跟着最后一行」切回静态摘要。旧引擎（0.1.4 及以前）的 durable
+     * assistant/chunk 只发增量、没有 block-start，那就按增量类型兜底。
+     */
     const applyAssistantChunk = (chunk: AssistantBlockDelta) => {
+      if (chunk.type === "block-start") {
+        setReasoningActive(chunk.blockType === "reasoning");
+        if (chunk.blockType === "tool-call") setToolCalling(true);
+        return;
+      }
       if (chunk.type === "text-delta" && typeof chunk.text === "string") {
+        setReasoningActive(false);
         setDraft((prev) => prev + chunk.text);
       } else if (
         chunk.type === "reasoning-delta" &&
         typeof chunk.text === "string"
       ) {
+        setReasoningActive(true);
         setLiveReasoning((prev) => prev + chunk.text);
-      } else if (
-        chunk.type === "block-start" &&
-        chunk.blockType === "tool-call"
-      ) {
-        setToolCalling(true);
       }
     };
 
@@ -2313,9 +2579,7 @@ export function NativeApp() {
         // 开场基线：把在飞 attempt 已经产出的增量补回流式展示，
         // 否则切回正在输出的会话会空白到下一次 settlement 才出现整段回复。
         assistantRevision = frame.assistantStream?.revision ?? null;
-        setDraft("");
-        setLiveReasoning("");
-        setToolCalling(false);
+        resetStreamingDisplay();
         const pending = frame.assistantStream?.activeAttempt?.stream;
         if (Array.isArray(pending)) {
           for (const chunk of expandStreamRecords(pending)) {
@@ -2335,9 +2599,7 @@ export function NativeApp() {
         }
         assistantRevision = live.revision;
         if (live.type === "start") {
-          setDraft("");
-          setLiveReasoning("");
-          setToolCalling(false);
+          resetStreamingDisplay();
           return;
         }
         if (live.type === "chunk") {
@@ -2347,9 +2609,7 @@ export function NativeApp() {
         // end：committed 时紧随其后的 durable settlement 会清空流式态，此处不动避免闪空；
         // 被放弃的 attempt 不会再有 settlement，必须就地清掉，否则残留半截文本。
         if (live.outcome.kind === "abandoned") {
-          setDraft("");
-          setLiveReasoning("");
-          setToolCalling(false);
+          resetStreamingDisplay();
         }
         return;
       }
@@ -2363,9 +2623,7 @@ export function NativeApp() {
           return;
         }
         if (event.type === "assistant/message") {
-          setDraft("");
-          setLiveReasoning("");
-          setToolCalling(false);
+          resetStreamingDisplay();
         }
         appendEvent(event);
       }
@@ -3327,77 +3585,30 @@ export function NativeApp() {
                 {loadingHistory && (
                   <div className="native-hint">正在加载会话历史…</div>
                 )}
-                {items.map((item) => {
-                  if (item.kind === "user") {
-                    return (
-                      <div key={item.key} className="native-msg user">
-                        <div className="native-msg-body">{item.text}</div>
-                      </div>
-                    );
-                  }
-                  if (item.kind === "assistant") {
-                    if (!item.text && !item.reasoning && !item.interrupted)
-                      return null;
-                    return (
-                      <div key={item.key} className="native-msg assistant">
-                        {item.reasoning && (
-                          <details className="native-reasoning">
-                            <summary>思考过程</summary>
-                            <div className="native-reasoning-body">
-                              {item.reasoning}
-                            </div>
-                          </details>
-                        )}
-                        {(item.text || item.interrupted) && (
-                          <div className="native-msg-body">
-                            <Markdown text={item.text} />
-                            {item.interrupted && !item.text && (
-                              <span className="native-muted">（已中断）</span>
-                            )}
-                          </div>
-                        )}
-                        {item.text && (
-                          <div className="native-msg-meta">
-                            {item.startTime != null && (
-                              <span>
-                                用时{" "}
-                                {formatDuration(item.time - item.startTime)}
-                              </span>
-                            )}
-                            <span style={{ flex: 1 }} />
-                            <CopyButton text={item.text} />
-                          </div>
-                        )}
-                      </div>
-                    );
-                  }
-                  return (
-                    <ToolCard
-                      key={item.key}
-                      tool={item.tool}
-                      cwd={currentCwd}
-                    />
-                  );
-                })}
-                {liveReasoning && (
-                  // 思考中展开跟随；正文一开始输出就收起（对齐官方「思考」行的行为）
-                  <details
-                    open={!draft}
-                    className={draft ? "native-reasoning" : "native-reasoning live"}
-                  >
-                    <summary>{draft ? "思考过程" : "正在思考…"}</summary>
-                    <div className="native-reasoning-body">{liveReasoning}</div>
-                  </details>
-                )}
-                {toolCalling && !liveReasoning && (
-                  <div className="native-tool-hint">正在调用工具…</div>
-                )}
-                {draft && (
+                {items.map((view) => (
+                  <TurnItems key={view.turn} view={view} cwd={currentCwd} />
+                ))}
+                {(liveReasoning || draft || toolCalling) && (
+                  // 本轮在飞内容合成一条助手消息：思考折叠行在上、正文在下，
+                  // 与回合结束后的落库布局一致，收束时不会整块跳位。
                   <div className="native-msg assistant">
-                    <div className="native-msg-body">
-                      <Markdown text={draft} />
-                      <span className="native-cursor" />
-                    </div>
+                    {liveReasoning && (
+                      <ReasoningRow
+                        text={liveReasoning}
+                        running={reasoningActive}
+                      />
+                    )}
+                    {draft ? (
+                      <div className="native-msg-body">
+                        <Markdown text={draft} />
+                        <span className="native-cursor" />
+                      </div>
+                    ) : (
+                      toolCalling &&
+                      !liveReasoning && (
+                        <div className="native-tool-hint">正在调用工具…</div>
+                      )
+                    )}
                   </div>
                 )}
                 <div ref={bottomRef} />

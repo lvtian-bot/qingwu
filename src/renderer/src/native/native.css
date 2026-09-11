@@ -589,52 +589,217 @@
   color: var(--native-muted);
 }
 
-/* ---------- 思考过程 ---------- */
+/* ---------- 思考过程（默认折叠成一行，点这一行看全文） ---------- */
 
 .native-reasoning {
-  margin: 0 0 8px;
-  border-left: 2px solid var(--native-border);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  margin-top: 4px;
 }
 
-.native-reasoning summary {
-  display: inline-flex;
+/* 折叠态固定一行高：摘要逐增量刷新时不会带着下面的答案上下跳 */
+.native-reasoning:not(.open) {
+  contain: size layout;
+  height: 24px;
+}
+
+.native-reasoning-row {
+  position: relative;
+  overflow: hidden;
+  display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 2px 8px;
-  font-size: 12px;
-  color: var(--native-muted);
+  height: 24px;
+  min-width: 0;
   cursor: pointer;
   user-select: none;
-  list-style: none;
 }
 
-.native-reasoning summary::-webkit-details-marker {
-  display: none;
+.native-reasoning-leading {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-right: 6px;
 }
 
-.native-reasoning summary::before {
-  content: "▸";
-  font-size: 10px;
-  transition: transform 0.15s ease;
+/* 常态显示思考图标，悬停时原位换成展开箭头（对齐官方展开行的反馈） */
+.native-reasoning-icon {
+  display: inline-flex;
+  color: var(--native-muted);
+  transition: opacity 0.1s ease;
 }
 
-.native-reasoning[open] summary::before {
-  transform: rotate(90deg);
+.native-reasoning-chevron {
+  position: absolute;
+  inset: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--native-muted);
+  opacity: 0;
+  transition: opacity 0.1s ease;
 }
 
-.native-reasoning.live summary {
-  color: var(--native-fg);
+.native-reasoning.open .native-reasoning-icon,
+.native-reasoning-row:hover .native-reasoning-icon {
+  opacity: 0;
+}
+
+.native-reasoning.open .native-reasoning-chevron,
+.native-reasoning-row:hover .native-reasoning-chevron {
+  opacity: 1;
+}
+
+.native-reasoning-title {
+  flex: none;
+  font-size: 13px;
+  line-height: 24px;
+  color: var(--native-muted);
+}
+
+.native-reasoning-dot {
+  flex: none;
+  width: 2px;
+  height: 2px;
+  margin: 0 8px;
+  border-radius: 1px;
+  background: var(--native-muted);
+}
+
+.native-reasoning-summary {
+  flex: auto;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 24px;
+  white-space: nowrap;
+  color: var(--native-muted);
+}
+
+.native-reasoning-summary-text {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 思考中：摘要右对齐，最新的字贴着右边、左侧旧内容裁掉 */
+.native-reasoning-summary[data-follow-end] {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.native-reasoning-summary[data-follow-end] .native-reasoning-summary-text {
+  flex: none;
+  width: max-content;
+  min-width: 100%;
+  overflow: visible;
+  text-align: start;
+  text-overflow: clip;
+}
+
+/* 思考中：一行微弱扫光，让「还在想」看得出来（关掉动效偏好时不显示） */
+.native-reasoning-row.running::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  inset-block: 0;
+  width: 300px;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--native-hover) 55%,
+    transparent 100%
+  );
+  animation: native-reasoning-sweep 2.6s ease-out infinite;
+}
+
+@keyframes native-reasoning-sweep {
+  0% {
+    left: -300px;
+  }
+
+  90%,
+  100% {
+    left: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .native-reasoning-row.running::after {
+    animation: none;
+  }
 }
 
 .native-reasoning-body {
-  padding: 4px 10px 8px;
+  padding: 4px 0;
   font-size: 13px;
-  line-height: 1.65;
+  line-height: 1.54;
   color: var(--native-muted);
   white-space: pre-wrap;
   word-break: break-word;
   max-height: 320px;
   overflow-y: auto;
+}
+
+/* ---------- 整轮过程折叠行（已思考 · N 次工具调用） ---------- */
+
+.native-turn-process {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  height: 33px;
+  padding: 0 0 8px;
+  border: none;
+  border-bottom: 0.5px solid var(--native-border);
+  background: transparent;
+  color: var(--native-muted);
+  cursor: pointer;
+  text-align: left;
+}
+
+/* 收起态自带下间距；展开态由过程条目自己的间距接管 */
+.native-turn-process:not([data-open]) {
+  margin-bottom: 8px;
+}
+
+.native-turn-process-label {
+  flex: none;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 14px;
+  line-height: 24px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.native-turn-process-chevron {
+  flex: none;
+  margin-left: 6px;
+  transform: rotate(-90deg);
+  transition: transform 0.1s ease;
+}
+
+.native-turn-process[data-open] .native-turn-process-chevron {
+  transform: rotate(0);
+}
+
+/* 展开的过程内容整体缩进，与折叠行左边缘区分开 */
+.native-turn-process-items {
+  padding-left: 8px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .native-turn-process-chevron {
+    transition: none;
+  }
 }
 
 /* ---------- 流式状态 ---------- */

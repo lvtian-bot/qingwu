@@ -188,11 +188,15 @@ export interface UserMessageData {
 }
 
 export interface AssistantMessageData {
+  turn: number;
+  step: number;
   message?: { content?: ContentBlock[] };
   interrupted?: true;
 }
 
 export interface ToolCallEventData {
+  turn: number;
+  step: number;
   callId: string;
   name: string;
   arguments: string;
