@@ -3,6 +3,7 @@
  * 数据由 NativeApp 从会话事件派生，无独立 IPC。
  */
 import { useState } from 'react';
+import type { ReactNode } from 'react';
 import { DiffView } from './ToolCard';
 
 export interface TodoEntry {
@@ -14,7 +15,7 @@ export interface FileChangeEntry {
   path: string;
   edits: number;
   writes: number;
-  /** 最近一次 edit 的前后内容，用于展开 diff。 */
+  /** 最近一次修改的 diff：edit 的前后片段，或 write 的完整内容。 */
   lastEdit?: { oldStr: string; newStr: string };
 }
 
@@ -24,13 +25,35 @@ export interface RightPanelProps {
   width: number;
   todos: TodoEntry[] | null;
   fileChanges: FileChangeEntry[];
+  /** 展开/收起面板；按钮在面板顶栏右缘，与会话标题栏的收起态按钮共用图标。 */
+  onToggle: () => void;
+}
+
+/** 面板开关图标：圆角矩形 + 左侧竖线（对齐官方右侧面板按钮）。 */
+export function PanelIcon(): ReactNode {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="15"
+      height="15"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M9 4v16" />
+    </svg>
+  );
 }
 
 function basename(p: string): string {
   return p.split(/[\\/]/).filter(Boolean).pop() ?? p;
 }
 
-export function RightPanel({ collapsed, width, todos, fileChanges }: RightPanelProps) {
+export function RightPanel({ collapsed, width, todos, fileChanges, onToggle }: RightPanelProps) {
   const [expandedPath, setExpandedPath] = useState<string | null>(null);
 
   if (collapsed) return null;
@@ -39,6 +62,9 @@ export function RightPanel({ collapsed, width, todos, fileChanges }: RightPanelP
     <aside className="native-panel" style={{ width }}>
       <div className="native-panel-header">
         <span className="native-panel-title">工作区</span>
+        <button className="native-icon-btn" onClick={onToggle} title="收起面板" aria-label="收起面板">
+          <PanelIcon />
+        </button>
       </div>
 
       <div className="native-panel-body">
@@ -49,7 +75,7 @@ export function RightPanel({ collapsed, width, todos, fileChanges }: RightPanelP
               {todos.map((todo, i) => (
                 <li key={i} className={`native-todo-${todo.status}`}>
                   <span className="native-todo-mark">
-                    {todo.status === 'done' ? '✓' : todo.status === 'in_progress' ? '◐' : '○'}
+                    {todo.status === 'completed' ? '✓' : todo.status === 'in_progress' ? '◐' : '○'}
                   </span>
                   <span className="native-todo-text">{todo.content}</span>
                 </li>

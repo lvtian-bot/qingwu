@@ -48,7 +48,7 @@ import { Markdown } from "./markdown";
 import { ChevronDownIcon } from "./native-icons";
 import { ReasoningRow } from "./ReasoningRow";
 import { ToolCard, type ToolItem } from "./ToolCard";
-import { RightPanel, type FileChangeEntry, type TodoEntry } from "./RightPanel";
+import { RightPanel, PanelIcon, type FileChangeEntry, type TodoEntry } from "./RightPanel";
 import { usePanelWidth } from "./usePanelWidth";
 import "./native.css";
 
@@ -3713,14 +3713,31 @@ export function NativeApp({
     );
   };
 
-  /** 右侧面板数据：todo_write 最新状态 + edit/write 文件聚合。 */
+  /** 右侧面板数据：todo_write 最新状态 + edit/write 文件聚合，失败调用不计入。 */
   const panelData = useMemo(() => {
+    const failedCalls = new Set<string>();
+    const toolCalls: ToolCallEventData[] = [];
+    for (const event of eventsRef.current) {
+      if (event.type === "tool/call") {
+        const data = event.data as ToolCallEventData | null;
+        if (data && typeof data.arguments === "string") toolCalls.push(data);
+      } else if (event.type === "tool/result") {
+        const data = event.data as ToolResultEventData | null;
+        const block = data?.message?.content?.[0];
+        if (
+          data &&
+          block &&
+          block.type === "tool-result" &&
+          (data.error || block.isError)
+        ) {
+          failedCalls.add(block.toolCallId);
+        }
+      }
+    }
     let todos: TodoEntry[] | null = null;
     const files = new Map<string, FileChangeEntry>();
-    for (const event of eventsRef.current) {
-      if (event.type !== "tool/call") continue;
-      const data = event.data as ToolCallEventData | null;
-      if (!data || typeof data.arguments !== "string") continue;
+    for (const data of toolCalls) {
+      if (failedCalls.has(data.callId)) continue;
       try {
         const args = JSON.parse(data.arguments) as EditArgs &
           WriteArgs &
@@ -3744,6 +3761,9 @@ export function NativeApp({
               }
             } else {
               entry.writes += 1;
+              if (typeof args.content === "string") {
+                entry.lastEdit = { oldStr: "", newStr: args.content };
+              }
             }
             files.set(args.file_path, entry);
           }
@@ -4612,26 +4632,17 @@ export function NativeApp({
               {/* 侧栏开关已上移标题栏菜单栏；左端留空占位，右端面板按钮才有落点 */}
               <div className="native-chat-header-left" />
               <div className="native-chat-header-right">
-                <button
-                  className="native-icon-btn"
-                  onClick={() => setPanelCollapsed((v) => !v)}
-                  title={panelCollapsed ? "打开面板" : "收起面板"}
-                >
-                  <svg
-                    viewBox="0 0 24 24"
-                    width="15"
-                    height="15"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    aria-hidden="true"
+                {/* 面板展开后按钮由面板顶栏右缘接管，按钮始终贴窗口右缘 */}
+                {panelCollapsed && (
+                  <button
+                    className="native-icon-btn"
+                    onClick={() => setPanelCollapsed((v) => !v)}
+                    title="打开面板"
+                    aria-label="打开面板"
                   >
-                    <rect x="3" y="4" width="18" height="16" rx="2" />
-                    <path d="M15 4v16" />
-                  </svg>
-                </button>
+                    <PanelIcon />
+                  </button>
+                )}
               </div>
             </div>
             <div className="native-empty">
@@ -4698,26 +4709,17 @@ export function NativeApp({
                 <span className="native-chat-header-title">{currentTitle}</span>
               </div>
               <div className="native-chat-header-right">
-                <button
-                  className="native-icon-btn"
-                  onClick={() => setPanelCollapsed((v) => !v)}
-                  title={panelCollapsed ? "打开面板" : "收起面板"}
-                >
-                  <svg
-                    viewBox="0 0 24 24"
-                    width="15"
-                    height="15"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    aria-hidden="true"
+                {/* 面板展开后按钮由面板顶栏右缘接管，按钮始终贴窗口右缘 */}
+                {panelCollapsed && (
+                  <button
+                    className="native-icon-btn"
+                    onClick={() => setPanelCollapsed((v) => !v)}
+                    title="打开面板"
+                    aria-label="打开面板"
                   >
-                    <rect x="3" y="4" width="18" height="16" rx="2" />
-                    <path d="M15 4v16" />
-                  </svg>
-                </button>
+                    <PanelIcon />
+                  </button>
+                )}
               </div>
             </div>
             <div
@@ -4891,6 +4893,7 @@ export function NativeApp({
         width={rightPanel.width}
         todos={panelData.todos}
         fileChanges={panelData.fileChanges}
+        onToggle={() => setPanelCollapsed((v) => !v)}
       />
     </div>
   );

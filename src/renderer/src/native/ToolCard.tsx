@@ -81,6 +81,8 @@ const ICONS = {
 
 /** old→new 行级 diff：红/绿背景 + -/+ 前缀。 */
 export function DiffView({ oldStr, newStr }: { oldStr: string; newStr: string }) {
+  /** 超出上限的行不再渲染，避免大 diff 拖垮面板与会话流。 */
+  const MAX_DIFF_LINES = 400;
   const lines = useMemo(() => {
     const parts = diffLines(oldStr, newStr) as { added?: boolean; removed?: boolean; value: string }[];
     const rows: { sign: '+' | '-' | ' '; text: string }[] = [];
@@ -92,15 +94,19 @@ export function DiffView({ oldStr, newStr }: { oldStr: string; newStr: string })
     }
     return rows;
   }, [oldStr, newStr]);
+  const shown = lines.length > MAX_DIFF_LINES ? lines.slice(0, MAX_DIFF_LINES) : lines;
 
   return (
     <div className="native-diff">
-      {lines.map((line, i) => (
+      {shown.map((line, i) => (
         <div key={i} className={`native-diff-line ${line.sign === '+' ? 'add' : line.sign === '-' ? 'del' : ''}`}>
           <span className="native-diff-sign">{line.sign}</span>
           <span className="native-diff-text">{line.text || ' '}</span>
         </div>
       ))}
+      {lines.length > MAX_DIFF_LINES && (
+        <div className="native-diff-more">… 其余 {lines.length - MAX_DIFF_LINES} 行未显示</div>
+      )}
     </div>
   );
 }

@@ -44,8 +44,7 @@
   --native-sidebar-active: rgba(0, 0, 0, 0.05);
   /* 侧栏正文用柔灰不用主文黑（Codex 侧栏实测 ≈#3a3c3f），减轻整栏压迫感 */
   --native-sidebar-fg: #3a3c3f;
-  /* 右侧面板保持中性灰，不随侧栏浅蓝 */
-  --native-panel-bg: #f7f7f8;
+  /* 右侧面板与会话区同底色，仅以左缘一条细线区分 */
   --native-surface: #f6f6f7;
   --native-surface-2: #ececee;
   --native-hover: #ececee;
@@ -91,7 +90,6 @@
     --native-sidebar-hover: rgba(255, 255, 255, 0.035);
     --native-sidebar-active: rgba(255, 255, 255, 0.05);
     --native-sidebar-fg: #d4d6d9;
-    --native-panel-bg: #0f0f0f;
     --native-surface: #1a1a1d;
     --native-surface-2: #232326;
     --native-hover: #1a1a1d;
@@ -1494,6 +1492,13 @@
   min-width: 0;
 }
 
+.native-diff-more {
+  padding: 4px 8px;
+  color: var(--native-muted);
+  font-family: "Microsoft YaHei", -apple-system, "Segoe UI", sans-serif;
+  white-space: normal;
+}
+
 /* ---------- 任务清单（卡片内） ---------- */
 
 .native-tool-todos {
@@ -1509,7 +1514,7 @@
   font-size: 12.5px;
 }
 
-.native-todo-done .native-todo-text {
+.native-todo-completed .native-todo-text {
   color: var(--native-muted);
   text-decoration: line-through;
 }
@@ -2461,7 +2466,7 @@ body.native-ui-active .titlebar {
   display: flex;
   flex-direction: column;
   border-left: 1px solid var(--native-border);
-  background: var(--native-panel-bg);
+  background: var(--native-bg);
   min-height: 0;
 }
 
