@@ -34,7 +34,13 @@ function QingwuIcon() {
   );
 }
 
-export function TitleBar() {
+export function TitleBar({
+  sidebarCollapsed,
+  onToggleSidebar,
+}: {
+  sidebarCollapsed: boolean;
+  onToggleSidebar: () => void;
+}) {
   const [activeMenu, setActiveMenu] = useState<MenuName | null>(null);
   const [isFullScreen, setIsFullScreen] = useState(false);
   const disarmPointerGuardRef = useRef<() => void>(() => {});
@@ -103,6 +109,29 @@ export function TitleBar() {
         <div className="titlebar-icon">
           <QingwuIcon />
         </div>
+        <button
+          type="button"
+          className="titlebar-side-toggle"
+          onClick={onToggleSidebar}
+          title={sidebarCollapsed ? "打开侧边栏" : "收起侧边栏"}
+          aria-label={sidebarCollapsed ? "打开侧边栏" : "收起侧边栏"}
+          aria-pressed={!sidebarCollapsed}
+        >
+          <svg
+            viewBox="0 0 24 24"
+            width="15"
+            height="15"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <rect x="3" y="4" width="18" height="16" rx="2" />
+            <path d="M9 4v16" />
+          </svg>
+        </button>
         <nav className="titlebar-menu" aria-label="应用菜单">
           {MENU_ITEMS.map((item) => (
             <button

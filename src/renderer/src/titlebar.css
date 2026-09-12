@@ -68,6 +68,30 @@
   gap: 2px;
 }
 
+/* 侧边栏开关（对齐 ChatGPT 桌面版：常驻菜单栏，不随侧栏折叠消失） */
+.titlebar-side-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 24px;
+  margin-right: 2px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--titlebar-menu-idle-fg);
+  cursor: default;
+  transition:
+    background-color 0.1s ease,
+    color 0.1s ease;
+}
+
+.titlebar-side-toggle:hover {
+  background-color: var(--titlebar-hover-bg);
+  color: var(--titlebar-hover-fg);
+}
+
 .titlebar-menu-item {
   background: transparent;
   border: none;

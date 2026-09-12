@@ -1686,6 +1686,19 @@ body.native-sidebar-fused .titlebar::after {
   pointer-events: none;
 }
 
+/*
+ * 侧栏展开时对话区是一块浮在页面底色上的白色圆角面板（对齐 ChatGPT 桌面版）：
+ * 左上角做出弧度，缺口露出与侧栏同色的底；收起侧栏后对话区整幅铺满，不做圆角。
+ */
+body.native-sidebar-fused .native-app {
+  background: var(--native-sidebar-bg);
+}
+
+body.native-sidebar-fused .native-chat {
+  background: var(--native-bg);
+  border-top-left-radius: 12px;
+}
+
 .native-composer-box {
   max-width: var(--native-composer-w);
   margin: 0 auto;

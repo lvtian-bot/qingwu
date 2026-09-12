@@ -2106,7 +2106,12 @@ function orderWorkspaces(
   });
 }
 
-export function NativeApp() {
+export function NativeApp({
+  sidebarCollapsed,
+}: {
+  /** 侧栏折叠态（开关在标题栏菜单栏，状态由入口层持有，与 TitleBar 共用）。 */
+  sidebarCollapsed: boolean;
+}) {
   const [visible, setVisible] = useState(false);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   /** 会话列表最新快照：切换会话时据它播种运行态，避免把 sessions 纳入 effect 依赖。 */
@@ -2148,8 +2153,6 @@ export function NativeApp() {
   const [loadingHistory, setLoadingHistory] = useState(false);
   /** 右侧面板折叠态。 */
   const [panelCollapsed, setPanelCollapsed] = useState(false);
-  /** 侧栏折叠态（聊天区标题栏常驻按钮收起/展开）。 */
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   /** 会话搜索（纯前端标题过滤）。 */
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchText, setSearchText] = useState("");
@@ -3429,28 +3432,8 @@ export function NativeApp() {
         {showGreeting ? (
           <>
             <div className="native-chat-header">
-              <div className="native-chat-header-left">
-                <button
-                  className="native-icon-btn"
-                  onClick={() => setSidebarCollapsed((v) => !v)}
-                  title={sidebarCollapsed ? "打开侧边栏" : "收起侧边栏"}
-                >
-                  <svg
-                    viewBox="0 0 24 24"
-                    width="15"
-                    height="15"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    aria-hidden="true"
-                  >
-                    <rect x="3" y="4" width="18" height="16" rx="2" />
-                    <path d="M9 4v16" />
-                  </svg>
-                </button>
-              </div>
+              {/* 侧栏开关已上移标题栏菜单栏；左端留空占位，右端面板按钮才有落点 */}
+              <div className="native-chat-header-left" />
               <div className="native-chat-header-right">
                 <button
                   className="native-icon-btn"
@@ -3518,26 +3501,6 @@ export function NativeApp() {
           <>
             <div className="native-chat-header">
               <div className="native-chat-header-left">
-                <button
-                  className="native-icon-btn"
-                  onClick={() => setSidebarCollapsed((v) => !v)}
-                  title={sidebarCollapsed ? "打开侧边栏" : "收起侧边栏"}
-                >
-                  <svg
-                    viewBox="0 0 24 24"
-                    width="15"
-                    height="15"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    aria-hidden="true"
-                  >
-                    <rect x="3" y="4" width="18" height="16" rx="2" />
-                    <path d="M9 4v16" />
-                  </svg>
-                </button>
                 <svg
                   viewBox="0 0 24 24"
                   width="16"
