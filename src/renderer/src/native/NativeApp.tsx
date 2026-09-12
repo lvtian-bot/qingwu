@@ -17,12 +17,14 @@ import type {
   EditArgs,
   InboxMessage,
   InboxSplicedEventData,
+  ImageAttachmentRef,
   ModelCatalog,
   ModelSelection,
   PermissionSelect,
   PresetOption,
   QueueAction,
   RemoteEventFrame,
+  SessionAttachmentResult,
   SessionEvent,
   SessionFollowFrame,
   SessionSummary,
@@ -78,6 +80,223 @@ function textOf(content: unknown[], blockType: "text" | "reasoning"): string {
     )
     .map((block) => block.text)
     .join("");
+}
+
+/** 草稿中附加的图片项。 */
+export interface DraftImage {
+  id: string;
+  file: File;
+  previewUrl: string;
+  mediaType: "image/png" | "image/jpeg" | "image/webp" | "image/gif";
+  name: string;
+  base64?: string;
+}
+
+/** 消息（用户或队列）中展示的图片项。 */
+export interface MessageImageItem {
+  id?: string;
+  url?: string;
+  attachmentId?: string;
+  mediaType?: string;
+  name?: string;
+  width?: number;
+  height?: number;
+}
+
+const SUPPORTED_IMAGE_TYPES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/gif",
+]);
+
+const MAX_IMAGES_PER_MESSAGE = 20;
+const MAX_IMAGE_BYTES = 20 * 1024 * 1024; // 20MB
+
+function isSupportedImage(file: File): boolean {
+  if (SUPPORTED_IMAGE_TYPES.has(file.type)) return true;
+  const ext = file.name.split(".").pop()?.toLowerCase();
+  return ext === "png" || ext === "jpg" || ext === "jpeg" || ext === "webp" || ext === "gif";
+}
+
+function getImageMediaType(file: File): "image/png" | "image/jpeg" | "image/webp" | "image/gif" {
+  if (file.type === "image/png") return "image/png";
+  if (file.type === "image/jpeg" || file.type === "image/jpg") return "image/jpeg";
+  if (file.type === "image/webp") return "image/webp";
+  if (file.type === "image/gif") return "image/gif";
+  const ext = file.name.split(".").pop()?.toLowerCase();
+  if (ext === "png") return "image/png";
+  if (ext === "jpg" || ext === "jpeg") return "image/jpeg";
+  if (ext === "webp") return "image/webp";
+  if (ext === "gif") return "image/gif";
+  return "image/png";
+}
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      const commaIndex = result.indexOf(",");
+      resolve(commaIndex !== -1 ? result.slice(commaIndex + 1) : result);
+    };
+    reader.onerror = () => reject(new Error("读取图片失败"));
+    reader.readAsDataURL(file);
+  });
+}
+
+function base64ToBlobUrl(base64: string, mediaType: string): string {
+  try {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return URL.createObjectURL(new Blob([bytes], { type: mediaType }));
+  } catch {
+    return `data:${mediaType};base64,${base64}`;
+  }
+}
+
+/** 缓存已加载的持久化图片 Blob URL，避免重复调用 RPC */
+const attachmentUrlCache = new Map<string, string>();
+
+/** 消息内图片展示项：支持 blob 预览 URL 与宿主 attachmentId 按需异步加载。 */
+function MessageImageView({
+  image,
+  sessionId,
+  onPreview,
+}: {
+  image: MessageImageItem;
+  sessionId?: string | null;
+  onPreview?: (url: string) => void;
+}) {
+  const [src, setSrc] = useState<string | null>(image.url ?? null);
+  const [loading, setLoading] = useState(!image.url && !!image.attachmentId);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    if (image.url) {
+      setSrc(image.url);
+      setLoading(false);
+      return;
+    }
+    if (!image.attachmentId || !sessionId) return;
+
+    const cacheKey = `${sessionId}:${image.attachmentId}`;
+    const cached = attachmentUrlCache.get(cacheKey);
+    if (cached) {
+      setSrc(cached);
+      setLoading(false);
+      return;
+    }
+
+    let active = true;
+    setLoading(true);
+    setError(false);
+
+    rpc<SessionAttachmentResult>(Endpoints.sessionAttachment, {
+      request: {
+        sessionId,
+        attachmentId: image.attachmentId,
+      },
+    })
+      .then((res) => {
+        if (!active) return;
+        const blobUrl = base64ToBlobUrl(
+          res.data,
+          res.attachment?.mediaType || "image/png",
+        );
+        attachmentUrlCache.set(cacheKey, blobUrl);
+        setSrc(blobUrl);
+        setLoading(false);
+      })
+      .catch(() => {
+        if (!active) return;
+        setError(true);
+        setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [image.url, image.attachmentId, sessionId]);
+
+  if (error) {
+    return (
+      <div className="native-msg-image-error" title="图片加载失败">
+        <span>图片加载失败</span>
+      </div>
+    );
+  }
+
+  if (loading || !src) {
+    return (
+      <div className="native-msg-image-loading" title="图片加载中...">
+        <div className="native-spinner" />
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      className="native-msg-image-btn"
+      onClick={() => onPreview?.(src)}
+      title="点击查看原图"
+    >
+      <img src={src} alt="" draggable={false} />
+    </button>
+  );
+}
+
+/** 大图灯箱预览模态框。 */
+function LightboxModal({
+  src,
+  onClose,
+}: {
+  src: string;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
+  return (
+    <div className="native-lightbox-overlay" onClick={onClose}>
+      <div
+        className="native-lightbox-content"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <img src={src} alt="图片预览" />
+        <button
+          type="button"
+          className="native-lightbox-close"
+          onClick={onClose}
+          title="关闭 (Esc)"
+          aria-label="关闭预览"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            width="18"
+            height="18"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            fill="none"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  );
 }
 
 /**
@@ -424,9 +643,13 @@ function AssistantBody({ item }: { item: Extract<ChatItem, { kind: "assistant" }
 function TurnItems({
   view,
   cwd,
+  sessionId,
+  onPreviewImage,
 }: {
   view: TurnView;
   cwd?: string;
+  sessionId?: string | null;
+  onPreviewImage?: (url: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const renderItem = (item: MarkedChatItem, showReasoning = true) => {
@@ -450,7 +673,21 @@ function TurnItems({
     }
     return (
       <div key={item.key} className="native-msg user">
-        <div className="native-msg-body">{item.text}</div>
+        <div className="native-msg-user-wrap">
+          {item.images && item.images.length > 0 && (
+            <div className="native-msg-images">
+              {item.images.map((img, idx) => (
+                <MessageImageView
+                  key={img.id || img.attachmentId || idx}
+                  image={img}
+                  sessionId={sessionId}
+                  onPreview={onPreviewImage}
+                />
+              ))}
+            </div>
+          )}
+          {item.text && <div className="native-msg-body">{item.text}</div>}
+        </div>
       </div>
     );
   };
@@ -489,41 +726,10 @@ interface ComposerProps {
   controls?: ReactNode;
   /** 上下文占用环（贴发送按钮；无提供方用量时自身不渲染）。 */
   meter?: ReactNode;
-}
-
-/** 侧栏分组标题：点击折叠/展开会话列表（「未分组」等无工作区操作的分组用）。 */
-function GroupHeader({
-  title,
-  collapsed,
-  onToggle,
-}: {
-  title: string;
-  collapsed: boolean;
-  onToggle: () => void;
-}) {
-  return (
-    <button
-      className="native-group-title"
-      onClick={onToggle}
-      title={collapsed ? "展开分组" : "折叠分组"}
-    >
-      <span className="native-group-title-text">{title}</span>
-      <svg
-        className={`native-group-chevron${collapsed ? " collapsed" : ""}`}
-        viewBox="0 0 24 24"
-        width="12"
-        height="12"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        aria-hidden="true"
-      >
-        <path d="M6 9l6 6 6-6" />
-      </svg>
-    </button>
-  );
+  draftImages: DraftImage[];
+  onRemoveDraftImage: (id: string) => void;
+  onAddImages: (files: File[]) => void;
+  onPreviewImage: (url: string) => void;
 }
 
 /**
@@ -533,17 +739,21 @@ function GroupHeader({
 function WorkspaceRow({
   workspace,
   collapsed,
+  pinned,
   onToggle,
   onNewSession,
   onRename,
   onDelete,
+  onTogglePin,
 }: {
   workspace: WorkspaceView;
   collapsed: boolean;
+  pinned?: boolean;
   onToggle: () => void;
   onNewSession: () => void;
   onRename: (title: string) => void;
   onDelete: () => void;
+  onTogglePin?: () => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -608,8 +818,8 @@ function WorkspaceRow({
             <svg
               className="native-ws-icon"
               viewBox="0 0 24 24"
-              width="15"
-              height="15"
+              width="16"
+              height="16"
               fill="none"
               stroke="currentColor"
               strokeWidth="2"
@@ -645,6 +855,29 @@ function WorkspaceRow({
               <path d="M12 5v14M5 12h14" />
             </svg>
           </button>
+          {onTogglePin && (
+            <button
+              className={`native-ws-act${pinned ? " pinned" : ""}`}
+              onClick={onTogglePin}
+              title={pinned ? "取消置顶项目" : "置顶项目"}
+              aria-label={pinned ? "取消置顶项目" : "置顶项目"}
+            >
+              <svg
+                viewBox="0 0 24 24"
+                width="13"
+                height="13"
+                fill={pinned ? "currentColor" : "none"}
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <line x1="12" y1="17" x2="12" y2="22" />
+                <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.89A2 2 0 0 1 15 10.77V5h1a1 1 0 0 0 0-2H8a1 1 0 0 0 0 2h1v5.77a2 2 0 0 1-1.11 1.79l-1.78.89A2 2 0 0 0 5 15.24Z" />
+              </svg>
+            </button>
+          )}
           <button
             className={`native-ws-act${menuOpen ? " visible" : ""}`}
             onClick={() => {
@@ -668,6 +901,19 @@ function WorkspaceRow({
           </button>
           {menuOpen && !confirmDelete && (
             <div className="native-ws-menu">
+              {onTogglePin && (
+                <button
+                  className="native-popover-item"
+                  onClick={() => {
+                    onTogglePin();
+                    setMenuOpen(false);
+                  }}
+                >
+                  <span className="native-popover-item-name">
+                    {pinned ? "取消置顶项目" : "置顶项目"}
+                  </span>
+                </button>
+              )}
               <button
                 className="native-popover-item"
                 onClick={() => {
@@ -718,6 +964,34 @@ function WorkspaceRow({
       )}
     </div>
   );
+}
+
+/** 侧栏置顶数据持久化 Key。 */
+const PINNED_STORAGE_KEY = "qingwu.native.pinned";
+
+interface PinnedData {
+  workspaces: string[];
+  sessions: string[];
+}
+
+function loadPinnedData(): PinnedData {
+  try {
+    const raw = localStorage.getItem(PINNED_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return {
+        workspaces: Array.isArray(parsed?.workspaces) ? parsed.workspaces : [],
+        sessions: Array.isArray(parsed?.sessions) ? parsed.sessions : [],
+      };
+    }
+  } catch {}
+  return { workspaces: [], sessions: [] };
+}
+
+function savePinnedData(data: PinnedData) {
+  try {
+    localStorage.setItem(PINNED_STORAGE_KEY, JSON.stringify(data));
+  } catch {}
 }
 
 /**
@@ -849,24 +1123,129 @@ function Composer({
   textareaRef,
   controls,
   meter,
+  draftImages,
+  onRemoveDraftImage,
+  onAddImages,
+  onPreviewImage,
 }: ComposerProps) {
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
   // textareaRef 稳定，装填新元素时也会重跑，草稿首帧即按内容展开
   useEffect(() => {
     fitComposerHeight(textareaRef.current);
   }, [input, textareaRef]);
 
+  const canSend = !!input.trim() || draftImages.length > 0;
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const clipboardData = e.clipboardData;
+    if (!clipboardData) return;
+    const imageFiles: File[] = [];
+    if (clipboardData.files && clipboardData.files.length > 0) {
+      for (let i = 0; i < clipboardData.files.length; i++) {
+        const file = clipboardData.files[i];
+        if (isSupportedImage(file)) imageFiles.push(file);
+      }
+    } else if (clipboardData.items) {
+      for (let i = 0; i < clipboardData.items.length; i++) {
+        const item = clipboardData.items[i];
+        if (item.kind === "file") {
+          const file = item.getAsFile();
+          if (file && isSupportedImage(file)) imageFiles.push(file);
+        }
+      }
+    }
+    if (imageFiles.length > 0) {
+      // 阻止冒泡至全局 window.onpaste，防止单次粘贴触发两次添加
+      e.stopPropagation();
+      onAddImages(imageFiles);
+      const text = clipboardData.getData("text/plain");
+      if (!text) {
+        e.preventDefault();
+      }
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    if (e.dataTransfer.types.includes("Files")) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "copy";
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const imageFiles: File[] = [];
+      for (let i = 0; i < e.dataTransfer.files.length; i++) {
+        const file = e.dataTransfer.files[i];
+        if (isSupportedImage(file)) {
+          imageFiles.push(file);
+        }
+      }
+      if (imageFiles.length > 0) {
+        e.preventDefault();
+        onAddImages(imageFiles);
+      }
+    }
+  };
+
   return (
-    <div className="native-composer-box">
+    <div
+      className="native-composer-box"
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
+      {draftImages.length > 0 && (
+        <div className="native-composer-attachments">
+          {draftImages.map((img) => (
+            <div key={img.id} className="native-composer-attachment-item">
+              <button
+                type="button"
+                className="native-composer-thumb-btn"
+                onClick={() => onPreviewImage(img.previewUrl)}
+                title="点击预览大图"
+              >
+                <img src={img.previewUrl} alt="" draggable={false} />
+              </button>
+              <button
+                type="button"
+                className="native-composer-thumb-remove"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRemoveDraftImage(img.id);
+                }}
+                title="删除图片"
+                aria-label="删除图片"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  width="10"
+                  height="10"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  fill="none"
+                >
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
       <textarea
         ref={textareaRef}
         value={input}
         rows={1}
-        placeholder="询问任何问题"
+        placeholder="询问任何问题，可粘贴或拖入图片"
         onChange={(e) => onInputChange(e.target.value)}
+        onPaste={handlePaste}
         onKeyDown={(e) => {
           if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-            e.preventDefault();
-            onSend();
+            if (canSend) {
+              e.preventDefault();
+              onSend();
+            }
           }
         }}
       />
@@ -874,7 +1253,42 @@ function Composer({
         {/* 控件组自身占满工具行：权限贴左，模型与推理档位贴右（紧邻发送按钮） */}
         {controls ?? <span style={{ flex: 1 }} />}
         {meter}
-        {running && !input.trim() ? (
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/png,image/jpeg,image/webp,image/gif"
+          multiple
+          style={{ display: "none" }}
+          onChange={(e) => {
+            if (e.target.files && e.target.files.length > 0) {
+              onAddImages(Array.from(e.target.files));
+            }
+            e.target.value = "";
+          }}
+        />
+        <button
+          type="button"
+          className="native-composer-attach-btn"
+          onClick={() => fileInputRef.current?.click()}
+          title="添加图片"
+          aria-label="添加图片"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            width="16"
+            height="16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
+            <circle cx="8.5" cy="8.5" r="1.5" />
+            <path d="m21 15-5-5L5 21" />
+          </svg>
+        </button>
+        {running && !canSend ? (
           <button className="native-send stop" onClick={onStop} title="停止">
             <svg
               viewBox="0 0 24 24"
@@ -889,9 +1303,9 @@ function Composer({
         ) : (
           <button
             className="native-send"
-            disabled={!input.trim()}
+            disabled={!canSend}
             onClick={onSend}
-            // 运行中有草稿时改为排队发送（与官方一致：同一位置按草稿是否可提交切换）
+            // 运行中有草稿或附件时改为排队发送（与官方一致：同一位置按草稿是否可提交切换）
             title={running ? "排队发送" : "发送"}
           >
             <svg
@@ -976,6 +1390,11 @@ function QueueStrip({
               />
             ) : (
               <span className="native-queue-text" title={item.text}>
+                {item.images && item.images.length > 0 && (
+                  <span className="native-queue-img-tag">
+                    [图片{item.images.length > 1 ? ` × ${item.images.length}` : ""}]
+                  </span>
+                )}
                 {item.text}
               </span>
             )}
@@ -1765,24 +2184,217 @@ function ownerSessionOf(
   return current;
 }
 
-/** 会话行的状态标记：等待回答/授权优先于「运行中」（对齐官方：待处理状态优先）。 */
+/** 会话行的状态标记：等待回答/授权优先于「运行中」，再次为「未查看完成」。 */
 function SessionStatusMark({
   running,
   pending,
+  unread,
 }: {
   running: boolean;
   pending: PendingKind | null;
+  unread?: boolean;
 }) {
   if (pending) {
-    return <span className="native-waiting-dot" title={PENDING_LABELS[pending]} />;
+    return (
+      <span
+        className="native-status-mark native-waiting-dot"
+        title={PENDING_LABELS[pending]}
+      />
+    );
   }
-  if (running) return <span className="native-running-dot" />;
+  if (running) {
+    return (
+      <span
+        className="native-status-mark native-running-dot"
+        title="任务进行中"
+      />
+    );
+  }
+  if (unread) {
+    return (
+      <span
+        className="native-status-mark native-unread-dot"
+        title="任务已完成，未查看"
+      />
+    );
+  }
   return null;
+}
+
+/**
+ * 侧栏会话行：左侧状态指示（进行中/等待中/未查看） + 会话标题；
+ * 悬停浮现「···」操作菜单（置顶 / 重命名 / 归档）；
+ * 支持 indented 缩进（从属于项目分组时使用）。
+ */
+function SessionRow({
+  title,
+  tooltip,
+  active,
+  pinned,
+  running,
+  pending,
+  unread,
+  indented,
+  onClick,
+  onTogglePin,
+  onRename,
+  onArchive,
+}: {
+  title: string;
+  tooltip?: string;
+  active: boolean;
+  pinned: boolean;
+  running?: boolean;
+  pending: PendingKind | null;
+  unread?: boolean;
+  indented?: boolean;
+  onClick: () => void;
+  onTogglePin?: () => void;
+  onRename?: (title: string) => void;
+  onArchive?: () => void;
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [draftTitle, setDraftTitle] = useState(title);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [menuOpen]);
+
+  useEffect(() => {
+    if (!renaming) setDraftTitle(title);
+  }, [title, renaming]);
+
+  const commitRename = () => {
+    const next = draftTitle.trim();
+    setRenaming(false);
+    if (next && next !== title && onRename) onRename(next);
+    else setDraftTitle(title);
+  };
+
+  return (
+    <div
+      className={`native-session-row${active ? " active" : ""}${indented ? " indented" : ""}`}
+      ref={rootRef}
+    >
+      {renaming ? (
+        <input
+          className="native-session-rename"
+          value={draftTitle}
+          autoFocus
+          onFocus={(e) => e.target.select()}
+          onChange={(e) => setDraftTitle(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.nativeEvent.isComposing) commitRename();
+            if (e.key === "Escape") {
+              setDraftTitle(title);
+              setRenaming(false);
+            }
+          }}
+          onBlur={commitRename}
+          aria-label="会话名称"
+        />
+      ) : (
+        <>
+          <button
+            className="native-session-main"
+            onClick={onClick}
+            title={tooltip}
+          >
+            {/* 状态小圆点位于会话标题左侧 */}
+            <SessionStatusMark
+              running={Boolean(running)}
+              pending={pending}
+              unread={unread}
+            />
+            <span className="native-session-title">{title}</span>
+          </button>
+          <button
+            className={`native-session-act${menuOpen ? " visible" : ""}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              setMenuOpen((v) => !v);
+            }}
+            title="会话操作"
+            aria-label={`会话“${title}”的操作`}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              width="14"
+              height="14"
+              fill="currentColor"
+              aria-hidden="true"
+            >
+              <circle cx="5" cy="12" r="1.6" />
+              <circle cx="12" cy="12" r="1.6" />
+              <circle cx="19" cy="12" r="1.6" />
+            </svg>
+          </button>
+          {menuOpen && (
+            <div className="native-session-menu">
+              {onTogglePin && (
+                <button
+                  className="native-popover-item"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setMenuOpen(false);
+                    onTogglePin();
+                  }}
+                >
+                  <span className="native-popover-item-name">
+                    {pinned ? "取消置顶" : "置顶会话"}
+                  </span>
+                </button>
+              )}
+              {onRename && (
+                <button
+                  className="native-popover-item"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setMenuOpen(false);
+                    setRenaming(true);
+                  }}
+                >
+                  <span className="native-popover-item-name">重命名</span>
+                </button>
+              )}
+              {onArchive && (
+                <button
+                  className="native-popover-item"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setMenuOpen(false);
+                    onArchive();
+                  }}
+                >
+                  <span className="native-popover-item-name">归档会话</span>
+                </button>
+              )}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
 }
 
 /** 会话内渲染条目。 */
 type ChatItem =
-  | { kind: "user"; key: string; text: string; time: number }
+  | {
+      kind: "user";
+      key: string;
+      text: string;
+      images?: MessageImageItem[];
+      time: number;
+    }
   | {
       kind: "assistant";
       key: string;
@@ -1907,10 +2519,30 @@ function foldChatItems(events: SessionEvent[]): TurnView[] {
         const eventTurn = (event.data as { turn?: number } | null)?.turn;
         if (typeof eventTurn === "number") turn = eventTurn;
         lastUserTime = event.time;
+        const images: MessageImageItem[] = [];
+        for (const block of data.content) {
+          if (
+            typeof block === "object" &&
+            block !== null &&
+            (block as { type: unknown }).type === "image"
+          ) {
+            const att = (block as { attachment?: ImageAttachmentRef }).attachment;
+            if (att && typeof att.attachmentId === "string") {
+              images.push({
+                attachmentId: att.attachmentId,
+                mediaType: att.mediaType,
+                name: att.name,
+                width: att.width,
+                height: att.height,
+              });
+            }
+          }
+        }
         items.push({
           kind: "user",
           key: `u-${event.seq}`,
           text: textOf(data.content, "text"),
+          images: images.length > 0 ? images : undefined,
           time: event.time,
           turn,
         });
@@ -2011,6 +2643,7 @@ interface QueuedItem {
   rpcId?: string;
   placement: "next-turn" | "next-step";
   text: string;
+  images?: MessageImageItem[];
   pending?: boolean;
 }
 
@@ -2049,11 +2682,33 @@ function foldQueue(events: SessionEvent[]): {
       if (message.source?.kind !== "user") continue;
       const rpcId = message.source.rpcId;
       if (typeof rpcId === "string") rpcIds.add(rpcId);
+      const images: MessageImageItem[] = [];
+      if (Array.isArray(message.content)) {
+        for (const block of message.content) {
+          if (
+            typeof block === "object" &&
+            block !== null &&
+            (block as { type: unknown }).type === "image"
+          ) {
+            const att = (block as { attachment?: ImageAttachmentRef }).attachment;
+            if (att && typeof att.attachmentId === "string") {
+              images.push({
+                attachmentId: att.attachmentId,
+                mediaType: att.mediaType,
+                name: att.name,
+                width: att.width,
+                height: att.height,
+              });
+            }
+          }
+        }
+      }
       queue.push({
         id: message.id ?? `${placement}-${queue.length}`,
         rpcId: typeof rpcId === "string" ? rpcId : undefined,
         placement,
         text: textOf(message.content ?? [], "text"),
+        images: images.length > 0 ? images : undefined,
       });
     }
   }
@@ -2118,6 +2773,38 @@ export function NativeApp({
   const sessionsRef = useRef<SessionSummary[]>([]);
   sessionsRef.current = sessions;
   const [workspaces, setWorkspaces] = useState<WorkspaceView[]>([]);
+  /** 宿主全量已归档会话集合：列表与分组必须主动排除，解归档前不显示。 */
+  const [archivedSessionIds, setArchivedSessionIds] = useState<string[]>([]);
+  /** 侧栏置顶数据（本地持久化）。 */
+  const [pinnedData, setPinnedData] = useState<PinnedData>(loadPinnedData);
+  /** 后台执行完成但用户尚未查看的会话集合（左侧蓝点提醒）。 */
+  const [unreadFinishedSessionIds, setUnreadFinishedSessionIds] = useState<
+    Set<string>
+  >(new Set());
+
+  const toggleWorkspacePin = useCallback((workspaceId: string) => {
+    setPinnedData((prev) => {
+      const exists = prev.workspaces.includes(workspaceId);
+      const nextWorkspaces = exists
+        ? prev.workspaces.filter((id) => id !== workspaceId)
+        : [workspaceId, ...prev.workspaces];
+      const next = { ...prev, workspaces: nextWorkspaces };
+      savePinnedData(next);
+      return next;
+    });
+  }, []);
+
+  const toggleSessionPin = useCallback((sessionId: string) => {
+    setPinnedData((prev) => {
+      const exists = prev.sessions.includes(sessionId);
+      const nextSessions = exists
+        ? prev.sessions.filter((id) => id !== sessionId)
+        : [sessionId, ...prev.sessions];
+      const next = { ...prev, sessions: nextSessions };
+      savePinnedData(next);
+      return next;
+    });
+  }, []);
   /** 最近活跃工作区（对齐官方 New Session 语义：新会话落在这里）。 */
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(
     null,
@@ -2140,6 +2827,9 @@ export function NativeApp({
    * 切换会话时切走保留、切回恢复，避免把 A 里没写完的半句话发到 B。
    */
   const composerDraftsRef = useRef<Map<string, string>>(new Map());
+  const [draftImages, setDraftImages] = useState<DraftImage[]>([]);
+  const composerImagesRef = useRef<Map<string, DraftImage[]>>(new Map());
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   /** 引擎 inbox 里的待发送队列（排队中／插话中），由 agent/inbox/spliced 折出。 */
   const [queue, setQueue] = useState<QueuedItem[]>([]);
@@ -2258,22 +2948,18 @@ export function NativeApp({
     return qingwu.onUiModeChanged((mode) => setVisible(mode === "native"));
   }, [refreshSessions]);
 
-  // 标题栏左侧融合：native 界面且侧栏展开时，向标题栏暴露侧栏宽度与融合态标记
-  // （titlebar.css 据 body class 绘制同色左段，见 .native-sidebar-fused）。
+  // 青梧界面激活时给 body 添加标记类（控制标题栏样式对齐等）
   useEffect(() => {
     const body = document.body;
-    if (visible && !sidebarCollapsed) {
-      body.classList.add("native-sidebar-fused");
-      body.style.setProperty("--native-sidebar-w", `${sidebarPanel.width}px`);
+    if (visible) {
+      body.classList.add("native-ui-active");
     } else {
-      body.classList.remove("native-sidebar-fused");
-      body.style.removeProperty("--native-sidebar-w");
+      body.classList.remove("native-ui-active");
     }
     return () => {
-      body.classList.remove("native-sidebar-fused");
-      body.style.removeProperty("--native-sidebar-w");
+      body.classList.remove("native-ui-active");
     };
-  }, [visible, sidebarCollapsed, sidebarPanel.width]);
+  }, [visible]);
 
   // 模型目录与界面生命周期解耦，失败静默降级（选择器显示目录不可用）
   useEffect(() => {
@@ -2353,8 +3039,9 @@ export function NativeApp({
         ) {
           const removedId = firstArg;
           setSessions((prev) => prev.filter((s) => s.sessionId !== removedId));
-          // 会话已删除，草稿桶一并清理（内存态，避免残留）
+          // 会话已删除，草稿桶与图片一并清理（内存态，避免残留）
           composerDraftsRef.current.delete(removedId);
+          composerImagesRef.current.delete(removedId);
           if (currentIdRef.current === removedId) {
             setCurrentId(null);
           }
@@ -2363,9 +3050,15 @@ export function NativeApp({
           const isRunning = Boolean(secondArg);
           if (currentIdRef.current === sessionId) setRunning(isRunning);
           setSessions((prev) =>
-            prev.map((s) =>
-              s.sessionId === sessionId ? { ...s, running: isRunning } : s,
-            ),
+            prev.map((s) => {
+              if (s.sessionId === sessionId) {
+                if (s.running && !isRunning && currentIdRef.current !== sessionId) {
+                  setUnreadFinishedSessionIds((u) => new Set(u).add(sessionId));
+                }
+                return { ...s, running: isRunning };
+              }
+              return s;
+            }),
           );
         } else if (frame.event === "api-session/error") {
           const sessionId = firstArg as string;
@@ -2422,6 +3115,7 @@ export function NativeApp({
     const handleWorkspaceFollow = (frame: WorkspaceFollowFrame) => {
       if (frame.type === "baseline") {
         setWorkspaces(frame.value?.items ?? []);
+        setArchivedSessionIds(frame.value?.archivedSessionIds ?? []);
         return;
       }
       if (frame.type === "upsert" && frame.workspace) {
@@ -2432,8 +3126,12 @@ export function NativeApp({
         );
       } else if (frame.type === "order" && Array.isArray(frame.workspaceIds)) {
         setWorkspaces((prev) => orderWorkspaces(prev, frame.workspaceIds!));
+      } else if (
+        frame.type === "archived" &&
+        Array.isArray(frame.archivedSessionIds)
+      ) {
+        setArchivedSessionIds(frame.archivedSessionIds);
       }
-      // archived 增量只影响归档列表，当前界面不消费
     };
 
     const handleStreamItem = ({
@@ -2484,6 +3182,7 @@ export function NativeApp({
     );
     // 载入目标会话自己的草稿（上一个会话的草稿已在输入时写进各自的桶）
     setInput(composerDraftsRef.current.get(currentId ?? "") ?? "");
+    setDraftImages(composerImagesRef.current.get(currentId ?? "") ?? []);
     if (!currentId) return;
 
     setLoadingHistory(true);
@@ -2656,10 +3355,26 @@ export function NativeApp({
     }
   }, [items, draft, liveReasoning, toolCalling, approvals, questions]);
 
-  /** 子代理会话（主对话派生的辅助会话）不在主列表展示。 */
+  const archivedSet = useMemo(
+    () => new Set(archivedSessionIds),
+    [archivedSessionIds],
+  );
+
+  // 若当前打开的会话在外部被归档，清空选中态回退引导页
+  useEffect(() => {
+    if (currentId && archivedSet.has(currentId)) {
+      setCurrentId(null);
+    }
+  }, [currentId, archivedSet]);
+
+  /** 子代理会话（主对话派生的辅助会话）与已归档会话不在主列表展示。 */
   const visibleSessions = useMemo(
-    () => sessions.filter((s) => !s.blank && s.origin !== "subagent"),
-    [sessions],
+    () =>
+      sessions.filter(
+        (s) =>
+          !s.blank && s.origin !== "subagent" && !archivedSet.has(s.sessionId),
+      ),
+    [sessions, archivedSet],
   );
 
   /** 会话 id → 摘要（待处理项归位要按 parentSessionId 找根会话）。 */
@@ -2737,33 +3452,81 @@ export function NativeApp({
     return "未命名";
   };
 
-  /**
-   * 按工作区分组：分组顺序取工作区的登记顺序（新建项目在最前，之后不再变动）；
-   * 组内会话取该项目的会话登记顺序（先建的在上，不看最近更新——官方默认走
-   * 「最近更新」会把正在用的会话顶上，青梧固定顺序，列表不随使用漂移；
-   * 哪天要排序方式切换或拖动排序，见 TODO 同名事项）。搜索词先做标题过滤。
-   */
-  const sessionGroups = useMemo(() => {
+  const pinnedWsSet = useMemo(
+    () => new Set(pinnedData.workspaces),
+    [pinnedData.workspaces],
+  );
+  const pinnedSessionSet = useMemo(
+    () => new Set(pinnedData.sessions),
+    [pinnedData.sessions],
+  );
+
+  const filteredVisibleSessions = useMemo(() => {
     const keyword = searchText.trim().toLowerCase();
-    const filtered = keyword
-      ? visibleSessions.filter((s) =>
-          sessionTitle(s).toLowerCase().includes(keyword),
-        )
-      : visibleSessions;
-    const byId = new Map(filtered.map((s) => [s.sessionId, s]));
-    const grouped = workspaces
-      .map((ws) => ({
-        workspaceId: ws.workspaceId,
-        title: ws.title,
-        sessions: ws.sessionIds
-          .map((id) => byId.get(id))
-          .filter((s): s is SessionSummary => Boolean(s)),
-      }))
-      .filter((g) => g.sessions.length > 0);
-    const groupedIds = new Set(workspaces.flatMap((ws) => ws.sessionIds));
-    const ungrouped = filtered.filter((s) => !groupedIds.has(s.sessionId));
-    return { grouped, ungrouped };
-  }, [visibleSessions, workspaces, searchText]);
+    if (!keyword) return visibleSessions;
+    return visibleSessions.filter((s) =>
+      sessionTitle(s).toLowerCase().includes(keyword),
+    );
+  }, [visibleSessions, searchText]);
+
+  const filteredSessionById = useMemo(
+    () => new Map(filteredVisibleSessions.map((s) => [s.sessionId, s])),
+    [filteredVisibleSessions],
+  );
+
+  const allWsSessionIds = useMemo(
+    () => new Set(workspaces.flatMap((ws) => ws.sessionIds)),
+    [workspaces],
+  );
+
+  /** 获取指定工作区下当前匹配的有效会话（保持工作区登记顺序） */
+  const getWorkspaceSessions = useCallback(
+    (ws: WorkspaceView) => {
+      return ws.sessionIds
+        .map((id) => filteredSessionById.get(id))
+        .filter((s): s is SessionSummary => Boolean(s));
+    },
+    [filteredSessionById],
+  );
+
+  /** 判断工作区在搜索态下是否应呈现（名称匹配或内部有匹配会话） */
+  const isWorkspaceMatched = useCallback(
+    (ws: WorkspaceView, wsSessions: SessionSummary[]) => {
+      const keyword = searchText.trim().toLowerCase();
+      if (!keyword) return true;
+      if (ws.title.toLowerCase().includes(keyword)) return true;
+      return wsSessions.length > 0;
+    },
+    [searchText],
+  );
+
+  // 1. 置顶项目（保持置顶时间倒序）
+  const pinnedWorkspaces = useMemo(() => {
+    const wsMap = new Map(workspaces.map((w) => [w.workspaceId, w]));
+    return pinnedData.workspaces
+      .map((id) => wsMap.get(id))
+      .filter((w): w is WorkspaceView => Boolean(w));
+  }, [workspaces, pinnedData.workspaces]);
+
+  // 2. 置顶会话（保持置顶时间倒序，包含独立会话与项目内会话）
+  const pinnedSessionsList = useMemo(() => {
+    return pinnedData.sessions
+      .map((id) => filteredSessionById.get(id))
+      .filter((s): s is SessionSummary => Boolean(s));
+  }, [pinnedData.sessions, filteredSessionById]);
+
+  // 3. 普通项目（排除已置顶的项目）
+  const normalWorkspaces = useMemo(() => {
+    return workspaces.filter((ws) => !pinnedWsSet.has(ws.workspaceId));
+  }, [workspaces, pinnedWsSet]);
+
+  // 4. 普通独立会话（未关联项目且未置顶）
+  const normalUngroupedSessions = useMemo(() => {
+    return filteredVisibleSessions.filter(
+      (s) =>
+        !allWsSessionIds.has(s.sessionId) && !pinnedSessionSet.has(s.sessionId),
+    );
+  }, [filteredVisibleSessions, allWsSessionIds, pinnedSessionSet]);
 
   /** 会话 → 所属工作区映射（点击会话时更新活跃工作区）。 */
   const workspaceOfSession = useMemo(() => {
@@ -2951,6 +3714,12 @@ export function NativeApp({
 
   const openSession = (sessionId: string) => {
     setCurrentId(sessionId);
+    setUnreadFinishedSessionIds((prev) => {
+      if (!prev.has(sessionId)) return prev;
+      const next = new Set(prev);
+      next.delete(sessionId);
+      return next;
+    });
     const wsId = workspaceOfSession.get(sessionId);
     if (wsId) setActiveWorkspaceId(wsId);
   };
@@ -2960,7 +3729,10 @@ export function NativeApp({
     const ws = workspaces.find((w) => w.workspaceId === wsId);
     const reusable = ws?.sessionIds
       .map((id) => sessions.find((s) => s.sessionId === id))
-      .find((s) => s?.blank && s.origin !== "subagent");
+      .find(
+        (s) =>
+          s?.blank && s.origin !== "subagent" && !archivedSet.has(s.sessionId),
+      );
     if (reusable) {
       setCurrentId(reusable.sessionId);
       return reusable.sessionId;
@@ -3035,6 +3807,57 @@ export function NativeApp({
     );
   };
 
+  /** 重命名会话（session/rename，更新本地会话投影标题）。 */
+  const handleSessionRename = useCallback(
+    async (sessionId: string, title: string) => {
+      try {
+        await rpc(Endpoints.sessionRename, {
+          request: { sessionId, title },
+        });
+        setSessions((prev) =>
+          prev.map((s) =>
+            s.sessionId === sessionId
+              ? {
+                  ...s,
+                  projections: s.projections
+                    ? {
+                        ...s.projections,
+                        values: { ...s.projections.values, title },
+                      }
+                    : {
+                        asOfSeq: 0,
+                        values: { title },
+                      },
+                }
+              : s,
+          ),
+        );
+        await refreshSessions();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [],
+  );
+
+  /** 归档会话（workspace/archiveSession，从主列表排除）。 */
+  const handleSessionArchive = useCallback(
+    async (sessionId: string) => {
+      try {
+        await rpc(Endpoints.workspaceArchiveSession, {
+          request: { sessionId },
+        });
+        setArchivedSessionIds((prev) => [...prev, sessionId]);
+        if (currentId === sessionId) {
+          setCurrentId(null);
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [currentId],
+  );
+
   /**
    * 引导页工作区 chip 选择：切换新会话落点——在目标工作区建/复用一个空白会话再切过去。
    * 引擎不支持给已有会话改工作区归属：工作区归属在会话创建时按 cwd 写死，而
@@ -3055,17 +3878,155 @@ export function NativeApp({
       if (nextId === previousId) return;
       // 草稿随人走：旧会话的草稿落到目标会话，旧桶清空，避免回头再进它时又冒出来
       const pending = composerDraftsRef.current.get(previousId);
-      if (pending === undefined) return;
-      composerDraftsRef.current.set(nextId, pending);
-      composerDraftsRef.current.delete(previousId);
+      if (pending !== undefined) {
+        composerDraftsRef.current.set(nextId, pending);
+        composerDraftsRef.current.delete(previousId);
+      }
+      const pendingImgs = composerImagesRef.current.get(previousId);
+      if (pendingImgs !== undefined) {
+        composerImagesRef.current.set(nextId, pendingImgs);
+        composerImagesRef.current.delete(previousId);
+      }
     })().catch((err) =>
       setError(err instanceof Error ? err.message : String(err)),
     );
   };
 
+  const handleAddImages = useCallback((files: File[]) => {
+    const valid: File[] = [];
+    for (const f of files) {
+      if (!isSupportedImage(f)) {
+        setError(`不支持的图片格式: ${f.name}。仅支持 PNG、JPEG、WebP、GIF`);
+        continue;
+      }
+      if (f.size > MAX_IMAGE_BYTES) {
+        setError(`图片 ${f.name} 超过 20MB 上限`);
+        continue;
+      }
+      valid.push(f);
+    }
+    if (valid.length === 0) return;
+
+    setDraftImages((prev) => {
+      if (prev.length + valid.length > MAX_IMAGES_PER_MESSAGE) {
+        setError(`单条消息最多添加 ${MAX_IMAGES_PER_MESSAGE} 张图片`);
+        return prev;
+      }
+      const newItems: DraftImage[] = valid.map((file) => {
+        const id = crypto.randomUUID();
+        const previewUrl = URL.createObjectURL(file);
+        const mediaType = getImageMediaType(file);
+        const name = file.name || `image-${Date.now()}.png`;
+        const item: DraftImage = {
+          id,
+          file,
+          previewUrl,
+          mediaType,
+          name,
+        };
+        fileToBase64(file)
+          .then((b64) => {
+            item.base64 = b64;
+            const dataUrl = `data:${mediaType};base64,${b64}`;
+            item.previewUrl = dataUrl;
+            setDraftImages((cur) =>
+              cur.map((d) =>
+                d.id === id ? { ...d, base64: b64, previewUrl: dataUrl } : d,
+              ),
+            );
+          })
+          .catch(() => {});
+        return item;
+      });
+      const next = [...prev, ...newItems];
+      const key = currentIdRef.current ?? "";
+      composerImagesRef.current.set(key, next);
+      return next;
+    });
+  }, []);
+
+  const handleRemoveDraftImage = useCallback((id: string) => {
+    setDraftImages((prev) => {
+      const target = prev.find((img) => img.id === id);
+      if (target?.previewUrl?.startsWith("blob:")) {
+        URL.revokeObjectURL(target.previewUrl);
+      }
+      const next = prev.filter((img) => img.id !== id);
+      const key = currentIdRef.current ?? "";
+      if (next.length > 0) composerImagesRef.current.set(key, next);
+      else composerImagesRef.current.delete(key);
+      return next;
+    });
+  }, []);
+
+  // 全局剪贴板粘贴监听：未聚焦输入框时粘贴图片也自动加入当前草稿并聚焦
+  useEffect(() => {
+    const onGlobalPaste = (e: ClipboardEvent) => {
+      // 只要光标在任何输入元素（包括主输入框），都由该元素自身的 onPaste 独立处理，此处直接跳过
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      const clipboardData = e.clipboardData;
+      if (!clipboardData) return;
+      const imageFiles: File[] = [];
+      if (clipboardData.files && clipboardData.files.length > 0) {
+        for (let i = 0; i < clipboardData.files.length; i++) {
+          const file = clipboardData.files[i];
+          if (isSupportedImage(file)) imageFiles.push(file);
+        }
+      } else if (clipboardData.items) {
+        for (let i = 0; i < clipboardData.items.length; i++) {
+          const item = clipboardData.items[i];
+          if (item.kind === "file") {
+            const file = item.getAsFile();
+            if (file && isSupportedImage(file)) imageFiles.push(file);
+          }
+        }
+      }
+      if (imageFiles.length > 0) {
+        e.preventDefault();
+        handleAddImages(imageFiles);
+        textareaRef.current?.focus();
+      }
+    };
+    window.addEventListener("paste", onGlobalPaste);
+    return () => window.removeEventListener("paste", onGlobalPaste);
+  }, [handleAddImages]);
+
+  const handleChatDragOver = (e: React.DragEvent) => {
+    if (e.dataTransfer.types.includes("Files")) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "copy";
+    }
+  };
+
+  const handleChatDrop = (e: React.DragEvent) => {
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const imageFiles: File[] = [];
+      for (let i = 0; i < e.dataTransfer.files.length; i++) {
+        const file = e.dataTransfer.files[i];
+        if (isSupportedImage(file)) {
+          imageFiles.push(file);
+        }
+      }
+      if (imageFiles.length > 0) {
+        e.preventDefault();
+        handleAddImages(imageFiles);
+        textareaRef.current?.focus();
+      }
+    }
+  };
+
   const handleSend = async () => {
     const text = input.trim();
-    if (!text) return;
+    const images = [...draftImages];
+    if (!text && images.length === 0) return;
     let sessionId = currentId;
     if (!sessionId) {
       let wsId = activeWorkspaceId;
@@ -3092,8 +4053,10 @@ export function NativeApp({
       }
     }
     setInput("");
+    setDraftImages([]);
     // 发出即清空该会话的草稿桶；失败时再写回（输入框高度由 Composer 按 value 重算）
     composerDraftsRef.current.delete(sessionId);
+    composerImagesRef.current.delete(sessionId);
     // 乐观回显：提交当帧就显示，宿主落库或入队后由 refreshFromEvents 退休
     const requestId = crypto.randomUUID();
     setEchoes((prev) => [
@@ -3103,23 +4066,52 @@ export function NativeApp({
         rpcId: requestId,
         placement: "next-turn",
         text,
+        images: images.map((img) => ({
+          id: img.id,
+          url: img.previewUrl,
+          name: img.name,
+        })),
         pending: true,
       },
     ]);
     try {
+      const content: Array<
+        | { type: "text"; text: string }
+        | {
+            type: "image";
+            mediaType: "image/png" | "image/jpeg" | "image/webp" | "image/gif";
+            data: string;
+            name?: string;
+          }
+      > = [];
+      for (const img of images) {
+        const base64 = img.base64 || (await fileToBase64(img.file));
+        content.push({
+          type: "image",
+          mediaType: img.mediaType,
+          data: base64,
+          ...(img.name ? { name: img.name } : {}),
+        });
+      }
+      if (text) {
+        content.push({ type: "text", text });
+      }
+
       await rpc(Endpoints.sessionPrompt, {
         request: {
           requestId,
           sessionId,
           mode: "queue",
-          content: [{ type: "text", text }],
+          content,
           clientTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         },
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setInput(text);
+      setDraftImages(images);
       composerDraftsRef.current.set(sessionId, text);
+      composerImagesRef.current.set(sessionId, images);
       setEchoes((prev) => prev.filter((echo) => echo.rpcId !== requestId));
     }
   };
@@ -3257,7 +4249,7 @@ export function NativeApp({
     : activeWorkspaceId;
 
   return (
-    <div className="native-app">
+    <div className={`native-app${!sidebarCollapsed ? " has-sidebar" : ""}`}>
       {!sidebarCollapsed && (
         <>
           <aside
@@ -3321,97 +4313,235 @@ export function NativeApp({
               新会话
             </button>
             <div className="native-session-list">
-              {sessionGroups.grouped.map((group) => {
-                const ws = workspaces.find(
-                  (w) => w.workspaceId === group.workspaceId,
-                );
-                if (!ws) return null;
-                return (
-                  <div
-                    key={group.workspaceId}
-                    className="native-session-group native-session-group-ws"
-                  >
-                    <WorkspaceRow
-                      workspace={ws}
-                      collapsed={collapsedGroups.has(group.workspaceId)}
-                      onToggle={() =>
-                        setCollapsedGroups((prev) => {
-                          const next = new Set(prev);
-                          if (next.has(group.workspaceId))
-                            next.delete(group.workspaceId);
-                          else next.add(group.workspaceId);
-                          return next;
-                        })
-                      }
-                      onNewSession={() =>
-                        void createSessionIn(group.workspaceId).catch((err) =>
-                          setError(
-                            err instanceof Error ? err.message : String(err),
-                          ),
-                        )
-                      }
-                      onRename={(title) =>
-                        handleWorkspaceRename(group.workspaceId, title)
-                      }
-                      onDelete={() => handleWorkspaceDelete(group.workspaceId)}
-                    />
-                    {!collapsedGroups.has(group.workspaceId) &&
-                      group.sessions.map((session) => (
-                        <button
-                          key={session.sessionId}
-                          className={`native-session-item${session.sessionId === currentId ? " active" : ""}`}
-                          onClick={() => openSession(session.sessionId)}
-                          title={session.cwd ?? session.sessionId}
-                        >
-                          <span className="native-session-title">
-                            {sessionTitle(session)}
-                          </span>
-                          <SessionStatusMark
-                            running={session.running}
-                            pending={
-                              pendingKindBySession.get(session.sessionId) ?? null
-                            }
-                          />
-                        </button>
-                      ))}
+              {/* 1. 置顶区间 */}
+              {(pinnedWorkspaces.length > 0 ||
+                pinnedSessionsList.length > 0) && (
+                <div className="native-sidebar-section">
+                  <div className="native-sidebar-section-header">
+                    <span className="native-sidebar-section-title">置顶</span>
                   </div>
-                );
-              })}
-              {sessionGroups.ungrouped.length > 0 && (
-                <div className="native-session-group">
-                  {sessionGroups.grouped.length > 0 && (
-                    <GroupHeader
-                      title="未分组"
-                      collapsed={collapsedGroups.has("未分组")}
-                      onToggle={() =>
-                        setCollapsedGroups((prev) => {
-                          const next = new Set(prev);
-                          if (next.has("未分组")) next.delete("未分组");
-                          else next.add("未分组");
-                          return next;
-                        })
-                      }
-                    />
-                  )}
-                  {!collapsedGroups.has("未分组") &&
-                    sessionGroups.ungrouped.map((session) => (
-                      <button
+                  <div className="native-sidebar-section-content">
+                    {pinnedWorkspaces.map((ws) => {
+                      const wsSessions = getWorkspaceSessions(ws);
+                      if (!isWorkspaceMatched(ws, wsSessions)) return null;
+                      return (
+                        <div
+                          key={ws.workspaceId}
+                          className="native-session-group native-session-group-ws"
+                        >
+                          <WorkspaceRow
+                            workspace={ws}
+                            collapsed={collapsedGroups.has(ws.workspaceId)}
+                            pinned={true}
+                            onToggle={() =>
+                              setCollapsedGroups((prev) => {
+                                const next = new Set(prev);
+                                if (next.has(ws.workspaceId))
+                                  next.delete(ws.workspaceId);
+                                else next.add(ws.workspaceId);
+                                return next;
+                              })
+                            }
+                            onNewSession={() =>
+                              void createSessionIn(ws.workspaceId).catch((err) =>
+                                setError(
+                                  err instanceof Error ? err.message : String(err),
+                                ),
+                              )
+                            }
+                            onRename={(title) =>
+                              handleWorkspaceRename(ws.workspaceId, title)
+                            }
+                            onDelete={() => handleWorkspaceDelete(ws.workspaceId)}
+                            onTogglePin={() => toggleWorkspacePin(ws.workspaceId)}
+                          />
+                          {!collapsedGroups.has(ws.workspaceId) &&
+                            wsSessions.map((session) => (
+                              <SessionRow
+                                key={session.sessionId}
+                                title={sessionTitle(session)}
+                                tooltip={session.cwd ?? session.sessionId}
+                                active={session.sessionId === currentId}
+                                pinned={pinnedSessionSet.has(session.sessionId)}
+                                running={session.running}
+                                pending={
+                                  pendingKindBySession.get(session.sessionId) ??
+                                  null
+                                }
+                                unread={unreadFinishedSessionIds.has(
+                                  session.sessionId,
+                                )}
+                                indented
+                                onClick={() => openSession(session.sessionId)}
+                                onTogglePin={() =>
+                                  toggleSessionPin(session.sessionId)
+                                }
+                                onRename={(t) =>
+                                  void handleSessionRename(session.sessionId, t)
+                                }
+                                onArchive={() =>
+                                  void handleSessionArchive(session.sessionId)
+                                }
+                              />
+                            ))}
+                        </div>
+                      );
+                    })}
+                    {pinnedSessionsList.map((session) => (
+                      <SessionRow
                         key={session.sessionId}
-                        className={`native-session-item${session.sessionId === currentId ? " active" : ""}`}
+                        title={sessionTitle(session)}
+                        tooltip={session.cwd ?? session.sessionId}
+                        active={session.sessionId === currentId}
+                        pinned={true}
+                        running={session.running}
+                        pending={
+                          pendingKindBySession.get(session.sessionId) ?? null
+                        }
+                        unread={unreadFinishedSessionIds.has(session.sessionId)}
                         onClick={() => openSession(session.sessionId)}
-                        title={session.cwd ?? session.sessionId}
-                      >
-                        <span className="native-session-title">
-                          {sessionTitle(session)}
-                        </span>
-                        <SessionStatusMark
-                          running={session.running}
-                          pending={
-                            pendingKindBySession.get(session.sessionId) ?? null
-                          }
-                        />
-                      </button>
+                        onTogglePin={() => toggleSessionPin(session.sessionId)}
+                        onRename={(t) =>
+                          void handleSessionRename(session.sessionId, t)
+                        }
+                        onArchive={() =>
+                          void handleSessionArchive(session.sessionId)
+                        }
+                      />
                     ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 2. 项目区间 */}
+              <div className="native-sidebar-section">
+                <div className="native-sidebar-section-header">
+                  <span className="native-sidebar-section-title">项目</span>
+                  <button
+                    className="native-sidebar-section-act"
+                    onClick={() => void handleAddWorkspace()}
+                    title="添加项目"
+                    aria-label="添加项目"
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      width="13"
+                      height="13"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M12 5v14M5 12h14" />
+                    </svg>
+                  </button>
+                </div>
+                <div className="native-sidebar-section-content">
+                  {normalWorkspaces.map((ws) => {
+                    const wsSessions = getWorkspaceSessions(ws);
+                    if (!isWorkspaceMatched(ws, wsSessions)) return null;
+                    return (
+                      <div
+                        key={ws.workspaceId}
+                        className="native-session-group native-session-group-ws"
+                      >
+                        <WorkspaceRow
+                          workspace={ws}
+                          collapsed={collapsedGroups.has(ws.workspaceId)}
+                          pinned={false}
+                          onToggle={() =>
+                            setCollapsedGroups((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(ws.workspaceId))
+                                next.delete(ws.workspaceId);
+                              else next.add(ws.workspaceId);
+                              return next;
+                            })
+                          }
+                          onNewSession={() =>
+                            void createSessionIn(ws.workspaceId).catch((err) =>
+                              setError(
+                                err instanceof Error ? err.message : String(err),
+                              ),
+                            )
+                          }
+                          onRename={(title) =>
+                            handleWorkspaceRename(ws.workspaceId, title)
+                          }
+                          onDelete={() => handleWorkspaceDelete(ws.workspaceId)}
+                          onTogglePin={() => toggleWorkspacePin(ws.workspaceId)}
+                        />
+                        {!collapsedGroups.has(ws.workspaceId) &&
+                          wsSessions.map((session) => (
+                            <SessionRow
+                              key={session.sessionId}
+                              title={sessionTitle(session)}
+                              tooltip={session.cwd ?? session.sessionId}
+                              active={session.sessionId === currentId}
+                              pinned={pinnedSessionSet.has(session.sessionId)}
+                              running={session.running}
+                              pending={
+                                pendingKindBySession.get(session.sessionId) ??
+                                null
+                              }
+                              unread={unreadFinishedSessionIds.has(
+                                session.sessionId,
+                              )}
+                              indented
+                              onClick={() => openSession(session.sessionId)}
+                              onTogglePin={() =>
+                                toggleSessionPin(session.sessionId)
+                              }
+                              onRename={(t) =>
+                                void handleSessionRename(session.sessionId, t)
+                              }
+                              onArchive={() =>
+                                void handleSessionArchive(session.sessionId)
+                              }
+                            />
+                          ))}
+                      </div>
+                    );
+                  })}
+                  {normalWorkspaces.length === 0 &&
+                    pinnedWorkspaces.length === 0 && (
+                      <div className="native-sidebar-empty-hint">暂无项目</div>
+                    )}
+                </div>
+              </div>
+
+              {/* 3. 会话区间（无项目独立日常会话） */}
+              {normalUngroupedSessions.length > 0 && (
+                <div className="native-sidebar-section">
+                  <div className="native-sidebar-section-header">
+                    <span className="native-sidebar-section-title">会话</span>
+                  </div>
+                  <div className="native-sidebar-section-content">
+                    {normalUngroupedSessions.map((session) => (
+                      <SessionRow
+                        key={session.sessionId}
+                        title={sessionTitle(session)}
+                        tooltip={session.cwd ?? session.sessionId}
+                        active={session.sessionId === currentId}
+                        pinned={false}
+                        running={session.running}
+                        pending={
+                          pendingKindBySession.get(session.sessionId) ?? null
+                        }
+                        unread={unreadFinishedSessionIds.has(session.sessionId)}
+                        onClick={() => openSession(session.sessionId)}
+                        onTogglePin={() => toggleSessionPin(session.sessionId)}
+                        onRename={(t) =>
+                          void handleSessionRename(session.sessionId, t)
+                        }
+                        onArchive={() =>
+                          void handleSessionArchive(session.sessionId)
+                        }
+                      />
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
@@ -3428,7 +4558,11 @@ export function NativeApp({
         </>
       )}
 
-      <main className="native-chat">
+      <main
+        className="native-chat"
+        onDragOver={handleChatDragOver}
+        onDrop={handleChatDrop}
+      >
         {showGreeting ? (
           <>
             <div className="native-chat-header">
@@ -3474,6 +4608,10 @@ export function NativeApp({
                   running={false}
                   onStop={() => void handleStop()}
                   textareaRef={textareaRef}
+                  draftImages={draftImages}
+                  onRemoveDraftImage={handleRemoveDraftImage}
+                  onAddImages={handleAddImages}
+                  onPreviewImage={(url) => setLightboxUrl(url)}
                   meter={
                     <ContextMeter
                       pressure={currentProjections?.contextPressure}
@@ -3549,7 +4687,13 @@ export function NativeApp({
                   <div className="native-hint">正在加载会话历史…</div>
                 )}
                 {items.map((view) => (
-                  <TurnItems key={view.turn} view={view} cwd={currentCwd} />
+                  <TurnItems
+                    key={view.turn}
+                    view={view}
+                    cwd={currentCwd}
+                    sessionId={currentId}
+                    onPreviewImage={(url) => setLightboxUrl(url)}
+                  />
                 ))}
                 {(liveReasoning || draft || toolCalling) && (
                   // 本轮在飞内容合成一条助手消息：思考折叠行在上、正文在下，
@@ -3643,28 +4787,32 @@ export function NativeApp({
                   </div>
                 ) : (
                   <Composer
-                  input={input}
-                  onInputChange={handleInputChange}
-                  onSend={() => void handleSend()}
-                  running={running}
-                  onStop={() => void handleStop()}
-                  textareaRef={textareaRef}
-                  meter={
-                    <ContextMeter
-                      pressure={currentProjections?.contextPressure}
-                      breakdown={currentProjections?.contextBreakdown}
-                    />
-                  }
-                  controls={
-                    <ComposerControls
-                      catalog={modelCatalog}
-                      selection={currentModelSelection}
-                      permission={currentPermission}
-                      onModelPick={handleModelPick}
-                      onEffortPick={handleEffortPick}
-                      onPermissionPick={handlePermissionPick}
-                    />
-                  }
+                    input={input}
+                    onInputChange={handleInputChange}
+                    onSend={() => void handleSend()}
+                    running={running}
+                    onStop={() => void handleStop()}
+                    textareaRef={textareaRef}
+                    draftImages={draftImages}
+                    onRemoveDraftImage={handleRemoveDraftImage}
+                    onAddImages={handleAddImages}
+                    onPreviewImage={(url) => setLightboxUrl(url)}
+                    meter={
+                      <ContextMeter
+                        pressure={currentProjections?.contextPressure}
+                        breakdown={currentProjections?.contextBreakdown}
+                      />
+                    }
+                    controls={
+                      <ComposerControls
+                        catalog={modelCatalog}
+                        selection={currentModelSelection}
+                        permission={currentPermission}
+                        onModelPick={handleModelPick}
+                        onEffortPick={handleEffortPick}
+                        onPermissionPick={handlePermissionPick}
+                      />
+                    }
                   />
                 )}
               </div>
@@ -3677,6 +4825,13 @@ export function NativeApp({
           </div>
         )}
       </main>
+
+      {lightboxUrl && (
+        <LightboxModal
+          src={lightboxUrl}
+          onClose={() => setLightboxUrl(null)}
+        />
+      )}
 
       {!panelCollapsed && (
         <div

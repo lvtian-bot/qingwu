@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:;"
     />
     <title>青梧</title>
     <style id="inkmark-scrollbar">
@@ -34,11 +34,10 @@
       }
       *::-webkit-scrollbar-thumb,
       ::-webkit-scrollbar-thumb {
-        border-radius: 9999px !important;
         background-color: var(--native-scrollbar-thumb) !important;
+        border-radius: 9999px !important;
         border: 2px solid transparent !important;
-        background-clip: padding-box !important;
-        transition: background-color 0.15s ease;
+        background-clip: content-box !important;
       }
       *::-webkit-scrollbar-thumb:hover,
       ::-webkit-scrollbar-thumb:hover {
@@ -51,6 +50,10 @@
       *::-webkit-scrollbar-corner,
       ::-webkit-scrollbar-corner {
         background: transparent !important;
+      }
+      * {
+        scrollbar-width: thin !important;
+        scrollbar-color: var(--native-scrollbar-thumb) transparent !important;
       }
     </style>
   </head>

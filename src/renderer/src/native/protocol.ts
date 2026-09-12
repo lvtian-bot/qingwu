@@ -13,12 +13,14 @@ export const Endpoints = {
   sessionList: 'session/list',
   sessionCreate: 'session/create',
   sessionPrompt: 'session/prompt',
+  sessionAttachment: 'session/attachment',
   sessionCancel: 'session/cancel',
   sessionUpdateQueue: 'session/updateQueue',
   sessionPage: 'session/page',
   sessionFollow: 'session/follow',
   sessionModelCatalog: 'session/modelCatalog',
   sessionSelectModel: 'session/selectModel',
+  sessionRename: 'session/rename',
   commandsExecute: 'commands/execute',
   settingsDescribe: 'settings/describe',
   settingsMutate: 'settings/mutate',
@@ -26,6 +28,7 @@ export const Endpoints = {
   workspaceCreate: 'workspace/create',
   workspaceRename: 'workspace/rename',
   workspaceDelete: 'workspace/delete',
+  workspaceArchiveSession: 'workspace/archiveSession',
   directoryPickerPick: 'directoryPicker/pick',
   eventsResult: '$events/result',
 } as const;
@@ -172,7 +175,27 @@ export interface ReasoningBlock {
   text: string;
 }
 
-export type ContentBlock = TextBlock | ReasoningBlock | { type: string } & Record<string, unknown>;
+export interface ImageAttachmentRef {
+  attachmentId: string;
+  mediaType: "image/png" | "image/jpeg" | "image/webp" | "image/gif";
+  bytes: number;
+  width: number;
+  height: number;
+  name?: string;
+  originalDimensions?: { width: number; height: number };
+}
+
+export interface ImageBlock {
+  type: 'image';
+  attachment: ImageAttachmentRef;
+}
+
+export interface SessionAttachmentResult {
+  attachment: ImageAttachmentRef;
+  data: string;
+}
+
+export type ContentBlock = TextBlock | ReasoningBlock | ImageBlock | { type: string } & Record<string, unknown>;
 
 /** journal 原始事件（SessionWireEvent）：type/seq/time/data，识别不了的忽略。 */
 export interface SessionEvent {

@@ -15,6 +15,22 @@
   z-index: 1;
 }
 
+/* 侧栏展开时：外层底色露出侧栏浅蓝，主对话区左上角呈现柔和圆角（12px 弧度）与微弱投影，自然衔接无硬分割线 */
+.native-app.has-sidebar {
+  background: var(--native-sidebar-bg);
+}
+
+.native-app.has-sidebar .native-chat {
+  border-top-left-radius: 12px;
+  box-shadow: -2px 0 10px rgba(0, 0, 0, 0.04);
+}
+
+@media (prefers-color-scheme: dark) {
+  .native-app.has-sidebar .native-chat {
+    box-shadow: -2px 0 12px rgba(0, 0, 0, 0.28);
+  }
+}
+
 :root {
   --native-bg: #ffffff;
   --native-fg: #0d0d0d;
@@ -39,10 +55,12 @@
   --native-error: #dc2626;
   /* 「在等用户回答/授权」的提示色（侧栏会话标记）：不是错误，但需要人来看 */
   --native-warn: #d97706;
-  --native-user-bubble: #d9e7f8;
+  --native-user-bubble: #e8f3fe;
+  --native-user-bubble-fg: #0c274a;
   --native-send: #2563eb;
   --native-send-fg: #ffffff;
   --native-card-border: #dcdce0;
+  --native-border-subtle: rgba(0, 0, 0, 0.055);
   --native-diff-add-bg: rgba(16, 163, 127, 0.08);
   --native-diff-del-bg: rgba(220, 46, 42, 0.08);
   --native-diff-add-fg: #067a5e;
@@ -83,9 +101,11 @@
     --native-error: #f87171;
     --native-warn: #fbbf24;
     --native-user-bubble: #26364a;
+    --native-user-bubble-fg: #ececec;
     --native-send: #3b82f6;
     --native-send-fg: #ffffff;
     --native-card-border: #2e2e33;
+    --native-border-subtle: rgba(255, 255, 255, 0.06);
     --native-diff-add-bg: rgba(52, 211, 153, 0.1);
     --native-diff-del-bg: rgba(248, 113, 113, 0.1);
     --native-diff-add-fg: #34d399;
@@ -158,7 +178,7 @@
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  border-right: 1px solid var(--native-border);
+  border-right: none;
   background: var(--native-sidebar-bg);
 }
 
@@ -167,7 +187,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 14px 16px 6px;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
   user-select: none;
 }
@@ -214,15 +234,15 @@
 .native-nav-item {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   width: calc(100% - 16px);
   margin: 0 8px 2px;
-  padding: 8px 10px;
+  padding: 6px 8px;
   border: none;
   border-radius: 8px;
   background: transparent;
   color: var(--native-sidebar-fg);
-  font-size: 15px;
+  font-size: 14px;
   cursor: pointer;
   text-align: left;
 }
@@ -244,6 +264,150 @@
 
 .native-session-group {
   margin-bottom: 6px;
+}
+
+/* ---------- 侧栏三区间：置顶 / 项目 / 会话 ---------- */
+.native-sidebar-section {
+  margin-bottom: 14px;
+}
+
+.native-sidebar-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 8px 8px 10px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--native-muted);
+  opacity: 0.75;
+  letter-spacing: 0.3px;
+  user-select: none;
+}
+
+.native-sidebar-section-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.native-sidebar-section-act {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--native-muted);
+  cursor: pointer;
+  padding: 0;
+  transition: all 0.15s ease;
+}
+
+.native-sidebar-section-act:hover {
+  background: var(--native-sidebar-hover);
+  color: var(--native-fg);
+}
+
+.native-sidebar-empty-hint {
+  padding: 6px 8px;
+  font-size: 12px;
+  color: var(--native-muted);
+  opacity: 0.7;
+}
+
+/* 侧栏会话行（与工作区行结构对齐） */
+.native-session-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin-bottom: 1px;
+  padding-right: 2px;
+  border-radius: 8px;
+}
+
+.native-session-row:hover {
+  background: var(--native-sidebar-hover);
+}
+
+.native-session-row.active {
+  background: var(--native-sidebar-active);
+}
+
+.native-session-main {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  padding: 5px 6px 5px 22px;
+  border: none;
+  background: transparent;
+  color: var(--native-sidebar-fg);
+  font-size: 14px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.native-session-row.indented .native-session-main {
+  padding-left: 32px;
+}
+
+.native-session-act {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin-left: 2px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--native-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  visibility: hidden;
+}
+
+.native-session-row:hover .native-session-act,
+.native-session-act.visible {
+  visibility: visible;
+}
+
+.native-session-act:hover {
+  background: var(--native-sidebar-active);
+  color: var(--native-fg);
+}
+
+.native-session-act.pinned {
+  color: var(--native-primary, #10a37f);
+}
+
+.native-session-rename {
+  flex: 1;
+  min-width: 0;
+  margin: 4px 6px;
+  padding: 4px 8px;
+  border: 1px solid var(--native-border);
+  border-radius: 6px;
+  background: var(--native-bg);
+  color: var(--native-fg);
+  font-size: 14px;
+  outline: none;
+}
+
+/* 会话「···」操作菜单（向下弹出） */
+.native-session-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 4px;
+  min-width: 140px;
+  padding: 6px;
+  border: 1px solid var(--native-border);
+  border-radius: 10px;
+  background: var(--native-bg);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+  z-index: 40;
 }
 
 .native-group-title {
@@ -292,7 +456,7 @@
   border-radius: 6px;
   background: transparent;
   color: var(--native-sidebar-fg);
-  font-size: 15px;
+  font-size: 14px;
   cursor: pointer;
   text-align: left;
   overflow: hidden;
@@ -306,10 +470,10 @@
   background: var(--native-sidebar-active);
 }
 
-/* 工作区分组下的会话：缩进到与工作区名文字左对齐（左 padding 8 + 图标 15 + gap 6），
- * 体现从属于该文件夹；未分组会话不缩进 */
+/* 工作区及未分组等分组下的会话：缩进到与分组名文字左对齐（左 padding 8 + 图标 16 + gap 8 = 32px），
+ * 体现从属于该文件夹 */
 .native-session-group-ws .native-session-item {
-  padding-left: 29px;
+  padding-left: 32px;
 }
 
 .native-session-title {
@@ -319,23 +483,74 @@
   text-overflow: ellipsis;
 }
 
-.native-running-dot {
-  width: 7px;
-  height: 7px;
+/* 状态圆点统一脱离文档流绝对定位，绝不挤压会话文字排版 */
+.native-status-mark {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
-  background: var(--native-ok);
   flex-shrink: 0;
-  animation: native-pulse 1.6s ease-in-out infinite;
+  pointer-events: none;
+}
+
+/* 缩进会话（项目下）：水平中心线位于 16px，与上方 16px 文件夹图标居中完全对齐（12px + 4px = 16px） */
+.native-session-row.indented .native-status-mark {
+  left: 12px;
+}
+
+/* 非缩进会话（独立会话）：固定在左侧指示槽内（7px + 4px = 11px） */
+.native-session-row:not(.indented) .native-status-mark {
+  left: 7px;
+}
+
+/* 进行中会话：14px 旋转圆环（2px 翡翠绿弧线 + 半透明底轨），体现任务动态运转 */
+.native-running-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  box-sizing: border-box;
+  background: transparent;
+  border: 2px solid rgba(16, 163, 127, 0.22);
+  border-top-color: var(--native-ok);
+  animation: native-status-spin 0.85s linear infinite;
+}
+
+/* 14px 圆环对齐：水平中心线严格与 8px 圆点同轴（缩进 9+7=16px，非缩进 4+7=11px） */
+.native-session-row.indented .native-running-dot {
+  left: 9px;
+}
+
+.native-session-row:not(.indented) .native-running-dot {
+  left: 4px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .native-running-dot {
+    border-color: rgba(52, 211, 153, 0.25);
+    border-top-color: var(--native-ok);
+  }
+}
+
+@keyframes native-status-spin {
+  from {
+    transform: translateY(-50%) rotate(0deg);
+  }
+  to {
+    transform: translateY(-50%) rotate(360deg);
+  }
 }
 
 /* 该会话正在等用户回答/授权：卡片只在它自己的会话里显示，这里给出「去哪答」的入口 */
 .native-waiting-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
   background: var(--native-warn);
-  flex-shrink: 0;
   animation: native-pulse 1.6s ease-in-out infinite;
+}
+
+/* 该会话在后台完成但用户尚未查看：左侧显示蓝色提示圆点 */
+.native-unread-dot {
+  background: var(--native-send);
 }
 
 /* ---------- 侧栏工作区行（对齐 ChatGPT 桌面版项目分组） ---------- */
@@ -359,12 +574,12 @@
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 6px 4px 8px;
+  gap: 8px;
+  padding: 5px 6px 5px 8px;
   border: none;
   background: transparent;
   color: var(--native-sidebar-fg);
-  font-size: 15px;
+  font-size: 14px;
   cursor: pointer;
   text-align: left;
 }
@@ -483,6 +698,7 @@
   flex-direction: column;
   position: relative;
   min-width: 0;
+  background: var(--native-bg);
 }
 
 .native-empty {
@@ -530,7 +746,7 @@
   justify-content: space-between;
   height: 48px;
   padding: 0 16px;
-  border-bottom: 1px solid var(--native-border);
+  border-bottom: 1px solid var(--native-border-subtle);
   flex-shrink: 0;
 }
 
@@ -606,9 +822,10 @@
 
 .native-msg.user .native-msg-body {
   background: var(--native-user-bubble);
-  border-radius: 18px;
+  color: var(--native-user-bubble-fg);
+  border-radius: 14px;
   padding: 10px 16px;
-  max-width: 80%;
+  max-width: 88%;
   font-size: 14px;
   line-height: 1.65;
   white-space: pre-wrap;
@@ -1663,40 +1880,17 @@
   background: var(--native-border);
 }
 
-/* ---------- 标题栏左侧融合 ---------- */
+/* ---------- 青梧自研界面标题栏 ---------- */
 
 /*
- * native 界面且侧栏展开时（NativeApp 给 body 加 .native-sidebar-fused 并注入
- * --native-sidebar-w），标题栏左段下边线不画、只补右段分隔线，配合侧栏与标题栏
- * 背景同色值（浅 #eef4f9 / 深 #181825）实现视觉融合。注意不要再用绝对定位
- * 色块铺左段：positioned 伪元素绘制在静态定位的菜单之上，会盖住菜单文字。
+ * 自研界面下标题栏不画底分割线：
+ * 标题栏底色（浅 #eef4f9 / 深 #181825）与侧栏同色自然融合，
+ * 对话区与右侧面板已有自身顶栏（.native-chat-header / .native-panel-header）
+ * 及与标题栏的色块自然分界，无需额外的横向分割线；同时避免在 Windows 原生控件区
+ * （右上角最小化/最大化/关闭遮罩层）产生被截断的断头残线。
  */
-body.native-sidebar-fused .titlebar {
-  border-bottom-color: transparent;
-}
-
-body.native-sidebar-fused .titlebar::after {
-  content: "";
-  position: absolute;
-  left: var(--native-sidebar-w, 0);
-  right: 0;
-  bottom: 0;
-  height: 1px;
-  background: var(--titlebar-border);
-  pointer-events: none;
-}
-
-/*
- * 侧栏展开时对话区是一块浮在页面底色上的白色圆角面板（对齐 ChatGPT 桌面版）：
- * 左上角做出弧度，缺口露出与侧栏同色的底；收起侧栏后对话区整幅铺满，不做圆角。
- */
-body.native-sidebar-fused .native-app {
-  background: var(--native-sidebar-bg);
-}
-
-body.native-sidebar-fused .native-chat {
-  background: var(--native-bg);
-  border-top-left-radius: 12px;
+body.native-ui-active .titlebar {
+  border-bottom: none;
 }
 
 .native-composer-box {
@@ -1706,7 +1900,7 @@ body.native-sidebar-fused .native-chat {
   display: flex;
   flex-direction: column;
   border: 1px solid var(--native-border);
-  border-radius: 27px;
+  border-radius: 18px;
   background: var(--native-bg);
   box-shadow:
     0 4px 18px rgba(0, 0, 0, 0.07),
@@ -2326,6 +2520,7 @@ body.native-sidebar-fused .native-chat {
 .native-resizer {
   flex-shrink: 0;
   width: 6px;
+  margin: 0 -3px;
   cursor: col-resize;
   background: transparent;
   touch-action: none;
@@ -2363,4 +2558,200 @@ body.native-resizing {
   font-size: 13px;
   cursor: pointer;
   z-index: 3;
+}
+
+/* ---------- 输入框草稿图片附件行 ---------- */
+
+.native-composer-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 14px 0;
+}
+
+.native-composer-attachment-item {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  border-radius: 12px;
+  border: 1px solid var(--native-border);
+  overflow: visible;
+}
+
+.native-composer-thumb-btn {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  border-radius: 11px;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.native-composer-thumb-btn img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.native-composer-thumb-remove {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.65);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  transition: background 0.15s ease, transform 0.15s ease;
+  z-index: 2;
+}
+
+.native-composer-thumb-remove:hover {
+  background: rgba(0, 0, 0, 0.85);
+  transform: scale(1.1);
+}
+
+/* 输入框工具行添加图片按钮 */
+.native-composer-attach-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: var(--native-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  flex-shrink: 0;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.native-composer-attach-btn:hover {
+  background: var(--native-hover);
+  color: var(--native-fg);
+}
+
+/* ---------- 聊天消息图片与原图查看 ---------- */
+
+.native-msg-user-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  max-width: 88%;
+}
+
+.native-msg-user-wrap .native-msg-body {
+  max-width: 100%;
+}
+
+.native-msg-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.native-msg-image-btn {
+  padding: 0;
+  border: 1px solid var(--native-border);
+  background: transparent;
+  border-radius: 12px;
+  overflow: hidden;
+  cursor: zoom-in;
+  max-width: 260px;
+  max-height: 260px;
+  display: block;
+}
+
+.native-msg-image-btn img {
+  display: block;
+  max-width: 260px;
+  max-height: 260px;
+  object-fit: cover;
+  border-radius: 11px;
+}
+
+.native-msg-image-loading,
+.native-msg-image-error {
+  width: 100px;
+  height: 100px;
+  border-radius: 12px;
+  border: 1px dashed var(--native-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: var(--native-muted);
+  background: var(--native-hover);
+}
+
+.native-queue-img-tag {
+  color: var(--native-accent);
+  font-size: 12px;
+  margin-right: 4px;
+}
+
+/* 大图灯箱预览 */
+.native-lightbox-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+}
+
+.native-lightbox-content {
+  position: relative;
+  max-width: 90vw;
+  max-height: 90vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.native-lightbox-content img {
+  max-width: 100%;
+  max-height: 90vh;
+  object-fit: contain;
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.native-lightbox-close {
+  position: absolute;
+  top: -36px;
+  right: -36px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease;
+}
+
+.native-lightbox-close:hover {
+  background: rgba(255, 255, 255, 0.4);
 }
