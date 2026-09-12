@@ -2151,8 +2151,8 @@ export function NativeApp({
   const [questions, setQuestions] = useState<PendingQuestion[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loadingHistory, setLoadingHistory] = useState(false);
-  /** 右侧面板折叠态。 */
-  const [panelCollapsed, setPanelCollapsed] = useState(false);
+  /** 右侧面板折叠态（默认收起，需要时再展开）。 */
+  const [panelCollapsed, setPanelCollapsed] = useState(true);
   /** 会话搜索（纯前端标题过滤）。 */
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchText, setSearchText] = useState("");
