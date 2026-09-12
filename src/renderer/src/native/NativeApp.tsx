@@ -969,6 +969,9 @@ function WorkspaceRow({
 /** 侧栏置顶数据持久化 Key。 */
 const PINNED_STORAGE_KEY = "qingwu.native.pinned";
 
+/** 项目内会话默认展示上限；「展开显示」每次多展示一批（同数），全部展示后变「收起」。官方 dsh 上限为 5。 */
+const WORKSPACE_SESSION_PREVIEW_LIMIT = 6;
+
 interface PinnedData {
   workspaces: string[];
   sessions: string[];
@@ -2893,6 +2896,10 @@ export function NativeApp({
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
     new Set(),
   );
+  /** 项目会话组当前展示条数（缺省=默认上限；折叠项目或点「收起」即复位）。 */
+  const [sessionVisibleByGroup, setSessionVisibleByGroup] = useState<
+    Map<string, number>
+  >(new Map());
   /** 模型目录（provider 分组 + 默认选择），拉取失败仅降级选择器。 */
   const [modelCatalog, setModelCatalog] = useState<ModelCatalog | null>(null);
   /** 空态（尚未建会话）待应用的模型选择，发送时随会话创建写入。 */
@@ -4307,6 +4314,88 @@ export function NativeApp({
   if (!visible) return null;
 
   /** 工作区 chip 绑定：会话内取所属工作区（未绑定为 null），空态取新会话落点。 */
+  /** 折叠/展开项目分组；折叠时同时复位该组会话展示条数，再点开回到默认上限。 */
+  const toggleWorkspaceGroup = (workspaceId: string) => {
+    const collapsing = !collapsedGroups.has(workspaceId);
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (collapsing) next.add(workspaceId);
+      else next.delete(workspaceId);
+      return next;
+    });
+    if (!collapsing) return;
+    setSessionVisibleByGroup((prev) => {
+      const next = new Map(prev);
+      next.delete(workspaceId);
+      return next;
+    });
+  };
+
+  /**
+   * 项目内会话列表：默认最多展示 WORKSPACE_SESSION_PREVIEW_LIMIT 条，
+   * 每点一次「展开显示」多展示一批，全部展示后按钮变「收起」（复位回默认条数）。
+   * 折叠项目再点开同样回到默认条数。搜索态不设上限——匹配结果被折叠会让用户以为没搜到。
+   */
+  const renderWorkspaceSessions = (
+    ws: WorkspaceView,
+    wsSessions: SessionSummary[],
+  ) => {
+    if (collapsedGroups.has(ws.workspaceId)) return null;
+    const searching = searchText.trim() !== "";
+    const visibleCount = Math.max(
+      searching ? wsSessions.length : WORKSPACE_SESSION_PREVIEW_LIMIT,
+      sessionVisibleByGroup.get(ws.workspaceId) ?? 0,
+    );
+    const visible = wsSessions.slice(0, visibleCount);
+    const hiddenCount = wsSessions.length - visible.length;
+    return (
+      <>
+        {visible.map((session) => (
+          <SessionRow
+            key={session.sessionId}
+            title={sessionTitle(session)}
+            tooltip={session.cwd ?? session.sessionId}
+            active={session.sessionId === currentId}
+            pinned={pinnedSessionSet.has(session.sessionId)}
+            running={session.running}
+            pending={pendingKindBySession.get(session.sessionId) ?? null}
+            unread={unreadFinishedSessionIds.has(session.sessionId)}
+            indented
+            onClick={() => openSession(session.sessionId)}
+            onTogglePin={() => toggleSessionPin(session.sessionId)}
+            onRename={(t) => void handleSessionRename(session.sessionId, t)}
+            onArchive={() => void handleSessionArchive(session.sessionId)}
+          />
+        ))}
+        {!searching &&
+          (hiddenCount > 0 ||
+            visibleCount > WORKSPACE_SESSION_PREVIEW_LIMIT) && (
+            <button
+              type="button"
+              className="native-session-overflow"
+              aria-expanded={hiddenCount === 0}
+              onClick={() =>
+                setSessionVisibleByGroup((prev) => {
+                  const next = new Map(prev);
+                  if (hiddenCount > 0) {
+                    next.set(
+                      ws.workspaceId,
+                      visibleCount + WORKSPACE_SESSION_PREVIEW_LIMIT,
+                    );
+                  } else {
+                    next.delete(ws.workspaceId);
+                  }
+                  return next;
+                })
+              }
+            >
+              {hiddenCount > 0 ? "展开显示" : "收起"}
+            </button>
+          )}
+      </>
+    );
+  };
+
   const chipWorkspaceId = currentId
     ? (workspaceOfSession.get(currentId) ?? null)
     : activeWorkspaceId;
@@ -4397,13 +4486,7 @@ export function NativeApp({
                             collapsed={collapsedGroups.has(ws.workspaceId)}
                             pinned={true}
                             onToggle={() =>
-                              setCollapsedGroups((prev) => {
-                                const next = new Set(prev);
-                                if (next.has(ws.workspaceId))
-                                  next.delete(ws.workspaceId);
-                                else next.add(ws.workspaceId);
-                                return next;
-                              })
+                              toggleWorkspaceGroup(ws.workspaceId)
                             }
                             onNewSession={() =>
                               void createSessionIn(ws.workspaceId).catch((err) =>
@@ -4418,35 +4501,7 @@ export function NativeApp({
                             onDelete={() => handleWorkspaceDelete(ws.workspaceId)}
                             onTogglePin={() => toggleWorkspacePin(ws.workspaceId)}
                           />
-                          {!collapsedGroups.has(ws.workspaceId) &&
-                            wsSessions.map((session) => (
-                              <SessionRow
-                                key={session.sessionId}
-                                title={sessionTitle(session)}
-                                tooltip={session.cwd ?? session.sessionId}
-                                active={session.sessionId === currentId}
-                                pinned={pinnedSessionSet.has(session.sessionId)}
-                                running={session.running}
-                                pending={
-                                  pendingKindBySession.get(session.sessionId) ??
-                                  null
-                                }
-                                unread={unreadFinishedSessionIds.has(
-                                  session.sessionId,
-                                )}
-                                indented
-                                onClick={() => openSession(session.sessionId)}
-                                onTogglePin={() =>
-                                  toggleSessionPin(session.sessionId)
-                                }
-                                onRename={(t) =>
-                                  void handleSessionRename(session.sessionId, t)
-                                }
-                                onArchive={() =>
-                                  void handleSessionArchive(session.sessionId)
-                                }
-                              />
-                            ))}
+                          {renderWorkspaceSessions(ws, wsSessions)}
                         </div>
                       );
                     })}
@@ -4514,15 +4569,7 @@ export function NativeApp({
                           workspace={ws}
                           collapsed={collapsedGroups.has(ws.workspaceId)}
                           pinned={false}
-                          onToggle={() =>
-                            setCollapsedGroups((prev) => {
-                              const next = new Set(prev);
-                              if (next.has(ws.workspaceId))
-                                next.delete(ws.workspaceId);
-                              else next.add(ws.workspaceId);
-                              return next;
-                            })
-                          }
+                          onToggle={() => toggleWorkspaceGroup(ws.workspaceId)}
                           onNewSession={() =>
                             void createSessionIn(ws.workspaceId).catch((err) =>
                               setError(
@@ -4536,35 +4583,7 @@ export function NativeApp({
                           onDelete={() => handleWorkspaceDelete(ws.workspaceId)}
                           onTogglePin={() => toggleWorkspacePin(ws.workspaceId)}
                         />
-                        {!collapsedGroups.has(ws.workspaceId) &&
-                          wsSessions.map((session) => (
-                            <SessionRow
-                              key={session.sessionId}
-                              title={sessionTitle(session)}
-                              tooltip={session.cwd ?? session.sessionId}
-                              active={session.sessionId === currentId}
-                              pinned={pinnedSessionSet.has(session.sessionId)}
-                              running={session.running}
-                              pending={
-                                pendingKindBySession.get(session.sessionId) ??
-                                null
-                              }
-                              unread={unreadFinishedSessionIds.has(
-                                session.sessionId,
-                              )}
-                              indented
-                              onClick={() => openSession(session.sessionId)}
-                              onTogglePin={() =>
-                                toggleSessionPin(session.sessionId)
-                              }
-                              onRename={(t) =>
-                                void handleSessionRename(session.sessionId, t)
-                              }
-                              onArchive={() =>
-                                void handleSessionArchive(session.sessionId)
-                              }
-                            />
-                          ))}
+                        {renderWorkspaceSessions(ws, wsSessions)}
                       </div>
                     );
                   })}
