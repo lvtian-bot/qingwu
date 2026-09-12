@@ -835,6 +835,29 @@
   padding: 12px;
 }
 
+/* 「加载更早」：会话顶部居中的轻量文字按钮，对齐官方 chat.loadOlder 交互 */
+.native-load-older {
+  display: block;
+  margin: 0 auto 6px;
+  padding: 4px 16px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--native-muted);
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.native-load-older:hover {
+  background: var(--native-hover);
+}
+
+.native-load-older:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
 /* 用户消息：右对齐浅蓝圆角气泡 */
 .native-msg.user {
   display: flex;

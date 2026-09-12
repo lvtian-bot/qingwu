@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -27,6 +28,7 @@ import type {
   SessionAttachmentResult,
   SessionEvent,
   SessionFollowFrame,
+  SessionHistoryRecord,
   SessionSummary,
   SettingsDescribeValue,
   ToolCallEventData,
@@ -2887,6 +2889,10 @@ export function NativeApp({
   const [questions, setQuestions] = useState<PendingQuestion[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  /** 开场窗口之外还有更早历史（对齐官方 follow snapshot 的 hasMore）。 */
+  const [historyHasMore, setHistoryHasMore] = useState(false);
+  /** 「加载更早」一页在途（按钮禁用并显示加载中，对齐官方 loadingOlder）。 */
+  const [loadingOlderHistory, setLoadingOlderHistory] = useState(false);
   /** 右侧面板折叠态（默认收起，需要时再展开）。 */
   const [panelCollapsed, setPanelCollapsed] = useState(true);
   /** 会话搜索（纯前端标题过滤）。 */
@@ -2929,6 +2935,10 @@ export function NativeApp({
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const stickBottomRef = useRef(true);
   const currentIdRef = useRef<string | null>(null);
+  /** follow 开场帧 cursor：session/page 的 throughSeq（含）日志切点，随每代快照更新。 */
+  const historyThroughSeqRef = useRef(0);
+  /** 「加载更早」前插后的视口锚定：记下前插前的滚动几何，DOM 提交后按高度差复位。 */
+  const restoreScrollRef = useRef<{ height: number; top: number } | null>(null);
   const sessionStreamRef = useRef<string | null>(null);
   const eventsClientIdRef = useRef<string | null>(null);
   const refreshTimerRef = useRef<number | undefined>(undefined);
@@ -2988,6 +2998,52 @@ export function NativeApp({
     },
     [refreshFromEvents, scheduleRefresh],
   );
+
+  /**
+   * 「加载更早」：向 session/page 再取一页开场窗口之前的历史并前插。
+   * 对齐官方 session-controller loadOlder：beforeSeq 取当前窗口最早一条的 seq
+   * （host 按消息计数向前切满一页），每页 maxMessages 50；结果 records 仍是
+   * seq 升序事件，直接拼进窗口重算。throughSeq 用开场帧 cursor（含）切点，
+   * 越过它之前的日志不再属于本次 follow。切会话后晚到的旧结果按代际丢弃。
+   */
+  const loadOlderHistory = useCallback(async () => {
+    const sessionId = currentIdRef.current;
+    const oldest = eventsRef.current[0];
+    if (!sessionId || !oldest || loadingOlderHistory) return;
+    const el = scrollRef.current;
+    if (el) {
+      restoreScrollRef.current = { height: el.scrollHeight, top: el.scrollTop };
+    }
+    setLoadingOlderHistory(true);
+    try {
+      const page = await rpc<{
+        records: SessionHistoryRecord[];
+        hasMore: boolean;
+      }>(Endpoints.sessionPage, {
+        request: {
+          address: { kind: "session", sessionId },
+          throughSeq: historyThroughSeqRef.current,
+          beforeSeq: oldest.seq,
+          maxMessages: 50,
+        },
+      });
+      if (currentIdRef.current !== sessionId) return;
+      const older = page.records
+        .filter((record) => record.type === "event")
+        .map((record) => record.event)
+        .filter((event) => event.seq < oldest.seq);
+      if (older.length > 0) {
+        eventsRef.current = [...older, ...eventsRef.current];
+        refreshFromEvents();
+      }
+      setHistoryHasMore(page.hasMore);
+    } catch (err) {
+      console.error("[qingwu] loadOlder failed:", err);
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      if (currentIdRef.current === sessionId) setLoadingOlderHistory(false);
+    }
+  }, [loadingOlderHistory, refreshFromEvents]);
 
   // 初始化：界面模式 + 会话列表；无活跃工作区时默认取第一个
   useEffect(() => {
@@ -3217,6 +3273,9 @@ export function NativeApp({
     }
     eventsRef.current = [];
     setItems([]);
+    setHistoryHasMore(false);
+    setLoadingOlderHistory(false);
+    historyThroughSeqRef.current = 0;
     setDraft("");
     setLiveReasoning("");
     setReasoningActive(false);
@@ -3326,6 +3385,8 @@ export function NativeApp({
           .filter((record) => record.type === "event")
           .map((record) => record.event);
         eventsRef.current = events;
+        historyThroughSeqRef.current = frame.cursor;
+        setHistoryHasMore(frame.hasMore);
         refreshFromEvents();
         setLoadingHistory(false);
         // 开场基线：把在飞 attempt 已经产出的增量补回流式展示，
@@ -3398,6 +3459,15 @@ export function NativeApp({
     stickBottomRef.current =
       el.scrollHeight - el.scrollTop - el.clientHeight < 80;
   }, []);
+
+  // 「加载更早」前插旧内容后按高度差复位视口：用户看到的那条消息保持原地，不跳屏
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    const anchor = restoreScrollRef.current;
+    if (!el || !anchor) return;
+    restoreScrollRef.current = null;
+    el.scrollTop = anchor.top + (el.scrollHeight - anchor.height);
+  }, [items]);
 
   useEffect(() => {
     if (stickBottomRef.current) {
@@ -4749,6 +4819,16 @@ export function NativeApp({
               <div className="native-messages-inner">
                 {loadingHistory && (
                   <div className="native-hint">正在加载会话历史…</div>
+                )}
+                {historyHasMore && !loadingHistory && (
+                  <button
+                    type="button"
+                    className="native-load-older"
+                    disabled={loadingOlderHistory}
+                    onClick={() => void loadOlderHistory()}
+                  >
+                    {loadingOlderHistory ? "加载中…" : "加载更早"}
+                  </button>
                 )}
                 {items.map((view) => (
                   <TurnItems
