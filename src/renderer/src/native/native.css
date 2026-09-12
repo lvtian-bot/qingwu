@@ -829,7 +829,9 @@
   color: var(--native-user-bubble-fg);
   border-radius: 14px;
   padding: 10px 16px;
-  max-width: 88%;
+  width: fit-content;
+  max-width: 100%;
+  box-sizing: border-box;
   font-size: 14px;
   line-height: 1.65;
   white-space: pre-wrap;
@@ -1820,37 +1822,46 @@
 /*
  * 工作区 chip 垫板：一块全圆角灰底板，输入框用负外边距叠住它的下沿——
  * 输入框四角圆弧保持完整，圆角缺口里露出灰底，两者看起来是一体的。
- * 条底 padding 44px 必须盖过「上移量 30px + 输入框 27px 圆角」的缺口深度。
  */
 .native-ws-chip-wrap {
   position: relative;
   display: flex;
-  padding: 8px 12px 44px;
+  padding: 6px 10px 30px;
   border-radius: 18px;
   background: var(--native-surface);
 }
 
 /* 输入框上移叠在垫板下沿上（后绘制的白框盖住垫板底部） */
 .native-ws-chip-wrap + .native-composer-box {
-  margin-top: -30px;
+  margin-top: -24px;
 }
 
 .native-ws-chip {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  max-width: 240px;
-  padding: 4px 10px;
+  max-width: 260px;
+  height: 28px;
+  padding: 0 8px;
   border: none;
   border-radius: 8px;
   background: transparent;
-  color: var(--native-muted);
-  font-size: 12px;
+  color: var(--native-sidebar-fg, #3a3c3f);
+  font-size: 13px;
+  font-weight: 500;
   cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
 }
 
-.native-ws-chip:hover {
-  /* 垫板本身已是 surface，悬停加深一档（dark 下 --native-hover 与 surface 同值，不能用） */
+@media (prefers-color-scheme: dark) {
+  .native-ws-chip {
+    color: var(--native-sidebar-fg, #d4d6d9);
+  }
+}
+
+.native-ws-chip:hover,
+.native-ws-chip.active {
+  /* 垫板本身已是 surface，悬停加深一档 */
   background: var(--native-surface-2);
   color: var(--native-fg);
 }
@@ -1861,11 +1872,26 @@
   text-overflow: ellipsis;
 }
 
-/* chip 菜单向下弹出（垫板底 padding 44px，锚点内收到 chip 下沿 + 6px） */
+.native-ws-chip-chevron {
+  flex-shrink: 0;
+  color: var(--native-muted);
+  transition: transform 0.15s ease, color 0.12s ease;
+}
+
+.native-ws-chip:hover .native-ws-chip-chevron,
+.native-ws-chip.active .native-ws-chip-chevron {
+  color: var(--native-fg);
+}
+
+.native-ws-chip.active .native-ws-chip-chevron {
+  transform: rotate(180deg);
+}
+
+/* chip 菜单向下弹出 */
 .native-ws-chip-menu {
   position: absolute;
-  top: calc(100% - 38px);
-  left: 0;
+  top: 38px;
+  left: 10px;
   min-width: 240px;
   max-width: 320px;
   max-height: 320px;
@@ -2068,18 +2094,28 @@ body.native-ui-active .titlebar {
 }
 
 .native-pill {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 5px;
-  max-width: 200px;
-  padding: 4px 9px;
+  gap: 6px;
+  max-width: 260px;
+  height: 32px;
+  padding: 0 10px;
   border: none;
-  border-radius: 999px;
+  border-radius: 8px;
   background: transparent;
-  color: var(--native-muted);
-  font-size: 12px;
+  color: var(--native-sidebar-fg, #3a3c3f);
+  font-size: 13px;
+  font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
+  user-select: none;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+@media (prefers-color-scheme: dark) {
+  .native-pill {
+    color: var(--native-sidebar-fg, #d4d6d9);
+  }
 }
 
 .native-pill svg {
@@ -2091,10 +2127,25 @@ body.native-ui-active .titlebar {
   text-overflow: ellipsis;
 }
 
+.native-pill-chevron {
+  flex-shrink: 0;
+  color: var(--native-muted);
+  transition: transform 0.15s ease, color 0.12s ease;
+}
+
 .native-pill:hover,
 .native-pill.active {
   background: var(--native-hover);
   color: var(--native-fg);
+}
+
+.native-pill:hover .native-pill-chevron,
+.native-pill.active .native-pill-chevron {
+  color: var(--native-fg);
+}
+
+.native-pill.active .native-pill-chevron {
+  transform: rotate(180deg);
 }
 
 /* 弹出层：从工具行向上展开 */
@@ -2219,7 +2270,7 @@ body.native-ui-active .titlebar {
 .native-send {
   width: 32px;
   height: 32px;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   border: none;
@@ -2228,6 +2279,15 @@ body.native-ui-active .titlebar {
   color: var(--native-send-fg);
   cursor: pointer;
   flex-shrink: 0;
+  transition: background 0.15s ease, opacity 0.15s ease, transform 0.1s ease;
+}
+
+.native-send:not(:disabled):hover {
+  filter: brightness(1.08);
+}
+
+.native-send:not(:disabled):active {
+  transform: scale(0.96);
 }
 
 /*
@@ -2238,6 +2298,7 @@ body.native-ui-active .titlebar {
   background: var(--native-hover);
   border: 1px solid var(--native-border);
   color: var(--native-muted);
+  opacity: 0.65;
   cursor: default;
 }
 
@@ -2261,11 +2322,12 @@ body.native-ui-active .titlebar {
   place-items: center;
   padding: 0;
   border: none;
-  border-radius: 50%;
+  border-radius: 8px;
   background: transparent;
   color: var(--native-muted);
   cursor: pointer;
   flex-shrink: 0;
+  transition: background 0.12s ease, color 0.12s ease;
 }
 
 .native-meter-trigger:hover {
@@ -2628,14 +2690,14 @@ body.native-resizing {
 
 /* 输入框工具行添加图片按钮 */
 .native-composer-attach-btn {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
   border: none;
   background: transparent;
   color: var(--native-muted);
   cursor: pointer;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   padding: 0;
@@ -2656,6 +2718,7 @@ body.native-resizing {
   align-items: flex-end;
   gap: 8px;
   max-width: 88%;
+  width: fit-content;
 }
 
 .native-msg-user-wrap .native-msg-body {

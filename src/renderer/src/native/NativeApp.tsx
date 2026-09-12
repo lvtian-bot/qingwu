@@ -1033,14 +1033,14 @@ function WorkspaceChip({
   return (
     <div className="native-ws-chip-wrap" ref={rootRef}>
       <button
-        className="native-ws-chip"
+        className={`native-ws-chip${open ? " active" : ""}`}
         onClick={() => setOpen((v) => !v)}
         title="选择工作区"
       >
         <svg
           viewBox="0 0 24 24"
-          width="13"
-          height="13"
+          width="15"
+          height="15"
           fill="none"
           stroke="currentColor"
           strokeWidth="2"
@@ -1052,9 +1052,10 @@ function WorkspaceChip({
         </svg>
         <span className="native-ws-chip-text">{label}</span>
         <svg
+          className="native-ws-chip-chevron"
           viewBox="0 0 24 24"
-          width="11"
-          height="11"
+          width="12"
+          height="12"
           fill="none"
           stroke="currentColor"
           strokeWidth="2"
@@ -1930,8 +1931,8 @@ function ComposerControls({
           >
             <svg
               viewBox="0 0 24 24"
-              width="13"
-              height="13"
+              width="15"
+              height="15"
               fill="none"
               stroke="currentColor"
               strokeWidth="2"
@@ -1944,6 +1945,20 @@ function ComposerControls({
             <span className="native-pill-text">
               {permissionLabel(permission.currentValue)}
             </span>
+            <svg
+              className="native-pill-chevron"
+              viewBox="0 0 24 24"
+              width="12"
+              height="12"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M6 9l6 6 6-6" />
+            </svg>
           </button>
           {open === "permission" && (
             <div className="native-popover">
@@ -2013,8 +2028,8 @@ function ComposerControls({
         >
           <svg
             viewBox="0 0 24 24"
-            width="13"
-            height="13"
+            width="15"
+            height="15"
             fill="none"
             stroke="currentColor"
             strokeWidth="2"
@@ -2026,6 +2041,20 @@ function ComposerControls({
             <path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1" />
           </svg>
           <span className="native-pill-text">{modelPillText}</span>
+          <svg
+            className="native-pill-chevron"
+            viewBox="0 0 24 24"
+            width="12"
+            height="12"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M6 9l6 6 6-6" />
+          </svg>
         </button>
         {open === "model" && (
           <div className="native-popover">
@@ -2074,8 +2103,8 @@ function ComposerControls({
           >
             <svg
               viewBox="0 0 24 24"
-              width="13"
-              height="13"
+              width="15"
+              height="15"
               fill="none"
               stroke="currentColor"
               strokeWidth="2"
@@ -2088,6 +2117,20 @@ function ComposerControls({
             <span className="native-pill-text">
               {effortId ? (EFFORT_LABELS[effortId] ?? effortId) : "默认"}
             </span>
+            <svg
+              className="native-pill-chevron"
+              viewBox="0 0 24 24"
+              width="12"
+              height="12"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M6 9l6 6 6-6" />
+            </svg>
           </button>
           {open === "effort" && (
             <div className="native-popover">
