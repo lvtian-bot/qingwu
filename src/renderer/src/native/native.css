@@ -488,48 +488,52 @@
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   flex-shrink: 0;
   pointer-events: none;
 }
 
-/* 缩进会话（项目下）：水平中心线位于 16px，与上方 16px 文件夹图标居中完全对齐（12px + 4px = 16px） */
+/* 缩进会话（项目下）：水平中心线位于 16px，与上方 16px 文件夹图标居中完全对齐（12.5px + 3.5px = 16px） */
 .native-session-row.indented .native-status-mark {
-  left: 12px;
+  left: 12.5px;
 }
 
-/* 非缩进会话（独立会话）：固定在左侧指示槽内（7px + 4px = 11px） */
+/* 非缩进会话（独立会话）：固定在左侧指示槽内（7.5px + 3.5px = 11px） */
 .native-session-row:not(.indented) .native-status-mark {
-  left: 7px;
+  left: 7.5px;
 }
 
-/* 进行中会话：14px 旋转圆环（2px 翡翠绿弧线 + 半透明底轨），体现任务动态运转 */
+/* 进行中会话：12px 柔灰大弧度旋转圆环（270° 柔灰大弧线 + 微弱淡底轨），平稳舒缓不晃眼 */
 .native-running-dot {
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
   box-sizing: border-box;
   background: transparent;
-  border: 2px solid rgba(16, 163, 127, 0.22);
-  border-top-color: var(--native-ok);
-  animation: native-status-spin 0.85s linear infinite;
+  border: 1.8px solid rgba(0, 0, 0, 0.08);
+  border-top-color: var(--native-muted);
+  border-right-color: var(--native-muted);
+  border-bottom-color: var(--native-muted);
+  animation: native-status-spin 1.05s linear infinite;
 }
 
-/* 14px 圆环对齐：水平中心线严格与 8px 圆点同轴（缩进 9+7=16px，非缩进 4+7=11px） */
+/* 12px 圆环对齐：水平中心线严格与 7px 圆点同轴（缩进 10+6=16px，非缩进 5+6=11px） */
 .native-session-row.indented .native-running-dot {
-  left: 9px;
+  left: 10px;
 }
 
 .native-session-row:not(.indented) .native-running-dot {
-  left: 4px;
+  left: 5px;
 }
 
 @media (prefers-color-scheme: dark) {
   .native-running-dot {
-    border-color: rgba(52, 211, 153, 0.25);
-    border-top-color: var(--native-ok);
+    border-color: rgba(255, 255, 255, 0.1);
+    border-top-color: var(--native-muted);
+    border-right-color: var(--native-muted);
+    border-bottom-color: var(--native-muted);
   }
 }
 
