@@ -1243,7 +1243,7 @@ function Composer({
         ref={textareaRef}
         value={input}
         rows={1}
-        placeholder="询问任何问题，可粘贴或拖入图片"
+        placeholder="询问任何问题"
         onChange={(e) => onInputChange(e.target.value)}
         onPaste={handlePaste}
         onKeyDown={(e) => {
@@ -1256,9 +1256,6 @@ function Composer({
         }}
       />
       <div className="native-composer-bar">
-        {/* 控件组自身占满工具行：权限贴左，模型与推理档位贴右（紧邻发送按钮） */}
-        {controls ?? <span style={{ flex: 1 }} />}
-        {meter}
         <input
           ref={fileInputRef}
           type="file"
@@ -1294,6 +1291,9 @@ function Composer({
             <path d="m21 15-5-5L5 21" />
           </svg>
         </button>
+        {/* 控件组自身占满工具行：图片按钮与权限贴左，模型与推理档位贴右（紧邻发送按钮） */}
+        {controls ?? <span style={{ flex: 1 }} />}
+        {meter}
         {running && !canSend ? (
           <button className="native-send stop" onClick={onStop} title="停止">
             <svg
@@ -2083,11 +2083,6 @@ function ComposerControls({
                       title={m.description}
                     >
                       <span className="native-popover-item-name">{m.name}</span>
-                      {m.description && (
-                        <span className="native-popover-item-desc">
-                          {m.description}
-                        </span>
-                      )}
                     </button>
                   ))}
                 </div>
@@ -2152,11 +2147,6 @@ function ComposerControls({
                   <span className="native-popover-item-name">
                     {EFFORT_LABELS[effort.id] ?? effort.name}
                   </span>
-                  {effort.description && (
-                    <span className="native-popover-item-desc">
-                      {effort.description}
-                    </span>
-                  )}
                 </button>
               ))}
             </div>
@@ -4737,13 +4727,6 @@ export function NativeApp({
             <div className="native-empty">
               <div className="native-empty-title">有什么可以帮你？</div>
               <div className="native-composer-stack">
-                <WorkspaceChip
-                  workspaces={workspaces}
-                  currentId={chipWorkspaceId}
-                  fallbackLabel={activeWorkspaceId ? "未分组" : "选择工作区"}
-                  onPick={handleWorkspaceChipPick}
-                  onAdd={() => void handleAddWorkspace()}
-                />
                 <Composer
                   input={input}
                   onInputChange={handleInputChange}
@@ -4774,6 +4757,13 @@ export function NativeApp({
                       onPermissionPick={handlePermissionPick}
                     />
                   }
+                />
+                <WorkspaceChip
+                  workspaces={workspaces}
+                  currentId={chipWorkspaceId}
+                  fallbackLabel={activeWorkspaceId ? "未分组" : "选择工作区"}
+                  onPick={handleWorkspaceChipPick}
+                  onAdd={() => void handleAddWorkspace()}
                 />
               </div>
             </div>
