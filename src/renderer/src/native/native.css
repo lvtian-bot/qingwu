@@ -1163,6 +1163,7 @@
   gap: 8px;
   margin: 6px 0;
   font-size: 14px;
+  line-height: 24px;
   color: var(--native-muted);
 }
 
@@ -1369,6 +1370,7 @@
 .native-tool-card {
   margin: 2px 0;
   font-size: 14px;
+  line-height: 1.6;
 }
 
 .native-tool-card.error .native-tool-svg {
@@ -1380,12 +1382,13 @@
   align-items: center;
   gap: 8px;
   width: 100%;
-  padding: 5px 8px 5px 0;
+  padding: 6px 8px 6px 0;
   border: none;
   background: transparent;
   color: var(--native-fg);
   cursor: pointer;
   text-align: left;
+  line-height: 24px;
 }
 
 .native-tool-head:hover {
@@ -1399,6 +1402,7 @@
 
 .native-tool-title {
   font-weight: 500;
+  line-height: 24px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1410,6 +1414,7 @@
   min-width: 0;
   color: var(--native-muted);
   font-size: 13px;
+  line-height: 24px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1418,6 +1423,7 @@
 .native-tool-status {
   flex-shrink: 0;
   font-size: 13px;
+  line-height: 24px;
   color: var(--native-muted);
 }
 
@@ -1425,6 +1431,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  line-height: 24px;
 }
 
 .native-tool-pending .native-spinner {
@@ -1456,12 +1463,13 @@
 
 /* 展开详情：去掉分隔线，缩进到标题文字下对齐（图标 14px + 间距 8px） */
 .native-tool-detail {
-  padding: 2px 8px 8px 22px;
+  padding: 4px 8px 8px 22px;
 }
 
 .native-tool-filepath {
   font-family: var(--native-mono);
   font-size: 11px;
+  line-height: 1.6;
   color: var(--native-muted);
   margin-bottom: 6px;
   word-break: break-all;
@@ -1474,7 +1482,7 @@
   border-radius: 6px;
   font-family: var(--native-mono);
   font-size: 12px;
-  line-height: 1.55;
+  line-height: 1.68;
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -1486,7 +1494,7 @@
   border-radius: 6px;
   font-family: var(--native-mono);
   font-size: 12px;
-  line-height: 1.55;
+  line-height: 1.68;
   white-space: pre-wrap;
   word-break: break-word;
   max-height: 280px;
@@ -1501,13 +1509,14 @@
   overflow-x: auto;
   font-family: var(--native-mono);
   font-size: 12px;
-  line-height: 1.55;
+  line-height: 1.68;
 }
 
 .native-diff-line {
   display: flex;
-  padding: 0 8px;
+  padding: 1px 8px;
   white-space: pre;
+  line-height: 1.68;
 }
 
 .native-diff-line.add {
@@ -1544,6 +1553,7 @@
   color: var(--native-muted);
   font-family: "Microsoft YaHei", -apple-system, "Segoe UI", sans-serif;
   white-space: normal;
+  line-height: 1.6;
 }
 
 /* ---------- 任务清单（卡片内） ---------- */
@@ -1557,8 +1567,9 @@
 .native-tool-todos li {
   display: flex;
   gap: 8px;
-  padding: 3px 0;
+  padding: 4px 0;
   font-size: 12.5px;
+  line-height: 1.6;
 }
 
 .native-todo-completed .native-todo-text {
