@@ -1,26 +1,15 @@
-import { randomUUID } from 'node:crypto';
-import type { BrowserWindow } from 'electron';
-import WebSocket from 'ws';
-import type { DshRpcResult } from '../shared/types';
+import { randomUUID } from "node:crypto";
+import type { BrowserWindow } from "electron";
+import WebSocket from "ws";
+import type { DshRpcResult } from "../shared/types";
+import { parseDshResponse, parseDshStreamMessage } from "../shared/dsh-wire";
+import { redactSecrets } from "./logging";
 
 interface ClientRequestEnvelope {
-  type: 'client-request';
+  type: "client-request";
   rpcId: string;
   method: string;
   payload: unknown;
-}
-
-interface ServerResponseEnvelope {
-  type: 'server-response';
-  rpcId: string;
-  result: DshRpcResult<unknown>;
-}
-
-interface RemoteStreamServerMessage {
-  type: 'item' | 'error' | 'end';
-  streamId: string;
-  value?: unknown;
-  error?: { code: string; message: string; details?: object };
 }
 
 interface ActiveStream {
@@ -29,8 +18,8 @@ interface ActiveStream {
 }
 
 const RECONNECT_DELAY_MS = 3000;
-const REMOTE_STREAM_MUX_PATH = '/api/remote.mux';
-const REMOTE_EVENT_RESULT_ENDPOINT = '$events/result';
+const REMOTE_STREAM_MUX_PATH = "/api/remote.mux";
+const REMOTE_EVENT_RESULT_ENDPOINT = "$events/result";
 /** endpoint 路径段校验：与引擎 endpointFromPath 的段规则保持同宽（$events 内部端点含 $）。 */
 const ENDPOINT_PATTERN = /^[A-Za-z0-9_$][\w$.-]*(?:\/[A-Za-z0-9_$][\w$.-]*)*$/;
 
@@ -52,7 +41,10 @@ export class DshBridge {
   /** 已打开的逻辑流（WS 重连后按此重放 open）。 */
   private streams = new Map<string, ActiveStream>();
 
-  constructor(getServiceUrl: () => string, getMainWindow: () => BrowserWindow | null) {
+  constructor(
+    getServiceUrl: () => string,
+    getMainWindow: () => BrowserWindow | null,
+  ) {
     this.getServiceUrl = getServiceUrl;
     this.getMainWindow = getMainWindow;
   }
@@ -77,7 +69,10 @@ export class DshBridge {
   }
 
   /** 一元 RPC：POST /api/<endpoint>，payload 为具名参数，桥统一包 {args} 信封。 */
-  async call(endpoint: string, payload: unknown): Promise<DshRpcResult<unknown>> {
+  async call(
+    endpoint: string,
+    payload: unknown,
+  ): Promise<DshRpcResult<unknown>> {
     return this.post(endpoint, { args: payload });
   }
 
@@ -92,7 +87,7 @@ export class DshBridge {
   async eventResult(
     clientId: string,
     eventId: string,
-    outcome: unknown
+    outcome: unknown,
   ): Promise<DshRpcResult<unknown>> {
     return this.post(REMOTE_EVENT_RESULT_ENDPOINT, {
       args: { clientId, eventId, outcome },
@@ -102,36 +97,39 @@ export class DshBridge {
   /** POST /api/<endpoint> 的统一实现：校验 endpoint、铸造 rpcId、解析 RemoteResult。 */
   private async post(
     endpoint: string,
-    payload: unknown
+    payload: unknown,
   ): Promise<DshRpcResult<unknown>> {
     if (!ENDPOINT_PATTERN.test(endpoint)) {
       return {
         ok: false,
-        error: { code: 'internal', message: `非法 RPC endpoint: ${endpoint}` },
+        error: { code: "internal", message: `非法 RPC endpoint: ${endpoint}` },
       };
     }
     const envelope: ClientRequestEnvelope = {
-      type: 'client-request',
+      type: "client-request",
       rpcId: randomUUID(),
       method: endpoint,
       payload,
     };
     let response: Response;
     try {
-      response = await fetch(new URL(`/api/${endpoint}`, this.getServiceUrl()), {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          ...(this.authCookie ? { cookie: this.authCookie } : {}),
+      response = await fetch(
+        new URL(`/api/${endpoint}`, this.getServiceUrl()),
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            ...(this.authCookie ? { cookie: this.authCookie } : {}),
+          },
+          body: JSON.stringify(envelope),
         },
-        body: JSON.stringify(envelope),
-      });
+      );
     } catch (err) {
       return {
         ok: false,
         error: {
-          code: 'internal',
-          message: `引擎连接失败: ${err instanceof Error ? err.message : String(err)}`,
+          code: "internal",
+          message: `引擎连接失败: ${redactSecrets(err instanceof Error ? err.message : String(err))}`,
         },
       };
     }
@@ -139,23 +137,19 @@ export class DshBridge {
     if (!response.ok) {
       return {
         ok: false,
-        error: { code: 'internal', message: `引擎返回 HTTP ${response.status}` },
+        error: {
+          code: "internal",
+          message: `引擎返回 HTTP ${response.status}`,
+        },
       };
     }
 
     try {
-      const body = (await response.json()) as ServerResponseEnvelope;
-      if (body?.type !== 'server-response' || body.rpcId !== envelope.rpcId) {
-        return {
-          ok: false,
-          error: { code: 'internal', message: '引擎响应信封不合法' },
-        };
-      }
-      return body.result;
+      return parseDshResponse(await response.json(), envelope.rpcId);
     } catch {
       return {
         ok: false,
-        error: { code: 'internal', message: '引擎响应不是有效 JSON' },
+        error: { code: "internal", message: "引擎响应格式不合法" },
       };
     }
   }
@@ -170,7 +164,7 @@ export class DshBridge {
 
   cancelStream(streamId: string): void {
     this.streams.delete(streamId);
-    this.sendWhenOpen({ type: 'cancel', streamId });
+    this.sendWhenOpen({ type: "cancel", streamId });
   }
 
   /**
@@ -179,17 +173,17 @@ export class DshBridge {
    */
   private async acquireAuthCookie(): Promise<void> {
     const base = this.getServiceUrl();
-    if (!new URL(base).searchParams.has('token')) return;
+    if (!new URL(base).searchParams.has("token")) return;
     try {
       let url = new URL(base);
       for (let i = 0; i < 5; i += 1) {
-        const response = await fetch(url, { redirect: 'manual' });
+        const response = await fetch(url, { redirect: "manual" });
         const setCookies = response.headers.getSetCookie();
         if (setCookies.length > 0) {
-          this.authCookie = setCookies.map((c) => c.split(';')[0]).join('; ');
+          this.authCookie = setCookies.map((c) => c.split(";")[0]).join("; ");
         }
         if (response.status >= 300 && response.status < 400) {
-          const location = response.headers.get('location');
+          const location = response.headers.get("location");
           if (location) {
             url = new URL(location, url);
             continue;
@@ -198,7 +192,10 @@ export class DshBridge {
         break;
       }
     } catch (err) {
-      console.error('[DshBridge] 鉴权握手失败:', err);
+      console.error(
+        "[DshBridge] 鉴权握手失败:",
+        redactSecrets(err instanceof Error ? err.message : String(err)),
+      );
     }
   }
 
@@ -206,7 +203,7 @@ export class DshBridge {
     if (this.stopped || this.ws) return;
     const base = new URL(this.getServiceUrl());
     const url = new URL(REMOTE_STREAM_MUX_PATH, base);
-    url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+    url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
 
     let socket: WebSocket;
     try {
@@ -214,49 +211,52 @@ export class DshBridge {
         headers: this.authCookie ? { cookie: this.authCookie } : undefined,
       });
     } catch (err) {
-      console.error('[DshBridge] 流连接创建失败:', err);
+      console.error(
+        "[DshBridge] 流连接创建失败:",
+        redactSecrets(err instanceof Error ? err.message : String(err)),
+      );
       this.scheduleReconnect();
       return;
     }
     this.ws = socket;
 
-    socket.on('open', () => {
+    socket.on("open", () => {
       this.wsConnected = true;
       for (const [streamId, stream] of this.streams) {
         this.sendStreamOpen(streamId, stream.endpoint, stream.payload);
       }
     });
 
-    socket.on('message', (data) => {
-      let message: RemoteStreamServerMessage;
+    socket.on("message", (data) => {
+      let message: ReturnType<typeof parseDshStreamMessage>;
       try {
-        message = JSON.parse(String(data)) as RemoteStreamServerMessage;
+        message = parseDshStreamMessage(JSON.parse(String(data)));
       } catch {
         return;
       }
       const stream = this.streams.get(message.streamId);
       if (!stream) return;
       // error/end 为终态帧，转译为保留 shape 投递后保留注册（由渲染层决定是否关闭流）
-      let value: unknown = message.value;
-      if (message.type === 'error') {
-        value = { type: 'stream/error', error: message.error };
-      } else if (message.type === 'end') {
-        value = { type: 'stream/end' };
+      let value: unknown = message.type === "item" ? message.value : undefined;
+      if (message.type === "error") {
+        value = { type: "stream/error", error: message.error };
+      } else if (message.type === "end") {
+        value = { type: "stream/end" };
       }
-      this.sendToRenderer('dsh:stream-item', {
+      this.sendToRenderer("dsh:stream-item", {
         streamId: message.streamId,
         endpoint: stream.endpoint,
         value,
       });
     });
 
-    socket.on('close', () => {
+    socket.on("close", () => {
       this.ws = null;
       this.wsConnected = false;
       if (!this.stopped) this.scheduleReconnect();
     });
 
-    socket.on('error', () => {
+    socket.on("error", () => {
       // close 事件随后必然到达，重连调度以 close 为准
     });
   }
@@ -269,12 +269,22 @@ export class DshBridge {
     }, RECONNECT_DELAY_MS);
   }
 
-  private sendStreamOpen(streamId: string, endpoint: string, payload: unknown): void {
-    this.sendWhenOpen({ type: 'open', streamId, endpoint, payload: { args: payload } });
+  private sendStreamOpen(
+    streamId: string,
+    endpoint: string,
+    payload: unknown,
+  ): void {
+    this.sendWhenOpen({
+      type: "open",
+      streamId,
+      endpoint,
+      payload: { args: payload },
+    });
   }
 
   private sendWhenOpen(message: Record<string, unknown>): void {
-    if (!this.wsConnected || !this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+    if (!this.wsConnected || !this.ws || this.ws.readyState !== WebSocket.OPEN)
+      return;
     this.ws.send(JSON.stringify(message));
   }
 

@@ -1,39 +1,58 @@
-import { app, BrowserWindow, WebContentsView, shell, nativeTheme } from 'electron';
-import type { WebContents } from 'electron';
-import path from 'node:path';
-import fs from 'node:fs';
-import { CONFIG } from './config';
-import { settings } from './settings';
-import { WindowStateManager } from './window-state';
-import type { UiMode } from '../shared/types';
+import {
+  app,
+  BrowserWindow,
+  WebContentsView,
+  shell,
+  nativeTheme,
+} from "electron";
+import type { WebContents } from "electron";
+import path from "node:path";
+import fs from "node:fs";
+import { CONFIG } from "./config";
+import { settings } from "./settings";
+import { WindowStateManager } from "./window-state";
+import { redactSecrets } from "./logging";
+import type { UiMode } from "../shared/types";
 
 const TITLE_BAR_HEIGHT = 35;
 
 const TITLE_BAR_OVERLAY_COLORS = {
-  dark: { color: '#181825', symbolColor: '#a6adc8' },
-  light: { color: '#eef4f9', symbolColor: '#6b6b6b' },
+  dark: { color: "#181825", symbolColor: "#a6adc8" },
+  light: { color: "#eef4f9", symbolColor: "#6b6b6b" },
 } as const;
+
+export function isServiceNavigation(
+  target: string,
+  serviceOrigin: string | null,
+): boolean {
+  try {
+    return serviceOrigin !== null && new URL(target).origin === serviceOrigin;
+  } catch {
+    return false;
+  }
+}
 
 export class WindowManager {
   mainWindow: BrowserWindow | null = null;
   dshView: WebContentsView | null = null;
   isQuitting = false;
-  private serviceUrl: string | null = null;
+  private serviceOrigin: string | null = null;
+  private uiMode: UiMode = settings.get("uiMode");
   private windowState = new WindowStateManager();
 
   constructor() {
-    nativeTheme.on('updated', () => this.applyTitleBarOverlay());
+    nativeTheme.on("updated", () => this.applyTitleBarOverlay());
   }
 
   getIconPath(): string | undefined {
     const possiblePaths = [
-      path.join(app.getAppPath(), 'build', 'icon.ico'),
-      path.join(app.getAppPath(), 'build', 'icon.png'),
-      path.join(process.resourcesPath, 'build', 'icon.ico'),
-      path.join(process.resourcesPath, 'build', 'icon.png'),
-      path.join(process.cwd(), 'build', 'icon.ico'),
-      path.join(process.cwd(), 'build', 'icon.png'),
-      path.join(process.cwd(), 'src', 'main', 'assets', 'icon.png'),
+      path.join(app.getAppPath(), "build", "icon.ico"),
+      path.join(app.getAppPath(), "build", "icon.png"),
+      path.join(process.resourcesPath, "build", "icon.ico"),
+      path.join(process.resourcesPath, "build", "icon.png"),
+      path.join(process.cwd(), "build", "icon.ico"),
+      path.join(process.cwd(), "build", "icon.png"),
+      path.join(process.cwd(), "src", "main", "assets", "icon.png"),
     ];
 
     for (const p of possiblePaths) {
@@ -46,7 +65,7 @@ export class WindowManager {
 
   createWindow(url: string): BrowserWindow {
     const icon = this.getIconPath();
-    this.serviceUrl = url;
+    this.serviceOrigin = new URL(url).origin;
     const lastState = this.windowState.load();
 
     const win = new BrowserWindow({
@@ -57,16 +76,18 @@ export class WindowManager {
       y: lastState.y,
       minWidth: CONFIG.window.minWidth,
       minHeight: CONFIG.window.minHeight,
-      titleBarStyle: 'hidden',
+      titleBarStyle: "hidden",
       titleBarOverlay: {
-        ...TITLE_BAR_OVERLAY_COLORS[nativeTheme.shouldUseDarkColors ? 'dark' : 'light'],
+        ...TITLE_BAR_OVERLAY_COLORS[
+          nativeTheme.shouldUseDarkColors ? "dark" : "light"
+        ],
         height: TITLE_BAR_HEIGHT,
       },
       autoHideMenuBar: true,
       show: false,
       icon,
       webPreferences: {
-        preload: path.join(__dirname, '../preload/index.js'),
+        preload: path.join(__dirname, "../preload/index.js"),
         nodeIntegration: false,
         contextIsolation: true,
         sandbox: true,
@@ -79,9 +100,9 @@ export class WindowManager {
 
     this.applyTitleBarOverlay();
 
-    win.on('close', (e) => {
+    win.on("close", (e) => {
       this.windowState.save(win);
-      if (!this.isQuitting && settings.get('closeToTray')) {
+      if (!this.isQuitting && settings.get("closeToTray")) {
         e.preventDefault();
         win.hide();
       }
@@ -127,7 +148,7 @@ export class WindowManager {
       }
     `;
 
-    dshView.webContents.on('dom-ready', () => {
+    dshView.webContents.on("dom-ready", () => {
       dshView.webContents.insertCSS(DSH_SCROLLBAR_CSS).catch(() => {});
     });
 
@@ -144,60 +165,68 @@ export class WindowManager {
       });
     };
 
-    win.on('resize', updateViewBounds);
-    win.on('maximize', updateViewBounds);
-    win.on('unmaximize', updateViewBounds);
-    win.on('enter-full-screen', () => {
+    win.on("resize", updateViewBounds);
+    win.on("maximize", updateViewBounds);
+    win.on("unmaximize", updateViewBounds);
+    win.on("enter-full-screen", () => {
       updateViewBounds();
       if (!win.isDestroyed()) {
-        win.webContents.send('window:fullscreen-changed', true);
+        win.webContents.send("window:fullscreen-changed", true);
       }
     });
-    win.on('leave-full-screen', () => {
+    win.on("leave-full-screen", () => {
       updateViewBounds();
       if (!win.isDestroyed()) {
-        win.webContents.send('window:fullscreen-changed', false);
+        win.webContents.send("window:fullscreen-changed", false);
       }
     });
 
-    dshView.webContents.on('page-title-updated', (e, title) => {
+    dshView.webContents.on("page-title-updated", (e, title) => {
       e.preventDefault();
       const displayTitle =
-        title && title !== CONFIG.appName ? `${CONFIG.appName} - ${title}` : CONFIG.appName;
+        title && title !== CONFIG.appName
+          ? `${CONFIG.appName} - ${title}`
+          : CONFIG.appName;
       win.setTitle(displayTitle);
       if (!win.isDestroyed()) {
-        win.webContents.send('titlebar:title-changed', displayTitle);
+        win.webContents.send("titlebar:title-changed", displayTitle);
       }
     });
 
     dshView.webContents.setWindowOpenHandler(({ url: targetUrl }) => {
-      if (targetUrl.startsWith('http:') || targetUrl.startsWith('https:')) {
-        if (!this.serviceUrl || !targetUrl.startsWith(this.serviceUrl)) {
+      if (targetUrl.startsWith("http:") || targetUrl.startsWith("https:")) {
+        if (!isServiceNavigation(targetUrl, this.serviceOrigin)) {
           shell.openExternal(targetUrl);
-          return { action: 'deny' };
+          return { action: "deny" };
         }
       }
-      return { action: 'allow' };
+      return {
+        action: isServiceNavigation(targetUrl, this.serviceOrigin)
+          ? "allow"
+          : "deny",
+      };
     });
 
-    dshView.webContents.on('will-navigate', (e, targetUrl) => {
-      if (this.serviceUrl && !targetUrl.startsWith(this.serviceUrl)) {
+    dshView.webContents.on("will-navigate", (e, targetUrl) => {
+      if (!isServiceNavigation(targetUrl, this.serviceOrigin)) {
         e.preventDefault();
-        shell.openExternal(targetUrl);
+        if (targetUrl.startsWith("http:") || targetUrl.startsWith("https:")) {
+          void shell.openExternal(targetUrl);
+        }
       }
     });
 
     // 自研界面（主窗口）的外链：一律拒绝开新窗口，http(s) 转系统浏览器
     win.webContents.setWindowOpenHandler(({ url: targetUrl }) => {
-      if (targetUrl.startsWith('http:') || targetUrl.startsWith('https:')) {
+      if (targetUrl.startsWith("http:") || targetUrl.startsWith("https:")) {
         void shell.openExternal(targetUrl);
       }
-      return { action: 'deny' };
+      return { action: "deny" };
     });
-    win.webContents.on('will-navigate', (e, targetUrl) => {
+    win.webContents.on("will-navigate", (e, targetUrl) => {
       if (targetUrl !== win.webContents.getURL()) {
         e.preventDefault();
-        if (targetUrl.startsWith('http:') || targetUrl.startsWith('https:')) {
+        if (targetUrl.startsWith("http:") || targetUrl.startsWith("https:")) {
           void shell.openExternal(targetUrl);
         }
       }
@@ -206,10 +235,10 @@ export class WindowManager {
     if (process.env.ELECTRON_RENDERER_URL) {
       win.loadURL(process.env.ELECTRON_RENDERER_URL);
     } else {
-      win.loadFile(path.join(__dirname, '../renderer/index.html'));
+      win.loadFile(path.join(__dirname, "../renderer/index.html"));
     }
 
-    win.once('ready-to-show', () => {
+    win.once("ready-to-show", () => {
       if (lastState.isMaximized) {
         win.maximize();
       }
@@ -217,43 +246,52 @@ export class WindowManager {
       win.show();
     });
 
-    win.on('closed', () => {
+    win.on("closed", () => {
       this.mainWindow = null;
       this.dshView = null;
     });
 
-    this.applyUiMode(settings.get('uiMode'));
+    this.applyUiMode(settings.get("uiMode"));
     this.loadUrl(url);
     return win;
   }
 
   applyTitleBarOverlay(): void {
     if (!this.mainWindow || this.mainWindow.isDestroyed()) return;
-    const colors = TITLE_BAR_OVERLAY_COLORS[nativeTheme.shouldUseDarkColors ? 'dark' : 'light'];
+    const colors =
+      TITLE_BAR_OVERLAY_COLORS[
+        nativeTheme.shouldUseDarkColors ? "dark" : "light"
+      ];
     this.mainWindow.setTitleBarOverlay({ ...colors, height: TITLE_BAR_HEIGHT });
   }
 
   /** 应用界面模式：official 显示官方视图层，native 隐藏之并显示自研界面层。 */
   applyUiMode(mode: UiMode): void {
+    this.uiMode = mode;
     if (this.dshView && !this.dshView.webContents.isDestroyed()) {
-      this.dshView.setVisible(mode === 'official');
+      this.dshView.setVisible(mode === "official");
     }
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-      this.mainWindow.webContents.send('ui:mode-changed', mode);
+      this.mainWindow.webContents.send("ui:mode-changed", mode);
+      this.getTargetWebContents()?.focus();
     }
   }
 
   loadUrl(url: string): void {
-    this.serviceUrl = url;
+    this.serviceOrigin = new URL(url).origin;
     if (this.dshView && !this.dshView.webContents.isDestroyed()) {
       this.dshView.webContents.loadURL(url).catch((err) => {
-        console.error('[Window] 加载页面失败:', err);
+        console.error("[Window] 加载页面失败:", redactSecrets(err));
       });
     }
   }
 
   getTargetWebContents(): WebContents | null {
-    if (this.dshView && !this.dshView.webContents.isDestroyed()) {
+    if (
+      this.uiMode === "official" &&
+      this.dshView &&
+      !this.dshView.webContents.isDestroyed()
+    ) {
       return this.dshView.webContents;
     }
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
@@ -263,7 +301,7 @@ export class WindowManager {
   }
 
   focus(): void {
-    if (this.mainWindow) {
+    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
       if (!this.mainWindow.isVisible()) {
         this.mainWindow.show();
       }
@@ -271,15 +309,16 @@ export class WindowManager {
         this.mainWindow.restore();
       }
       this.mainWindow.focus();
-      if (this.dshView && !this.dshView.webContents.isDestroyed()) {
-        this.dshView.webContents.focus();
-      }
+      this.getTargetWebContents()?.focus();
     }
   }
 
   showErrorMessage(title: string, message: string): void {
     if (this.dshView && !this.dshView.webContents.isDestroyed()) {
-      const escapedMsg = message.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+      const escapedMsg = message
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/\n/g, "<br>");
       const errorHtml = `
         <!DOCTYPE html>
         <html lang="zh-CN">
@@ -331,7 +370,9 @@ export class WindowManager {
         </body>
         </html>
       `;
-      this.dshView.webContents.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(errorHtml)}`);
+      this.dshView.webContents.loadURL(
+        `data:text/html;charset=utf-8,${encodeURIComponent(errorHtml)}`,
+      );
     }
   }
 }

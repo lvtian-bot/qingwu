@@ -4,6 +4,7 @@ out/
 release/
 build/node-runtime/
 .npm-cache/
+.cache/
 *.log
 .DS_Store
 Thumbs.db

@@ -1,0 +1,248 @@
+import { useEffect, useRef, type ReactNode } from "react";
+import { isSupportedImage, type DraftImage } from "./images";
+
+interface ComposerProps {
+  input: string;
+  onInputChange: (value: string) => void;
+  onSend: () => void;
+  running: boolean;
+  onStop: () => void;
+  textareaRef: { current: HTMLTextAreaElement | null };
+  /** 工具行左侧控件（模型/强度/权限选择器）。 */
+  controls?: ReactNode;
+  /** 上下文占用环（贴发送按钮；无提供方用量时自身不渲染）。 */
+  meter?: ReactNode;
+  draftImages: DraftImage[];
+  onRemoveDraftImage: (id: string) => void;
+  onAddImages: (files: File[]) => void;
+  onPreviewImage: (url: string) => void;
+}
+
+/** 输入框高度上限，与 .native-composer-box textarea 的 max-height 一致（超出后内部滚动）。 */
+const COMPOSER_MAX_HEIGHT = 200;
+
+/**
+ * 输入框随内容自适应高度：空态保持在 CSS 最小高度（两行），长文本长到上限为止。
+ * 内容变化不只有键盘输入（切换会话载入草稿、发送后清空、发送失败写回都会改 value），
+ * 所以按 value 统一拟合，不要只在 onChange 里调。
+ */
+function fitComposerHeight(el: HTMLTextAreaElement | null) {
+  if (!el) return;
+  el.style.height = "auto";
+  el.style.height = `${Math.min(el.scrollHeight, COMPOSER_MAX_HEIGHT)}px`;
+}
+
+/** 卡片式输入框：textarea + 底部工具行（左侧选择器 + 圆形发送/停止按钮），空态与底部共用。 */
+export function Composer({
+  input,
+  onInputChange,
+  onSend,
+  running,
+  onStop,
+  textareaRef,
+  controls,
+  meter,
+  draftImages,
+  onRemoveDraftImage,
+  onAddImages,
+  onPreviewImage,
+}: ComposerProps) {
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // textareaRef 稳定，装填新元素时也会重跑，草稿首帧即按内容展开
+  useEffect(() => {
+    fitComposerHeight(textareaRef.current);
+  }, [input, textareaRef]);
+
+  const canSend = !!input.trim() || draftImages.length > 0;
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const clipboardData = e.clipboardData;
+    if (!clipboardData) return;
+    const imageFiles: File[] = [];
+    if (clipboardData.files && clipboardData.files.length > 0) {
+      for (let i = 0; i < clipboardData.files.length; i++) {
+        const file = clipboardData.files[i];
+        if (isSupportedImage(file)) imageFiles.push(file);
+      }
+    } else if (clipboardData.items) {
+      for (let i = 0; i < clipboardData.items.length; i++) {
+        const item = clipboardData.items[i];
+        if (item.kind === "file") {
+          const file = item.getAsFile();
+          if (file && isSupportedImage(file)) imageFiles.push(file);
+        }
+      }
+    }
+    if (imageFiles.length > 0) {
+      // 阻止冒泡至全局 window.onpaste，防止单次粘贴触发两次添加
+      e.stopPropagation();
+      onAddImages(imageFiles);
+      const text = clipboardData.getData("text/plain");
+      if (!text) {
+        e.preventDefault();
+      }
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    if (e.dataTransfer.types.includes("Files")) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "copy";
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const imageFiles: File[] = [];
+      for (let i = 0; i < e.dataTransfer.files.length; i++) {
+        const file = e.dataTransfer.files[i];
+        if (isSupportedImage(file)) {
+          imageFiles.push(file);
+        }
+      }
+      if (imageFiles.length > 0) {
+        e.preventDefault();
+        onAddImages(imageFiles);
+      }
+    }
+  };
+
+  return (
+    <div
+      className="native-composer-box"
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
+      {draftImages.length > 0 && (
+        <div className="native-composer-attachments">
+          {draftImages.map((img) => (
+            <div key={img.id} className="native-composer-attachment-item">
+              <button
+                type="button"
+                className="native-composer-thumb-btn"
+                onClick={() => onPreviewImage(img.previewUrl)}
+                title="点击预览大图"
+              >
+                <img src={img.previewUrl} alt="" draggable={false} />
+              </button>
+              <button
+                type="button"
+                className="native-composer-thumb-remove"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRemoveDraftImage(img.id);
+                }}
+                title="删除图片"
+                aria-label="删除图片"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  width="10"
+                  height="10"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  fill="none"
+                >
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      <textarea
+        ref={textareaRef}
+        value={input}
+        rows={1}
+        placeholder="询问任何问题"
+        onChange={(e) => onInputChange(e.target.value)}
+        onPaste={handlePaste}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+            if (canSend) {
+              e.preventDefault();
+              onSend();
+            }
+          }
+        }}
+      />
+      <div className="native-composer-bar">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/png,image/jpeg,image/webp,image/gif"
+          multiple
+          style={{ display: "none" }}
+          onChange={(e) => {
+            if (e.target.files && e.target.files.length > 0) {
+              onAddImages(Array.from(e.target.files));
+            }
+            e.target.value = "";
+          }}
+        />
+        <button
+          type="button"
+          className="native-composer-attach-btn"
+          onClick={() => fileInputRef.current?.click()}
+          title="添加图片"
+          aria-label="添加图片"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            width="16"
+            height="16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
+            <circle cx="8.5" cy="8.5" r="1.5" />
+            <path d="m21 15-5-5L5 21" />
+          </svg>
+        </button>
+        {/* 控件组自身占满工具行：图片按钮与权限贴左，模型与推理档位贴右（紧邻发送按钮） */}
+        {controls ?? <span style={{ flex: 1 }} />}
+        {meter}
+        {running && !canSend ? (
+          <button className="native-send stop" onClick={onStop} title="停止">
+            <svg
+              viewBox="0 0 24 24"
+              width="14"
+              height="14"
+              fill="currentColor"
+              aria-hidden="true"
+            >
+              <rect x="6" y="6" width="12" height="12" rx="2" />
+            </svg>
+          </button>
+        ) : (
+          <button
+            className="native-send"
+            disabled={!canSend}
+            onClick={onSend}
+            // 运行中有草稿或附件时改为排队发送（与官方一致：同一位置按草稿是否可提交切换）
+            title={running ? "排队发送" : "发送"}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              width="16"
+              height="16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M12 19V5M5 12l7-7 7 7" />
+            </svg>
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}

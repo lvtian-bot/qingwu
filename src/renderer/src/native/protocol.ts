@@ -1,9 +1,9 @@
 /**
- * dsh 0.1.2 /api 协议的最小类型对齐（自研界面消费子集）。
- * 来源：@deepseek-ai/dsh-api-session-controller / dsh-api-workspace-controller /
- * dsh-user-approval / dsh-user-questions 的 0.1.2-rc.1 声明，以及
- * dsh-api-gateway 的 remote.mux 流协议。字段以官方 .d.ts 为准；未识别字段
- * 一律忽略渲染（协议是 merge-extensible 的）。
+ * 青梧界面消费的 dsh 0.1.5-rc.2 wire 视图，不是完整上游协议。
+ * 可选字段保留界面对缺失能力的容错语义；动态事件 data 与投影值仍须按消费处检查。
+ * tests/contract-installed-dsh.test.cjs 使用已安装引擎的公开 controller /remote、
+ * /types 出口检查端点参数名和关键返回形状。gateway 内部帧没有公开类型出口，
+ * 其基础信封由 shared/dsh-wire.ts 在运行时验证；嵌套事件内容不在此编译门禁内。
  */
 
 // ---------- 一元 RPC endpoint ----------
@@ -149,7 +149,7 @@ export interface SettingsNamespaceView {
   /** schemastery schema 序列化包络（nodeAtPath 的原始形态）。 */
   schema: unknown;
   /** 解析后的值（schema 默认 → 组合 base → 用户层）。 */
-  value: Record<string, unknown>;
+  value: unknown;
   applies?: 'live' | 'restart';
   /** 读取时的用户段修订号，写入须回传以免覆盖并发修改。 */
   revision: number;

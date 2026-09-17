@@ -73,4 +73,11 @@ export interface QingwuApi {
   getUiMode: () => Promise<UiMode>;
   setUiMode: (mode: UiMode) => Promise<void>;
   onUiModeChanged: (listener: (mode: UiMode) => void) => () => void;
+
+  /** 在外部终端中打开指定路径（若未传则打开当前活跃工作区）。 */
+  openTerminal: (targetPath?: string) => Promise<{ success: boolean; error?: string }>;
+  /** 在系统文件管理器中打开指定路径。 */
+  openPath: (targetPath: string) => Promise<string>;
+  /** 通知主进程当前活跃的工作区路径，以便全局菜单与快捷键呼出。 */
+  setActiveWorkspacePath: (targetPath: string | null) => void;
 }

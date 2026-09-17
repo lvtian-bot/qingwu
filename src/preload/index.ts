@@ -54,6 +54,12 @@ const api: QingwuApi = {
     ipcRenderer.on('ui:mode-changed', handler);
     return () => ipcRenderer.removeListener('ui:mode-changed', handler);
   },
+
+  openTerminal: (targetPath) => ipcRenderer.invoke('workspace:openTerminal', targetPath),
+  openPath: (targetPath) => ipcRenderer.invoke('workspace:openPath', targetPath),
+  setActiveWorkspacePath: (targetPath) => {
+    void ipcRenderer.invoke('workspace:setActivePath', targetPath);
+  },
 };
 
 contextBridge.exposeInMainWorld('qingwu', api);

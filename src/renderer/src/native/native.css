@@ -2049,6 +2049,138 @@ body.native-ui-active .titlebar {
   padding: 4px 10px 10px;
 }
 
+/* ---------- 任务停靠面板（输入框上方，对齐官方 TodoPanel） ---------- */
+
+.native-todo-panel {
+  box-sizing: border-box;
+  width: 100%;
+  border: 1px solid var(--native-border-subtle);
+  background: var(--native-surface);
+  border-radius: 12px;
+  flex: none;
+  margin-bottom: 8px;
+  overflow: hidden;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.native-todo-panel-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 6px 12px;
+}
+
+.native-todo-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  user-select: none;
+}
+
+.native-todo-panel-lead {
+  display: grid;
+  place-items: center;
+  flex: none;
+  color: var(--native-muted);
+}
+
+.native-todo-panel-title {
+  flex: none;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 24px;
+  color: var(--native-fg);
+}
+
+.native-todo-panel-progress {
+  flex: auto;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 20px;
+  color: var(--native-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.native-todo-panel-chevron {
+  display: grid;
+  place-items: center;
+  flex: none;
+  color: var(--native-muted);
+  transition: color 0.15s ease;
+}
+
+.native-todo-panel-header:hover .native-todo-panel-chevron,
+.native-todo-panel-header:hover .native-todo-panel-lead {
+  color: var(--native-fg);
+}
+
+.native-todo-panel-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 180px;
+  margin: 0;
+  padding: 0 0 4px 0;
+  list-style: none;
+  overflow-y: auto;
+}
+
+.native-todo-panel-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--native-fg);
+}
+
+.native-todo-panel-glyph {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 16px;
+  height: 20px;
+}
+
+.native-todo-glyph-completed {
+  color: var(--native-ok);
+}
+
+.native-todo-glyph-pending {
+  color: var(--native-muted);
+  opacity: 0.7;
+}
+
+.native-todo-glyph-progress {
+  color: var(--native-send);
+  animation: 1s linear infinite native-todo-progress-spin;
+}
+
+@keyframes native-todo-progress-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.native-todo-panel-content {
+  flex: 1;
+  word-break: break-word;
+  color: var(--native-fg);
+}
+
 /* ---------- 待发送队列（排队中／插话中／发送中） ---------- */
 
 .native-queue {
@@ -2570,28 +2702,6 @@ body.native-ui-active .titlebar {
   font-size: 12px;
   color: var(--native-muted);
   padding: 4px;
-}
-
-.native-panel-todos {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.native-panel-todos li {
-  display: flex;
-  gap: 8px;
-  padding: 4px 6px;
-  font-size: 12.5px;
-  border-radius: 6px;
-}
-
-.native-panel-todos li.native-todo-in_progress {
-  background: var(--native-surface);
-}
-
-.native-panel-todos .native-todo-text {
-  min-width: 0;
 }
 
 .native-panel-file {

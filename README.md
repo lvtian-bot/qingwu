@@ -5,18 +5,23 @@
 ## 开发与构建
 
 ```bash
-# 安装依赖
-npm install
+# 按锁文件安装依赖
+npm ci
+
+# 准备 Windows 引擎运行时
+npm run runtime:node
 
 # 代码检查
 npm run check
 
 # 开发运行
-npm start
+npm run dev
 
 # 打包 Windows 安装包
 npm run dist
 ```
+
+`npm start` 预览已有构建，使用前先运行 `npm run build`。环境要求、按任务阅读的模块入口与验证方法见 [维护导航](docs/maintenance.md)。
 
 ## 产品定位
 
@@ -27,7 +32,9 @@ npm run dist
 - AGENTS.md：协作规范
 - docs/product-positioning.md：产品定位
 - docs/tech-architecture.md：技术路线与决策
+- docs/maintenance.md：模块导航、开发排障与升级验证
 - docs/TODO.md：待办
+- docs/release.md：发布流程
 
 ## AI Agent 驱动开发
 

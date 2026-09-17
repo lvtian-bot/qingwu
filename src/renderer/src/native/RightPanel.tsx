@@ -1,15 +1,11 @@
 /**
- * 右侧面板：任务进度（todo_write 最新状态）+ 文件变更（edit/write 聚合）。
+ * 右侧工作区面板：文件变更（edit/write 聚合），预留后续标签页（预览文件、终端等）扩展。
  * 数据由 NativeApp 从会话事件派生，无独立 IPC。
  */
 import { useState } from 'react';
 import type { ReactNode } from 'react';
 import { DiffView } from './ToolCard';
-
-export interface TodoEntry {
-  content: string;
-  status: string;
-}
+export type { TodoEntry } from './TodoPanel';
 
 export interface FileChangeEntry {
   path: string;
@@ -23,7 +19,6 @@ export interface RightPanelProps {
   collapsed: boolean;
   /** 面板宽度（拖拽调节），折叠态不消费。 */
   width: number;
-  todos: TodoEntry[] | null;
   fileChanges: FileChangeEntry[];
   /** 展开/收起面板；按钮在面板顶栏右缘，与会话标题栏的收起态按钮共用图标。 */
   onToggle: () => void;
@@ -53,7 +48,7 @@ function basename(p: string): string {
   return p.split(/[\\/]/).filter(Boolean).pop() ?? p;
 }
 
-export function RightPanel({ collapsed, width, todos, fileChanges, onToggle }: RightPanelProps) {
+export function RightPanel({ collapsed, width, fileChanges, onToggle }: RightPanelProps) {
   const [expandedPath, setExpandedPath] = useState<string | null>(null);
 
   if (collapsed) return null;
@@ -68,24 +63,6 @@ export function RightPanel({ collapsed, width, todos, fileChanges, onToggle }: R
       </div>
 
       <div className="native-panel-body">
-        <section className="native-panel-section">
-          <div className="native-panel-section-title">任务进度</div>
-          {todos && todos.length > 0 ? (
-            <ul className="native-panel-todos">
-              {todos.map((todo, i) => (
-                <li key={i} className={`native-todo-${todo.status}`}>
-                  <span className="native-todo-mark">
-                    {todo.status === 'completed' ? '✓' : todo.status === 'in_progress' ? '◐' : '○'}
-                  </span>
-                  <span className="native-todo-text">{todo.content}</span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <div className="native-panel-empty">本会话暂无任务清单</div>
-          )}
-        </section>
-
         <section className="native-panel-section">
           <div className="native-panel-section-title">
             文件变更

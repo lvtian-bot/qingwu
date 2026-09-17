@@ -8,10 +8,19 @@ export interface ApplicationMenuOptions {
   getTargetWebContents?: () => WebContents | null;
   getMainWindow?: () => BrowserWindow | null;
   onSwitchUiMode?: () => void;
+  onOpenTerminal?: () => void;
+  onOpenFolder?: () => void;
 }
 
 export function createApplicationMenu(options: ApplicationMenuOptions = {}) {
-  const { onCheckForUpdates, getTargetWebContents, getMainWindow, onSwitchUiMode } = options;
+  const {
+    onCheckForUpdates,
+    getTargetWebContents,
+    getMainWindow,
+    onSwitchUiMode,
+    onOpenTerminal,
+    onOpenFolder,
+  } = options;
 
   const buildAndSetMenu = () => {
     const template: Electron.MenuItemConstructorOptions[] = [
@@ -32,6 +41,20 @@ export function createApplicationMenu(options: ApplicationMenuOptions = {}) {
             click: () => {
               const wc = getTargetWebContents?.();
               if (wc) wc.reloadIgnoringCache();
+            },
+          },
+          { type: 'separator' },
+          {
+            label: '在终端中打开工作区',
+            accelerator: 'CmdOrCtrl+Shift+C',
+            click: () => {
+              onOpenTerminal?.();
+            },
+          },
+          {
+            label: '在文件管理器中打开工作区',
+            click: () => {
+              onOpenFolder?.();
             },
           },
           { type: 'separator' },
