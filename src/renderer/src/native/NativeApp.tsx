@@ -75,6 +75,7 @@ import { SessionSidebar, useSessionSidebar } from "./SessionSidebar";
 import { orderWorkspaces, sessionTitle, upsertWorkspace } from "./sidebar-data";
 import { TurnItems } from "./TurnItems";
 import { WorkspaceChip } from "./WorkspaceChip";
+import { SettingsModal } from "./SettingsModal";
 
 const qingwu = window.qingwu;
 
@@ -96,6 +97,20 @@ export function NativeApp({
   const [unreadFinishedSessionIds, setUnreadFinishedSessionIds] = useState<
     Set<string>
   >(new Set());
+
+  /** 设置面板显隐状态 */
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === ",") {
+        e.preventDefault();
+        setSettingsOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener("keydown", handleGlobalKeyDown);
+    return () => window.removeEventListener("keydown", handleGlobalKeyDown);
+  }, []);
 
   /** 最近活跃工作区（对齐官方 New Session 语义：新会话落在这里）。 */
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(
@@ -1493,6 +1508,7 @@ export function NativeApp({
         handleSessionRename={handleSessionRename}
         handleSessionArchive={handleSessionArchive}
         setError={setError}
+        onOpenSettings={() => setSettingsOpen(true)}
       />
 
       <main
@@ -1729,6 +1745,12 @@ export function NativeApp({
         width={rightPanel.width}
         fileChanges={panelData.fileChanges}
         onToggle={() => setPanelCollapsed((v) => !v)}
+      />
+
+      <SettingsModal
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        modelCatalog={modelCatalog}
       />
     </div>
   );

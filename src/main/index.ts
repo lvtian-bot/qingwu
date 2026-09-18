@@ -142,6 +142,21 @@ if (!gotTheLock) {
     windowManager.applyUiMode(mode);
   });
 
+  ipcMain.handle("appSettings:get", () => settings.getAll());
+  ipcMain.handle(
+    "appSettings:set",
+    (_event, patch: Partial<import("../shared/types").AppSettings>) => {
+      const updated = settings.update(patch);
+      if (patch.uiMode && (patch.uiMode === "official" || patch.uiMode === "native")) {
+        windowManager.applyUiMode(patch.uiMode);
+      }
+      return updated;
+    },
+  );
+  ipcMain.handle("appSettings:openUserData", () =>
+    shell.openPath(app.getPath("userData")),
+  );
+
   ipcMain.handle("workspace:openTerminal", (_event, targetPath?: string) =>
     openTerminal(targetPath),
   );

@@ -22,8 +22,13 @@ export const Endpoints = {
   sessionSelectModel: 'session/selectModel',
   sessionRename: 'session/rename',
   commandsExecute: 'commands/execute',
+  credentialsDescribe: 'credentials/describe',
+  credentialsSet: 'credentials/set',
+  credentialsUnset: 'credentials/unset',
   settingsDescribe: 'settings/describe',
   settingsMutate: 'settings/mutate',
+  settingsOpenSettingsDocument: 'settings/openSettingsDocument',
+  settingsUpdate: 'settings/update',
   workspaceFollow: 'workspace/follow',
   workspaceCreate: 'workspace/create',
   workspaceRename: 'workspace/rename',
@@ -160,6 +165,16 @@ export interface SettingsDescribeValue {
   /** provider 是否接受写入；false 时禁用全部写入控件。 */
   writable: boolean;
   namespaces: SettingsNamespaceView[];
+}
+
+/** 凭据引用状态（credentials/describe 返回视图）。 */
+export interface CredentialInfo {
+  /** 该凭据引用当前是否已配置（持有有效值）。 */
+  configured: boolean;
+  /** 当前提供该值的来源层（如 local、environment）。 */
+  source?: string;
+  /** 当前凭据是否可写。 */
+  writable: boolean;
 }
 
 // ---------- 会话事件（journal 原始事件，0.1.1 词汇保持兼容） ----------

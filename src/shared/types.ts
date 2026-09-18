@@ -21,6 +21,14 @@ export interface UpdateState {
 /** 界面模式：official = 官方 dsh web UI，native = 自研界面。 */
 export type UiMode = 'official' | 'native';
 
+/** 青梧应用级本地配置（存储于用户数据目录 settings.json）。 */
+export interface AppSettings {
+  /** 窗口关闭行为：true 为最小化到托盘，false 为直接退出。 */
+  closeToTray: boolean;
+  /** 默认启动界面。 */
+  uiMode: UiMode;
+}
+
 /** dsh RPC 业务错误（对齐 typert RemoteError 的线上形态）。 */
 export interface DshRpcError {
   code: string;
@@ -73,6 +81,13 @@ export interface QingwuApi {
   getUiMode: () => Promise<UiMode>;
   setUiMode: (mode: UiMode) => Promise<void>;
   onUiModeChanged: (listener: (mode: UiMode) => void) => () => void;
+
+  /** 获取青梧本地应用设置。 */
+  getAppSettings: () => Promise<AppSettings>;
+  /** 更新青梧本地应用设置。 */
+  setAppSettings: (patch: Partial<AppSettings>) => Promise<AppSettings>;
+  /** 在文件管理器中打开青梧本地应用数据目录。 */
+  openUserDataFolder: () => Promise<string>;
 
   /** 在外部终端中打开指定路径（若未传则打开当前活跃工作区）。 */
   openTerminal: (targetPath?: string) => Promise<{ success: boolean; error?: string }>;

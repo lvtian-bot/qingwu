@@ -72,9 +72,37 @@ class SettingsManager {
     }
   }
 
+  getAll(): AppSettings {
+    this.load();
+    return { ...this.settings };
+  }
+
   get<K extends keyof AppSettings>(key: K): AppSettings[K] {
     this.load();
     return this.settings[key];
+  }
+
+  update(patch: Partial<AppSettings>): AppSettings {
+    this.load();
+    let changed = false;
+    for (const [k, v] of Object.entries(patch)) {
+      const key = k as keyof AppSettings;
+      if (this.settings[key] !== v && v !== undefined) {
+        (this.settings as unknown as Record<string, unknown>)[key] = v;
+        changed = true;
+        for (const listener of this.listeners) {
+          try {
+            listener(key, v, this.settings);
+          } catch (err) {
+            console.error('[Settings] 触发配置变更回调异常:', err);
+          }
+        }
+      }
+    }
+    if (changed) {
+      this.save();
+    }
+    return { ...this.settings };
   }
 
   set<K extends keyof AppSettings>(key: K, value: AppSettings[K]) {

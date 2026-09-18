@@ -1,4 +1,27 @@
+/* 全局字体统一样式：确保按钮、输入框、下拉菜单等表单控件统一继承并使用微软雅黑，
+ * 避免在 Windows 环境下 button 等控件回退至系统默认宋体或非衬线字体。
+ */
+html,
+body,
+#root,
+button,
+input,
+select,
+textarea {
+  font-family: "Microsoft YaHei", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
 /* 自研界面：Codex 风格近单色设计系统，位于标题栏（35px）下方。 */
+
+.native-app,
+.native-app button,
+.native-app input,
+.native-app select,
+.native-app textarea {
+  font-family: "Microsoft YaHei", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
 
 .native-app {
   position: fixed;
@@ -9,8 +32,6 @@
   display: flex;
   background: var(--native-bg);
   color: var(--native-fg);
-  /* 雅黑优先：英数字也走雅黑自带字形，不再被 Segoe UI 截走（产品口径，勿改回） */
-  font-family: "Microsoft YaHei", -apple-system, "Segoe UI", sans-serif;
   font-size: 14px;
   z-index: 1;
 }
@@ -2992,4 +3013,520 @@ body.native-resizing {
 
 .native-lightbox-close:hover {
   background: rgba(255, 255, 255, 0.4);
+}
+
+/* ==========================================================================
+   设置面板 (Settings Modal) 与侧边栏底部工具栏
+   ========================================================================== */
+
+.native-sidebar-footer {
+  padding: 8px 10px;
+  border-top: 1px solid var(--native-border);
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.native-sidebar-footer-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 34px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--native-sidebar-fg);
+  font-size: 15px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.native-sidebar-footer-btn:hover {
+  background: var(--native-sidebar-hover);
+  color: var(--native-fg);
+}
+
+.native-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.native-modal-container.native-settings-modal {
+  --settings-bg: #ffffff;
+  --settings-header-bg: #fafafa;
+  --settings-sidebar-bg: #f4f5f7;
+  --settings-sidebar-hover: rgba(0, 0, 0, 0.04);
+  --settings-sidebar-active: rgba(0, 0, 0, 0.08);
+  --settings-border: #e6e8eb;
+  --settings-fg: #18191c;
+  --settings-sidebar-fg: #3d3f44;
+  --settings-muted: #72747d;
+
+  width: 860px;
+  max-width: 94vw;
+  height: 640px;
+  max-height: 90vh;
+  background: var(--settings-bg);
+  border: 1px solid var(--settings-border);
+  border-radius: 10px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.22);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+@media (prefers-color-scheme: dark) {
+  .native-modal-container.native-settings-modal {
+    --settings-bg: #1e1f24;
+    --settings-header-bg: #191a1e;
+    --settings-sidebar-bg: #16171a;
+    --settings-sidebar-hover: rgba(255, 255, 255, 0.05);
+    --settings-sidebar-active: rgba(255, 255, 255, 0.09);
+    --settings-border: #2c2d33;
+    --settings-fg: #eaebee;
+    --settings-sidebar-fg: #c4c6cb;
+    --settings-muted: #888994;
+  }
+}
+
+.native-settings-header {
+  height: 38px;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--settings-border);
+  flex-shrink: 0;
+  background: var(--settings-header-bg);
+}
+
+.native-settings-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--settings-fg);
+}
+
+.native-settings-close-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--settings-muted);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.native-settings-close-btn:hover {
+  background: var(--settings-sidebar-hover);
+  color: var(--settings-fg);
+}
+
+.native-settings-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.native-settings-sidebar {
+  width: 220px;
+  background: var(--settings-sidebar-bg);
+  border-right: 1px solid var(--settings-border);
+  padding: 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+
+.native-settings-nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.native-settings-group-title {
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--settings-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.native-settings-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--settings-sidebar-fg);
+  font-size: 14px;
+  cursor: pointer;
+  text-align: left;
+  user-select: none;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.native-settings-nav-item:hover {
+  background: var(--settings-sidebar-hover);
+  color: var(--settings-fg);
+}
+
+.native-settings-nav-item.active {
+  background: var(--settings-sidebar-active);
+  color: var(--settings-fg);
+  font-weight: 600;
+}
+
+.native-settings-nav-icon {
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+
+.native-settings-content {
+  flex: 1;
+  min-width: 0;
+  padding: 20px 24px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  background: var(--settings-bg);
+}
+
+/* 存储透明度指示横幅（中性纯粹风格，彻底去除蓝调） */
+.native-settings-storage-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  background: var(--settings-sidebar-bg);
+  border: 1px solid var(--settings-border);
+  color: var(--settings-fg);
+}
+
+.native-settings-storage-icon {
+  margin-top: 2px;
+  flex-shrink: 0;
+  color: var(--settings-muted);
+}
+
+.native-settings-storage-desc {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.native-settings-storage-desc strong {
+  font-weight: 600;
+  color: var(--settings-fg);
+}
+
+.native-settings-storage-desc span {
+  color: var(--settings-muted);
+}
+
+.native-settings-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.native-settings-panel-header h3 {
+  margin: 0 0 4px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--settings-fg);
+}
+
+.native-settings-panel-header p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--settings-muted);
+}
+
+.native-settings-alert {
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: var(--settings-sidebar-bg);
+  border: 1px solid var(--settings-border);
+  font-size: 13px;
+  color: var(--settings-fg);
+}
+
+.native-settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.native-settings-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--settings-fg);
+}
+
+.native-settings-desc {
+  font-size: 12px;
+  color: var(--settings-muted);
+  line-height: 1.5;
+}
+
+.native-settings-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.native-radio-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 14px;
+  border: 1px solid var(--settings-border);
+  border-radius: 8px;
+  background: var(--settings-bg);
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+
+.native-radio-card:hover {
+  background: var(--settings-sidebar-bg);
+}
+
+.native-radio-card input[type="radio"] {
+  margin-top: 3px;
+  cursor: pointer;
+}
+
+.native-radio-card-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.native-radio-card-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--settings-fg);
+}
+
+.native-radio-card-desc {
+  font-size: 12px;
+  color: var(--settings-muted);
+  line-height: 1.4;
+}
+
+.native-settings-select {
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--settings-border);
+  border-radius: 6px;
+  background: var(--settings-bg);
+  color: var(--settings-fg);
+  font-size: 13px;
+  outline: none;
+}
+
+/* 服务商卡片列表 */
+.native-provider-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.native-provider-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--settings-border);
+  border-radius: 8px;
+  background: var(--settings-bg);
+}
+
+.native-provider-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.native-provider-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.native-provider-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--settings-fg);
+}
+
+.native-provider-ref-code {
+  font-size: 11px;
+  padding: 1px 6px;
+  background: var(--settings-sidebar-bg);
+  border-radius: 4px;
+  color: var(--settings-muted);
+  font-family: monospace;
+}
+
+.native-provider-status-badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-weight: 500;
+}
+
+.native-provider-status-badge.configured {
+  background: rgba(82, 196, 26, 0.12);
+  color: #389e0d;
+}
+
+@media (prefers-color-scheme: dark) {
+  .native-provider-status-badge.configured {
+    background: rgba(82, 196, 26, 0.2);
+    color: #73d13d;
+  }
+}
+
+.native-provider-status-badge.unconfigured {
+  background: var(--settings-sidebar-bg);
+  color: var(--settings-muted);
+}
+
+.native-provider-card-desc {
+  font-size: 12px;
+  color: var(--settings-muted);
+  line-height: 1.4;
+}
+
+.native-provider-card-action {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.native-provider-input-wrap {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+}
+
+.native-settings-input {
+  width: 100%;
+  height: 32px;
+  padding: 0 32px 0 10px;
+  border: 1px solid var(--settings-border);
+  border-radius: 6px;
+  background: var(--settings-bg);
+  color: var(--settings-fg);
+  font-size: 12px;
+  outline: none;
+  font-family: monospace;
+  transition: border-color 0.12s ease;
+}
+
+.native-settings-input:focus {
+  border-color: var(--settings-fg);
+}
+
+.native-provider-visible-toggle {
+  position: absolute;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: transparent;
+  color: var(--settings-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+}
+
+.native-provider-visible-toggle:hover {
+  color: var(--settings-fg);
+}
+
+.native-btn {
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: background 0.12s ease, opacity 0.12s ease;
+  white-space: nowrap;
+}
+
+.native-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.native-btn-primary {
+  background: #2b2d31;
+  color: #ffffff;
+}
+
+.native-btn-primary:hover:not(:disabled) {
+  background: #1a1b1e;
+}
+
+@media (prefers-color-scheme: dark) {
+  .native-btn-primary {
+    background: #e3e5e8;
+    color: #121316;
+  }
+  .native-btn-primary:hover:not(:disabled) {
+    background: #ffffff;
+  }
+}
+
+.native-btn-danger {
+  background: transparent;
+  border-color: rgba(255, 77, 79, 0.35);
+  color: #ff4d4f;
+}
+
+.native-btn-danger:hover:not(:disabled) {
+  background: rgba(255, 77, 79, 0.08);
+}
+
+.native-btn-secondary {
+  background: var(--settings-sidebar-bg);
+  border-color: var(--settings-border);
+  color: var(--settings-fg);
+}
+
+.native-btn-secondary:hover:not(:disabled) {
+  background: var(--settings-sidebar-hover);
 }

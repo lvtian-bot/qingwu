@@ -55,6 +55,10 @@ const api: QingwuApi = {
     return () => ipcRenderer.removeListener('ui:mode-changed', handler);
   },
 
+  getAppSettings: () => ipcRenderer.invoke('appSettings:get'),
+  setAppSettings: (patch) => ipcRenderer.invoke('appSettings:set', patch),
+  openUserDataFolder: () => ipcRenderer.invoke('appSettings:openUserData'),
+
   openTerminal: (targetPath) => ipcRenderer.invoke('workspace:openTerminal', targetPath),
   openPath: (targetPath) => ipcRenderer.invoke('workspace:openPath', targetPath),
   setActiveWorkspacePath: (targetPath) => {
