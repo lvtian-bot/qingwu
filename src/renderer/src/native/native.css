@@ -41,7 +41,8 @@ textarea {
   background: var(--native-sidebar-bg);
 }
 
-.native-app.has-sidebar .native-chat {
+.native-app.has-sidebar .native-chat,
+.native-settings-page .native-chat {
   border-top-left-radius: 12px;
   box-shadow: -2px 0 10px rgba(0, 0, 0, 0.04);
 }
@@ -3049,135 +3050,68 @@ body.native-resizing {
   color: var(--native-fg);
 }
 
-.native-modal-overlay {
-  position: fixed;
+/* ---------- 全页设置页（配色直接复用主界面设计令牌） ---------- */
+
+.native-settings-page {
+  --settings-bg: var(--native-bg);
+  --settings-sidebar-bg: var(--native-sidebar-bg);
+  --settings-border: var(--native-border);
+  --settings-fg: var(--native-fg);
+  --settings-muted: var(--native-muted);
+  --settings-switch-off: var(--native-border);
+
+  position: absolute;
   inset: 0;
-  z-index: 999;
-  background: rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(4px);
+  z-index: 100;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-}
-
-.native-modal-container.native-settings-modal {
-  --settings-bg: #ffffff;
-  --settings-header-bg: #fafafa;
-  --settings-sidebar-bg: #f4f5f7;
-  --settings-sidebar-hover: rgba(0, 0, 0, 0.04);
-  --settings-sidebar-active: rgba(0, 0, 0, 0.08);
-  --settings-border: #e6e8eb;
-  --settings-fg: #18191c;
-  --settings-sidebar-fg: #3d3f44;
-  --settings-muted: #72747d;
-
-  width: 860px;
-  max-width: 94vw;
-  height: 640px;
-  max-height: 90vh;
-  background: var(--settings-bg);
-  border: 1px solid var(--settings-border);
-  border-radius: 10px;
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.22);
-  display: flex;
-  flex-direction: column;
+  /* 与主界面同款框架：侧栏底色垫底，白色内容面板的圆角与投影才显出来 */
+  background: var(--native-sidebar-bg);
+  color: var(--settings-fg);
   overflow: hidden;
 }
 
-@media (prefers-color-scheme: dark) {
-  .native-modal-container.native-settings-modal {
-    --settings-bg: #1e1f24;
-    --settings-header-bg: #191a1e;
-    --settings-sidebar-bg: #16171a;
-    --settings-sidebar-hover: rgba(255, 255, 255, 0.05);
-    --settings-sidebar-active: rgba(255, 255, 255, 0.09);
-    --settings-border: #2c2d33;
-    --settings-fg: #eaebee;
-    --settings-sidebar-fg: #c4c6cb;
-    --settings-muted: #888994;
-  }
-}
-
-.native-settings-header {
-  height: 38px;
-  padding: 0 16px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  border-bottom: 1px solid var(--settings-border);
-  flex-shrink: 0;
-  background: var(--settings-header-bg);
-}
-
-.native-settings-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--settings-fg);
-}
-
-.native-settings-close-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  border: none;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--settings-muted);
-  cursor: pointer;
-  transition: background 0.12s ease, color 0.12s ease;
-}
-
-.native-settings-close-btn:hover {
-  background: var(--settings-sidebar-hover);
-  color: var(--settings-fg);
-}
-
-.native-settings-body {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-}
-
-.native-settings-sidebar {
-  width: 220px;
-  background: var(--settings-sidebar-bg);
-  border-right: 1px solid var(--settings-border);
-  padding: 12px 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  overflow-y: auto;
-  flex-shrink: 0;
-}
-
-.native-settings-nav-group {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.native-settings-group-title {
-  padding: 4px 8px;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--settings-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.native-settings-nav-item {
+.native-settings-back-btn {
   display: flex;
   align-items: center;
   gap: 8px;
   height: 34px;
+  margin: 14px 6px 10px;
   padding: 0 10px;
   border: none;
   border-radius: 6px;
   background: transparent;
-  color: var(--settings-sidebar-fg);
+  color: var(--native-sidebar-fg);
+  font-size: 14px;
+  cursor: pointer;
+  text-align: left;
+  user-select: none;
+  transition: background 0.12s ease;
+}
+
+.native-settings-back-btn:hover {
+  background: var(--native-sidebar-hover);
+  color: var(--native-fg);
+}
+
+.native-settings-back-btn svg {
+  flex-shrink: 0;
+}
+
+/* 设置页侧栏宽度由主界面侧栏宽度状态内联提供（两边同一实例联动） */
+.native-settings-rail {
+  padding: 0 10px 12px;
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+
+/* 设置页导航条目：几何与悬停/选中底色复用 .native-session-row（圆角 8、侧栏令牌） */
+.native-settings-nav-item {
+  gap: 8px;
+  height: 34px;
+  padding: 0 10px;
+  border: none;
+  background: transparent;
+  color: var(--native-sidebar-fg);
   font-size: 14px;
   cursor: pointer;
   text-align: left;
@@ -3185,15 +3119,9 @@ body.native-resizing {
   transition: background 0.12s ease, color 0.12s ease;
 }
 
-.native-settings-nav-item:hover {
-  background: var(--settings-sidebar-hover);
-  color: var(--settings-fg);
-}
-
+.native-settings-nav-item:hover,
 .native-settings-nav-item.active {
-  background: var(--settings-sidebar-active);
-  color: var(--settings-fg);
-  font-weight: 600;
+  color: var(--native-fg);
 }
 
 .native-settings-nav-icon {
@@ -3204,12 +3132,20 @@ body.native-resizing {
 .native-settings-content {
   flex: 1;
   min-width: 0;
-  padding: 20px 24px;
+  padding: 20px 24px 12px;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   display: flex;
   flex-direction: column;
   gap: 16px;
-  background: var(--settings-bg);
+}
+
+/* 正文列宽与主界面会话列同一令牌（720px 居中） */
+.native-settings-content > * {
+  width: 100%;
+  max-width: var(--native-content-w);
+  margin-left: auto;
+  margin-right: auto;
 }
 
 /* 存储透明度指示横幅（中性纯粹风格，彻底去除蓝调） */
@@ -3253,9 +3189,9 @@ body.native-resizing {
   gap: 18px;
 }
 
-.native-settings-panel-header h3 {
+.native-settings-panel-header h2 {
   margin: 0 0 4px 0;
-  font-size: 16px;
+  font-size: 20px;
   font-weight: 600;
   color: var(--settings-fg);
 }
@@ -3264,6 +3200,47 @@ body.native-resizing {
   margin: 0;
   font-size: 13px;
   color: var(--settings-muted);
+}
+
+/* 模型设置分区头：标题描述在左，刷新与添加动作在右 */
+.native-models-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.native-models-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.native-provider-refresh {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--settings-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--settings-muted);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.native-provider-refresh:hover {
+  background: var(--native-hover);
+  color: var(--native-fg);
+}
+
+.native-models-actions .native-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .native-settings-alert {
@@ -3275,72 +3252,88 @@ body.native-resizing {
   color: var(--settings-fg);
 }
 
-.native-settings-section {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+.native-settings-card {
+  border: 1px solid var(--settings-border);
+  border-radius: 10px;
+  background: var(--settings-bg);
+  overflow: hidden;
 }
 
-.native-settings-label {
+.native-settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 14px 16px;
+}
+
+.native-settings-row + .native-settings-row {
+  border-top: 1px solid var(--settings-border);
+}
+
+.native-settings-row-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.native-settings-row-title {
   font-size: 13px;
   font-weight: 600;
   color: var(--settings-fg);
 }
 
-.native-settings-desc {
+.native-settings-row-desc {
   font-size: 12px;
   color: var(--settings-muted);
   line-height: 1.5;
 }
 
-.native-settings-options {
+.native-settings-row-control {
   display: flex;
-  flex-direction: column;
+  align-items: center;
   gap: 8px;
-  margin-top: 4px;
+  flex-shrink: 0;
 }
 
-.native-radio-card {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 10px 14px;
-  border: 1px solid var(--settings-border);
-  border-radius: 8px;
-  background: var(--settings-bg);
+/* 开关控件 */
+.native-switch {
+  position: relative;
+  width: 40px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 11px;
+  background: var(--settings-switch-off);
   cursor: pointer;
-  transition: border-color 0.12s ease, background 0.12s ease;
+  flex-shrink: 0;
+  transition: background 0.15s ease;
 }
 
-.native-radio-card:hover {
-  background: var(--settings-sidebar-bg);
+.native-switch .native-switch-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  transition: transform 0.15s ease;
 }
 
-.native-radio-card input[type="radio"] {
-  margin-top: 3px;
-  cursor: pointer;
+.native-switch.on {
+  background: var(--native-ok);
 }
 
-.native-radio-card-content {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.native-radio-card-title {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--settings-fg);
-}
-
-.native-radio-card-desc {
-  font-size: 12px;
-  color: var(--settings-muted);
-  line-height: 1.4;
+.native-switch.on .native-switch-knob {
+  transform: translateX(18px);
 }
 
 .native-settings-select {
   height: 34px;
+  min-width: 170px;
   padding: 0 10px;
   border: 1px solid var(--settings-border);
   border-radius: 6px;
@@ -3350,39 +3343,239 @@ body.native-resizing {
   outline: none;
 }
 
-/* 服务商卡片列表 */
-.native-provider-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.native-provider-card {
+/* 服务商条目列表（单卡片内按行分隔） */
+.native-provider-item {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 12px 14px;
-  border: 1px solid var(--settings-border);
-  border-radius: 8px;
-  background: var(--settings-bg);
+  padding: 14px 16px;
 }
 
-.native-provider-card-head {
+.native-provider-item + .native-provider-item {
+  border-top: 1px solid var(--settings-border);
+}
+
+/* 供应商主从布局：单张卡片内左列表右详情（与官方 settings-models 同构） */
+.native-provider-layout {
+  display: flex;
+  align-items: stretch;
+}
+
+.native-provider-nav {
+  width: 200px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 8px;
+  border-right: 1px solid var(--settings-border);
+}
+
+.native-provider-nav-empty {
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--settings-muted);
+}
+
+.native-provider-picker {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px;
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+.native-provider-picker-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
+  height: 32px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--native-fg);
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+  user-select: none;
+  transition: background 0.12s ease, color 0.12s ease;
 }
 
-.native-provider-info {
+.native-provider-picker-item:hover {
+  background: var(--native-hover);
+}
+
+.native-provider-nav-item {
   display: flex;
   align-items: center;
   gap: 8px;
+  width: 100%;
+  height: 32px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--native-fg);
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+  user-select: none;
+  transition: background 0.12s ease, color 0.12s ease;
 }
 
-.native-provider-name {
-  font-size: 14px;
+.native-provider-nav-item:hover {
+  background: var(--native-hover);
+}
+
+.native-provider-nav-item.active {
+  background: var(--native-hover);
+  font-weight: 600;
+}
+
+.native-provider-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.native-provider-dot.configured {
+  background: var(--native-ok);
+}
+
+.native-provider-dot.missing {
+  background: var(--native-error);
+}
+
+.native-provider-nav-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.native-provider-detail {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px 20px;
+}
+
+.native-provider-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.native-provider-title {
+  font-size: 16px;
   font-weight: 600;
   color: var(--settings-fg);
+}
+
+.native-provider-error {
+  font-size: 12px;
+  color: var(--native-error);
+}
+
+/* 详情区表单字段：标签在上、控件在下（对齐参考实现的纵排字段） */
+.native-provider-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.native-provider-field-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--settings-fg);
+}
+
+.native-provider-field .native-provider-text-input,
+.native-provider-field .native-provider-field-select {
+  width: 100%;
+  max-width: 420px;
+}
+
+.native-provider-models {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--settings-border);
+  padding: 10px 0 4px;
+}
+
+.native-provider-models-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 4px 0 8px;
+}
+
+.native-provider-models-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--settings-muted);
+}
+
+.native-provider-models-meta {
+  font-size: 11px;
+  color: var(--settings-muted);
+}
+
+.native-model-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 0;
+}
+
+.native-model-item + .native-model-item {
+  border-top: 1px solid var(--settings-border);
+}
+
+.native-model-name {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-family: var(--native-mono);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--settings-fg);
+}
+
+.native-model-id {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--settings-muted);
+}
+
+.native-model-tag {
+  border: 1px solid var(--settings-border);
+  color: var(--settings-muted);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.native-model-empty {
+  border: 1px dashed var(--settings-border);
+  border-radius: 8px;
+  text-align: center;
+  padding: 12px;
+  margin: 0 0 6px;
+  font-size: 12px;
+  color: var(--settings-muted);
 }
 
 .native-provider-ref-code {
@@ -3391,7 +3584,7 @@ body.native-resizing {
   background: var(--settings-sidebar-bg);
   border-radius: 4px;
   color: var(--settings-muted);
-  font-family: monospace;
+  font-family: var(--native-mono);
 }
 
 .native-provider-status-badge {
@@ -3402,15 +3595,8 @@ body.native-resizing {
 }
 
 .native-provider-status-badge.configured {
-  background: rgba(82, 196, 26, 0.12);
-  color: #389e0d;
-}
-
-@media (prefers-color-scheme: dark) {
-  .native-provider-status-badge.configured {
-    background: rgba(82, 196, 26, 0.2);
-    color: #73d13d;
-  }
+  background: rgba(16, 163, 127, 0.12);
+  color: var(--native-ok);
 }
 
 .native-provider-status-badge.unconfigured {
@@ -3428,7 +3614,6 @@ body.native-resizing {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-top: 4px;
 }
 
 .native-provider-input-wrap {
@@ -3448,12 +3633,17 @@ body.native-resizing {
   color: var(--settings-fg);
   font-size: 12px;
   outline: none;
-  font-family: monospace;
+  font-family: var(--native-mono);
   transition: border-color 0.12s ease;
 }
 
 .native-settings-input:focus {
   border-color: var(--settings-fg);
+}
+
+/* 文本型输入（API 地址）没有可见性切换，收回右侧为密钥预留的内边距 */
+.native-provider-text-input {
+  padding-right: 10px;
 }
 
 .native-provider-visible-toggle {
@@ -3493,28 +3683,18 @@ body.native-resizing {
 }
 
 .native-btn-primary {
-  background: #2b2d31;
-  color: #ffffff;
+  background: var(--native-accent);
+  color: var(--native-accent-fg);
 }
 
 .native-btn-primary:hover:not(:disabled) {
-  background: #1a1b1e;
-}
-
-@media (prefers-color-scheme: dark) {
-  .native-btn-primary {
-    background: #e3e5e8;
-    color: #121316;
-  }
-  .native-btn-primary:hover:not(:disabled) {
-    background: #ffffff;
-  }
+  opacity: 0.85;
 }
 
 .native-btn-danger {
   background: transparent;
-  border-color: rgba(255, 77, 79, 0.35);
-  color: #ff4d4f;
+  border-color: var(--native-error);
+  color: var(--native-error);
 }
 
 .native-btn-danger:hover:not(:disabled) {
@@ -3522,13 +3702,13 @@ body.native-resizing {
 }
 
 .native-btn-secondary {
-  background: var(--settings-sidebar-bg);
+  background: var(--native-surface);
   border-color: var(--settings-border);
   color: var(--settings-fg);
 }
 
 .native-btn-secondary:hover:not(:disabled) {
-  background: var(--settings-sidebar-hover);
+  background: var(--native-hover);
 }
 
 /* ---------- 斜杠命令菜单（输入框上方浮层） ---------- */

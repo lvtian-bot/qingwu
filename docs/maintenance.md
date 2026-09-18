@@ -15,7 +15,7 @@
 | 输入框、模型与权限选择         | `native/Composer.tsx`、`native/ComposerControls.tsx`、`native/WorkspaceChip.tsx`               | `native/NativeApp.tsx` 中发送/设置处理、`native/protocol.ts`                                             |
 | 审批、问答、计划确认           | `native/PendingInteraction.tsx`                                                                | `native/NativeApp.tsx` 中事件归属与回执处理、`src/main/dsh-bridge.ts`                                    |
 | 项目、会话侧栏与置顶           | `native/SessionSidebar.tsx`、`native/SidebarRows.tsx`、`native/sidebar-data.ts`                | `native/NativeApp.tsx` 中工作区订阅与会话操作                                                            |
-| 设置面板、模型凭据与应用配置   | `native/SettingsModal.tsx`、`src/main/settings.ts`                                             | `native/SessionSidebar.tsx`、`native/protocol.ts`、`src/shared/types.ts`                                  |
+| 设置页、模型供应商与应用配置   | `native/SettingsPage.tsx`、`src/main/settings.ts`                                              | `native/SessionSidebar.tsx`、`native/protocol.ts`、`src/shared/types.ts`                                  |
 | 图片、Markdown、工具详情       | `native/images.tsx`、`native/markdown.tsx`、`native/ToolCard.tsx`                              | `native/NativeApp.tsx` 中附件提交、`native/RightPanel.tsx`、`native/panel-data.ts`                       |
 | 上下文占用、布局和样式         | `native/ContextMeter.tsx`、`native/usePanelWidth.ts`、`native/native.css`                      | 对应界面组件、`src/renderer/src/titlebar.css`                                                            |
 | 更新与发布                     | `src/main/update.ts`、`src/main/update-window.ts`、`src/renderer/src/UpdateWindow.tsx`         | `package.json`、`.github/workflows/`、`scripts/before-pack.cjs`、`docs/release.md`                       |

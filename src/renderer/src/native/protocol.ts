@@ -26,6 +26,8 @@ export const Endpoints = {
   credentialsDescribe: 'credentials/describe',
   credentialsSet: 'credentials/set',
   credentialsUnset: 'credentials/unset',
+  llmListProviders: 'llm/listProviders',
+  llmListConfigurableProviders: 'llm/listConfigurableProviders',
   settingsDescribe: 'settings/describe',
   settingsMutate: 'settings/mutate',
   settingsOpenSettingsDocument: 'settings/openSettingsDocument',
@@ -152,14 +154,36 @@ export interface CommandExecution {
   result: { kind: 'success'; text?: string } | { kind: 'error'; text: string };
 }
 
+// ---------- 引擎 LLM 供应商目录（llm/listProviders、llm/listConfigurableProviders） ----------
+
+/** 引擎 LLM 注册表里当前注册的供应商路由。 */
+export interface RegisteredProvider {
+  id: string;
+  name: string;
+}
+
+/** 引擎可配置供应商目录的一条声明（内置 profile 或用户自定义路由）。 */
+export interface ConfigurableProviderEntry {
+  /** 供应商路由 id（如 deepseek-official）。 */
+  provider: string;
+  displayName: string;
+  /** 承载该供应商配置的设置命名空间（llm-<route>，未声明路由时为空串）。 */
+  settingsNs: string;
+  /** 命名空间内指向该供应商 profile 的路径。 */
+  settingsPath: string[];
+  declared?: boolean;
+  error?: string;
+}
+
 // ---------- 设置命名空间（settings/describe、settings/mutate） ----------
 
-/** 一次路径寻址的设置写入：set 写入并创建中间对象。 */
-export interface SettingsPathOp {
-  op: 'set';
-  path: string[];
-  value: unknown;
-}
+/**
+ * 一次路径寻址的设置写入：set 写入并创建中间对象，unset 移除该键；
+ * 空路径寻址到命名空间段根。
+ */
+export type SettingsPathOp =
+  | { op: 'set'; path: string[]; value: unknown }
+  | { op: 'unset'; path: string[] };
 
 /** 单个设置命名空间的 wire 视图（值为脱敏后的 JSON）。 */
 export interface SettingsNamespaceView {
@@ -169,6 +193,8 @@ export interface SettingsNamespaceView {
   schema: unknown;
   /** 解析后的值（schema 默认 → 组合 base → 用户层）。 */
   value: unknown;
+  /** 原始用户段（存在字段即用户覆盖）；编辑草稿须取自这里而非解析值。 */
+  user?: unknown;
   applies?: 'live' | 'restart';
   /** 读取时的用户段修订号，写入须回传以免覆盖并发修改。 */
   revision: number;

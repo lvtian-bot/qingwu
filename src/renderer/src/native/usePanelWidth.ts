@@ -77,3 +77,6 @@ export function usePanelWidth({ storageKey, defaultWidth, min, max }: PanelWidth
 
   return { width, startDrag, reset };
 }
+
+/** 面板宽度控制器：width 状态 + 拖拽/复位操作；可跨组件共享同一实例实现联动。 */
+export type PanelWidth = ReturnType<typeof usePanelWidth>;

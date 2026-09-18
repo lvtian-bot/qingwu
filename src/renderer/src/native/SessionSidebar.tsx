@@ -9,7 +9,7 @@ import {
   WORKSPACE_SESSION_PREVIEW_LIMIT,
   type PinnedData,
 } from "./sidebar-data";
-import { usePanelWidth } from "./usePanelWidth";
+import type { PanelWidth } from "./usePanelWidth";
 
 /** 搜索、置顶、分组展开与宽度由主组件持有生命周期，隐藏侧栏或切换界面时不丢失。 */
 export function useSessionSidebar(
@@ -53,12 +53,6 @@ export function useSessionSidebar(
   const [sessionVisibleByGroup, setSessionVisibleByGroup] = useState<
     Map<string, number>
   >(new Map());
-  const sidebarPanel = usePanelWidth({
-    storageKey: "qingwu.native.sidebarWidth",
-    defaultWidth: 232,
-    min: 180,
-    max: 400,
-  });
   /** 子代理会话（主对话派生的辅助会话）与已归档会话不在主列表展示。 */
   const visibleSessions = useMemo(
     () =>
@@ -155,7 +149,6 @@ export function useSessionSidebar(
     setCollapsedGroups,
     sessionVisibleByGroup,
     setSessionVisibleByGroup,
-    sidebarPanel,
     toggleWorkspacePin,
     toggleSessionPin,
     getWorkspaceSessions,
@@ -169,6 +162,8 @@ export function useSessionSidebar(
 
 interface SessionSidebarProps {
   state: ReturnType<typeof useSessionSidebar>;
+  /** 侧栏宽度控制器：由 NativeApp 统一持有，与设置页侧栏共用同一实例联动。 */
+  sidebarPanel: PanelWidth;
   collapsed: boolean;
   currentId: string | null;
   pendingKindBySession: Map<string, PendingKind>;
@@ -187,6 +182,7 @@ interface SessionSidebarProps {
 
 export function SessionSidebar({
   state,
+  sidebarPanel,
   collapsed,
   currentId,
   pendingKindBySession,
@@ -212,7 +208,6 @@ export function SessionSidebar({
     setCollapsedGroups,
     sessionVisibleByGroup,
     setSessionVisibleByGroup,
-    sidebarPanel,
     toggleWorkspacePin,
     toggleSessionPin,
     getWorkspaceSessions,

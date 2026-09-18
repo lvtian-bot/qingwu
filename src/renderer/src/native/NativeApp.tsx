@@ -78,7 +78,7 @@ import { SessionSidebar, useSessionSidebar } from "./SessionSidebar";
 import { orderWorkspaces, sessionTitle, upsertWorkspace } from "./sidebar-data";
 import { TurnItems } from "./TurnItems";
 import { WorkspaceChip } from "./WorkspaceChip";
-import { SettingsModal } from "./SettingsModal";
+import { SettingsPage } from "./SettingsPage";
 
 const qingwu = window.qingwu;
 
@@ -103,6 +103,14 @@ export function NativeApp({
 
   /** 设置面板显隐状态 */
   const [settingsOpen, setSettingsOpen] = useState(false);
+
+  /** 侧栏宽度控制器：主侧栏与设置页侧栏共用同一实例，任一边拖拽两边同步。 */
+  const sidebarPanel = usePanelWidth({
+    storageKey: "qingwu.native.sidebarWidth",
+    defaultWidth: 232,
+    min: 180,
+    max: 400,
+  });
 
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
@@ -318,11 +326,17 @@ export function NativeApp({
   }, [visible]);
 
   // 模型目录与界面生命周期解耦，失败静默降级（选择器显示目录不可用）
-  useEffect(() => {
-    rpc<ModelCatalog>(Endpoints.sessionModelCatalog, {})
-      .then(setModelCatalog)
-      .catch(() => setModelCatalog(null));
+  const refreshModelCatalog = useCallback(async () => {
+    try {
+      setModelCatalog(await rpc<ModelCatalog>(Endpoints.sessionModelCatalog, {}));
+    } catch {
+      // 刷新失败保留现有目录；首次加载失败时维持空目录兜底
+    }
   }, []);
+
+  useEffect(() => {
+    void refreshModelCatalog();
+  }, [refreshModelCatalog]);
 
   /** 读取新会话默认权限（settings/describe 的 permission 命名空间）。 */
   const refreshDefaultPermission = useCallback(async () => {
@@ -1569,6 +1583,7 @@ export function NativeApp({
     <div className={`native-app${!sidebarCollapsed ? " has-sidebar" : ""}`}>
       <SessionSidebar
         state={sidebar}
+        sidebarPanel={sidebarPanel}
         collapsed={sidebarCollapsed}
         currentId={currentId}
         pendingKindBySession={pendingKindBySession}
@@ -1825,11 +1840,14 @@ export function NativeApp({
         onToggle={() => setPanelCollapsed((v) => !v)}
       />
 
-      <SettingsModal
-        open={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
-        modelCatalog={modelCatalog}
-      />
+      {settingsOpen && (
+        <SettingsPage
+          onBack={() => setSettingsOpen(false)}
+          sidebarPanel={sidebarPanel}
+          modelCatalog={modelCatalog}
+          onRefreshCatalog={() => void refreshModelCatalog()}
+        />
+      )}
     </div>
   );
 }
