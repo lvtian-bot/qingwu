@@ -21,6 +21,7 @@ import type * as W from '@deepseek-ai/dsh-api-workspace-controller/types';
 import type { SettingsDescribeValue } from '@deepseek-ai/dsh-settings/types';
 import type { ApprovalOutcome, ApprovalRequestEvent } from '@deepseek-ai/dsh-user-approval/types';
 import type { AskUserQuestionRequestEvent, AskUserQuestionAnswer } from '@deepseek-ai/dsh-user-questions/types';
+import type { CommandDescriptor as UpstreamCommandDescriptor } from '@deepseek-ai/dsh-commands/types';
 import type * as UI from '../src/renderer/src/native/protocol';
 import { Endpoints } from '../src/renderer/src/native/protocol';
 
@@ -54,6 +55,8 @@ export type ApprovalRequest = Assert<Fits<Omit<ApprovalRequestEvent, 'agent' | '
 export type ApprovalAnswer = Assert<Fits<'allowed-once' | 'rejected', ApprovalOutcome>>;
 export type QuestionRequest = Assert<Fits<Omit<AskUserQuestionRequestEvent, 'agent' | 'signal'>, UI.UserQuestionsRequestPayload>>;
 export type QuestionAnswer = Assert<Fits<{answers: UI.UserQuestionAnswer[]}, AskUserQuestionAnswer>>;
+export type Commands = Assert<Fits<Mutable<UpstreamCommandDescriptor>, UI.CommandDescriptor>>;
+export type CommandFields = Assert<Fits<keyof UI.CommandDescriptor, keyof UpstreamCommandDescriptor>>;
 `;
 
 function createContractProgram(source = contract) {

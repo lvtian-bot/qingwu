@@ -15,6 +15,8 @@ import type {
   ApprovalRequestPayload,
   AssistantBlockDelta,
   AssistantChunkEventData,
+  CommandDescriptor,
+  CommandExecution,
   ModelCatalog,
   ModelSelection,
   PermissionSelect,
@@ -31,6 +33,7 @@ import type {
   WorkspaceView,
 } from "./protocol";
 import { Endpoints } from "./protocol";
+import { mergeCommands, parseSlashLine } from "./slash-commands";
 import { ReasoningRow } from "./ReasoningRow";
 import { PanelIcon, RightPanel } from "./RightPanel";
 import { TodoPanel } from "./TodoPanel";
@@ -164,6 +167,8 @@ export function NativeApp({
   const [defaultPermission, setDefaultPermission] = useState<
     (PermissionSelect & { writable: boolean; revision: number }) | null
   >(null);
+  /** 当前会话可用的宿主斜杠命令列表。 */
+  const [hostCommands, setHostCommands] = useState<CommandDescriptor[]>([]);
   /** 右侧面板宽度（拖拽调节，localStorage 记忆，双击复位）。 */
   const rightPanel = usePanelWidth({
     storageKey: "qingwu.native.panelWidth",
@@ -550,7 +555,21 @@ export function NativeApp({
     // 载入目标会话自己的草稿（上一个会话的草稿已在输入时写进各自的桶）
     setInput(composerDraftsRef.current.get(currentId ?? "") ?? "");
     setDraftImages(composerImagesRef.current.get(currentId ?? "") ?? []);
-    if (!currentId) return;
+    if (!currentId) {
+      setHostCommands([]);
+      return;
+    }
+
+    // 会话可用斜杠命令目录
+    void rpc<CommandDescriptor[]>(Endpoints.commandsList, {
+      agentId: currentId,
+    })
+      .then((cmds) => {
+        if (!cancelled) setHostCommands(cmds);
+      })
+      .catch(() => {
+        if (!cancelled) setHostCommands([]);
+      });
 
     setLoadingHistory(true);
     let cancelled = false;
@@ -957,6 +976,53 @@ export function NativeApp({
     );
   };
 
+  const availableCommands = useMemo(() => {
+    return mergeCommands(hostCommands);
+  }, [hostCommands]);
+
+  const handleExecuteCommand = async (line: string) => {
+    const text = line.trim();
+    const parsed = parseSlashLine(text);
+    if (!parsed) return;
+
+    if (parsed.name === "model") {
+      setInput("");
+      composerDraftsRef.current.delete(currentId ?? "");
+      return;
+    }
+
+    if (!currentId) {
+      setError(`请先选择或新建一个会话以执行 /${parsed.name}`);
+      return;
+    }
+
+    const cmdDesc = hostCommands.find(
+      (c: CommandDescriptor) => c.name.toLowerCase() === parsed.name,
+    );
+    if (draftImages.length > 0 && !cmdDesc?.input?.attachments) {
+      setError(`/${parsed.name} 不接受附件，请先移除附件`);
+      return;
+    }
+
+    try {
+      setInput("");
+      setDraftImages([]);
+      composerDraftsRef.current.delete(currentId);
+      composerImagesRef.current.delete(currentId);
+      const res = await rpc<CommandExecution>(Endpoints.commandsExecute, {
+        agentId: currentId,
+        line: text,
+        submittedAttachments: [],
+      });
+      if (res?.result?.kind === "error") {
+        setError(res.result.text);
+      }
+      await refreshSessions();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
   const panelData = useMemo(() => foldPanelData(eventsRef.current), [items]);
 
   const openSession = (sessionId: string) => {
@@ -1274,6 +1340,14 @@ export function NativeApp({
     const text = input.trim();
     const images = [...draftImages];
     if (!text && images.length === 0) return;
+
+    // 斜杠命令拦截：直接交由宿主执行，绕过模型 Prompt 循环
+    const parsedSlash = parseSlashLine(text);
+    if (parsedSlash) {
+      void handleExecuteCommand(text);
+      return;
+    }
+
     let sessionId = currentId;
     if (!sessionId) {
       let wsId = activeWorkspaceId;
@@ -1549,6 +1623,8 @@ export function NativeApp({
                   onRemoveDraftImage={handleRemoveDraftImage}
                   onAddImages={handleAddImages}
                   onPreviewImage={(url) => setLightboxUrl(url)}
+                  commands={availableCommands}
+                  onExecuteCommand={(line) => void handleExecuteCommand(line)}
                   meter={
                     <ContextMeter
                       pressure={currentProjections?.contextPressure}
@@ -1697,6 +1773,8 @@ export function NativeApp({
                     onRemoveDraftImage={handleRemoveDraftImage}
                     onAddImages={handleAddImages}
                     onPreviewImage={(url) => setLightboxUrl(url)}
+                    commands={availableCommands}
+                    onExecuteCommand={(line) => void handleExecuteCommand(line)}
                     meter={
                       <ContextMeter
                         pressure={currentProjections?.contextPressure}

@@ -3530,3 +3530,111 @@ body.native-resizing {
 .native-btn-secondary:hover:not(:disabled) {
   background: var(--settings-sidebar-hover);
 }
+
+/* ---------- 斜杠命令菜单（输入框上方浮层） ---------- */
+
+.native-slash-menu {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  max-height: 280px;
+  display: flex;
+  flex-direction: column;
+  background: var(--native-surface);
+  border: 1px solid var(--native-border);
+  border-radius: 14px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.04);
+  overflow: hidden;
+  z-index: 35;
+  user-select: none;
+}
+
+.native-slash-list {
+  padding: 6px;
+  overflow-y: auto;
+  max-height: 240px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.native-slash-empty {
+  padding: 16px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--native-muted);
+}
+
+.native-slash-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.1s ease;
+}
+
+.native-slash-item:hover,
+.native-slash-item.active {
+  background: var(--native-hover);
+}
+
+.native-slash-item-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: none;
+}
+
+.native-slash-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--native-fg);
+  font-family: var(--native-font-mono, monospace);
+}
+
+.native-slash-hint {
+  font-size: 11px;
+  color: var(--native-muted);
+  background: var(--native-bg-subtle, rgba(0, 0, 0, 0.04));
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-family: var(--native-font-mono, monospace);
+}
+
+.native-slash-desc {
+  font-size: 12px;
+  color: var(--native-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: right;
+  flex: 1;
+}
+
+.native-slash-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 6px 12px;
+  background: var(--native-bg-subtle, rgba(0, 0, 0, 0.02));
+  border-top: 1px solid var(--native-border-subtle, rgba(0, 0, 0, 0.06));
+  font-size: 11px;
+  color: var(--native-muted);
+}
+
+.native-slash-footer kbd {
+  font-family: inherit;
+  background: var(--native-hover);
+  border: 1px solid var(--native-border);
+  border-radius: 4px;
+  padding: 1px 4px;
+  font-size: 10px;
+  margin: 0 2px;
+}
+

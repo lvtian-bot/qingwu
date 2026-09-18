@@ -1,5 +1,11 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { isSupportedImage, type DraftImage } from "./images";
+import { SlashMenu } from "./SlashMenu";
+import {
+  detectSlashTrigger,
+  filterSlashCommands,
+  type SlashCommandItem,
+} from "./slash-commands";
 
 interface ComposerProps {
   input: string;
@@ -16,6 +22,12 @@ interface ComposerProps {
   onRemoveDraftImage: (id: string) => void;
   onAddImages: (files: File[]) => void;
   onPreviewImage: (url: string) => void;
+  /** 可用斜杠命令列表。 */
+  commands?: SlashCommandItem[];
+  /** 触发客户端特定命令（如 model）。 */
+  onClientCommand?: (commandName: string) => void;
+  /** 触发直接执行斜杠命令（无参数命令）。 */
+  onExecuteCommand?: (line: string) => void;
 }
 
 /** 输入框高度上限，与 .native-composer-box textarea 的 max-height 一致（超出后内部滚动）。 */
@@ -46,8 +58,67 @@ export function Composer({
   onRemoveDraftImage,
   onAddImages,
   onPreviewImage,
+  commands,
+  onClientCommand,
+  onExecuteCommand,
 }: ComposerProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [menuDismissed, setMenuDismissed] = useState(false);
+  const [selectedIndex, setSelectedIndex] = useState(0);
+
+  // 监听输入，计算是否触发斜杠菜单
+  const trigger = useMemo(() => {
+    return detectSlashTrigger(input);
+  }, [input]);
+
+  const filteredCommands = useMemo(() => {
+    if (!trigger.active || !commands || commands.length === 0) return [];
+    return filterSlashCommands(commands, trigger.query);
+  }, [trigger.active, trigger.query, commands]);
+
+  const isMenuOpen =
+    trigger.active && !menuDismissed && filteredCommands.length > 0;
+
+  // 当 query 变化时，如果之前被 Esc 关闭过，重新激活菜单并将 selectedIndex 重置为 0
+  useEffect(() => {
+    setMenuDismissed(false);
+    setSelectedIndex(0);
+  }, [trigger.query]);
+
+  // 处理命令采纳
+  const handleSelectCommand = (cmd: SlashCommandItem) => {
+    if (cmd.isClient) {
+      setMenuDismissed(true);
+      onInputChange("");
+      onClientCommand?.(cmd.name);
+      return;
+    }
+
+    if (cmd.hint) {
+      // 需要参数的命令：补全命令名并加空格，引导用户继续输入
+      const nextVal = `/${cmd.name} `;
+      onInputChange(nextVal);
+      setMenuDismissed(true);
+      setTimeout(() => {
+        if (textareaRef.current) {
+          textareaRef.current.focus();
+          textareaRef.current.setSelectionRange(nextVal.length, nextVal.length);
+        }
+      }, 0);
+      return;
+    }
+
+    // 无参数命令：直接提交执行
+    setMenuDismissed(true);
+    if (onExecuteCommand) {
+      onExecuteCommand(`/${cmd.name}`);
+    } else {
+      onInputChange(`/${cmd.name}`);
+      setTimeout(() => {
+        onSend();
+      }, 0);
+    }
+  };
 
   // textareaRef 稳定，装填新元素时也会重跑，草稿首帧即按内容展开
   useEffect(() => {
@@ -114,6 +185,14 @@ export function Composer({
       onDragOver={handleDragOver}
       onDrop={handleDrop}
     >
+      {isMenuOpen && (
+        <SlashMenu
+          items={filteredCommands}
+          selectedIndex={selectedIndex}
+          onSelect={handleSelectCommand}
+          onHoverIndex={setSelectedIndex}
+        />
+      )}
       {draftImages.length > 0 && (
         <div className="native-composer-attachments">
           {draftImages.map((img) => (
@@ -156,10 +235,48 @@ export function Composer({
         ref={textareaRef}
         value={input}
         rows={1}
-        placeholder="询问任何问题"
+        placeholder="询问任何问题（输入 / 查看斜杠命令）"
         onChange={(e) => onInputChange(e.target.value)}
         onPaste={handlePaste}
         onKeyDown={(e) => {
+          if (isMenuOpen) {
+            if (e.key === "ArrowDown") {
+              e.preventDefault();
+              setSelectedIndex((prev) => (prev + 1) % filteredCommands.length);
+              return;
+            }
+            if (e.key === "ArrowUp") {
+              e.preventDefault();
+              setSelectedIndex(
+                (prev) =>
+                  (prev - 1 + filteredCommands.length) %
+                  filteredCommands.length,
+              );
+              return;
+            }
+            if (e.key === "Tab") {
+              e.preventDefault();
+              const activeCmd = filteredCommands[selectedIndex];
+              if (activeCmd) {
+                handleSelectCommand(activeCmd);
+              }
+              return;
+            }
+            if (e.key === "Escape") {
+              e.preventDefault();
+              setMenuDismissed(true);
+              return;
+            }
+            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+              e.preventDefault();
+              const activeCmd = filteredCommands[selectedIndex];
+              if (activeCmd) {
+                handleSelectCommand(activeCmd);
+              }
+              return;
+            }
+          }
+
           if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
             if (canSend) {
               e.preventDefault();

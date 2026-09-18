@@ -21,6 +21,7 @@ export const Endpoints = {
   sessionModelCatalog: 'session/modelCatalog',
   sessionSelectModel: 'session/selectModel',
   sessionRename: 'session/rename',
+  commandsList: 'commands/list',
   commandsExecute: 'commands/execute',
   credentialsDescribe: 'credentials/describe',
   credentialsSet: 'credentials/set',
@@ -130,6 +131,19 @@ export interface PresetOption {
 export interface PermissionSelect {
   options: PresetOption[];
   currentValue: string;
+}
+
+export interface CommandInputDescriptor {
+  hint: string;
+  attachments?: boolean;
+}
+
+/** commands/list 返回：会话可用的斜杠命令描述符。 */
+export interface CommandDescriptor {
+  definitionId?: string;
+  name: string;
+  description: string;
+  input?: CommandInputDescriptor;
 }
 
 /** commands/execute 返回：斜杠命令在宿主的执行结果。 */
