@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import type { AppSettings } from "../../../shared/types";
 import {
   Endpoints,
@@ -12,6 +18,7 @@ import {
   type SettingsPathOp,
 } from "./protocol";
 import { rpc } from "./rpc";
+import { PROVIDER_BRANDS, providerDisplayName } from "./provider-brand";
 import type { PanelWidth } from "./usePanelWidth";
 
 export interface SettingsPageProps {
@@ -23,7 +30,7 @@ export interface SettingsPageProps {
   onRefreshCatalog?: () => void;
 }
 
-type TabKey = "models" | "defaults" | "general" | "application";
+type TabKey = "models" | "general" | "permissions";
 
 /** 供应商目录行：官方 settings-models 的 joinProviderDirectory 语义移植。 */
 interface ProviderRow {
@@ -196,8 +203,18 @@ const NAV_GROUPS: {
   items: { key: TabKey; label: string; icon: ReactNode }[];
 }[] = [
   {
-    title: "引擎设置 (与 DeepSeek 共享)",
+    title: "基础设置",
     items: [
+      {
+        key: "general",
+        label: "常规",
+        icon: (
+          <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
+            <path d="M8 4.754a3.246 3.246 0 1 0 0 6.492 3.246 3.246 0 0 0 0-6.492zM9.75 8a1.75 1.75 0 1 1-3.5 0 1.75 1.75 0 0 1 3.5 0z" />
+            <path d="M9.796 1.343c-.527-1.79-3.065-1.79-3.592 0l-.094.319a.873.873 0 0 1-1.255.52l-.292-.16c-1.64-.892-3.433.902-2.54 2.541l.159.292a.873.873 0 0 1-.52 1.255l-.319.094c-1.79.527-1.79 3.065 0 3.592l.319.094a.873.873 0 0 1 .52 1.255l-.16.292c-.892 1.64.901 3.434 2.541 2.54l.292-.159a.873.873 0 0 1 1.255.52l.094.319c.527 1.79 3.065 1.79 3.592 0l.094-.319a.873.873 0 0 1 1.255-.52l.292.16c1.64.893 3.434-.902 2.54-2.541l-.159-.292a.873.873 0 0 1 .52-1.255l.319-.094c1.79-.527 1.79-3.065 0-3.592l-.319-.094a.873.873 0 0 1-.52-1.255l.16-.292c.893-1.64-.902-3.433-2.541-2.54l-.292.159a.873.873 0 0 1-1.255-.52l-.094-.319zm-2.633.283c.246-.835 1.428-.835 1.674 0l.094.319a1.873 1.873 0 0 0 2.693 1.115l.291-.16c.764-.415 1.6.42 1.185 1.184l-.159.292a1.873 1.873 0 0 0 1.116 2.692l.318.094c.835.246.835 1.428 0 1.674l-.319.094a1.873 1.873 0 0 0-1.115 2.693l.16.291c.415.764-.42 1.6-1.185 1.185l-.291-.159a1.873 1.873 0 0 0-2.693 1.116l-.094.318c-.246.835-1.428.835-1.674 0l-.094-.319a1.873 1.873 0 0 0-2.692-1.115l-.292.16c-.764.415-1.6-.42-1.184-1.185l.159-.291A1.873 1.873 0 0 0 1.945 8.93l-.319-.094c-.835-.246-.835-1.428 0-1.674l.319-.094A1.873 1.873 0 0 0 3.06 4.377l-.16-.292c-.415-.764.42-1.6 1.185-1.184l.292.159a1.873 1.873 0 0 0 2.692-1.115l.094-.319z" />
+          </svg>
+        ),
+      },
       {
         key: "models",
         label: "模型设置",
@@ -207,36 +224,17 @@ const NAV_GROUPS: {
           </svg>
         ),
       },
-      {
-        key: "defaults",
-        label: "默认值",
-        icon: (
-          <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
-            <path d="M11.5 2a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zM9.05 3a2.5 2.5 0 0 1 4.9 0H15a.5.5 0 0 1 0 1h-1.05a2.5 2.5 0 0 1-4.9 0H1a.5.5 0 0 1 0-1h8.05zM4.5 7a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zM2.05 8a2.5 2.5 0 0 1 4.9 0H15a.5.5 0 0 1 0 1H6.95a2.5 2.5 0 0 1-4.9 0H1a.5.5 0 0 1 0-1h1.05zm6.45 4a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zm-2.45 1a2.5 2.5 0 0 1 4.9 0H15a.5.5 0 0 1 0 1H10.9a2.5 2.5 0 0 1-4.9 0H1a.5.5 0 0 1 0-1h5.05z" />
-          </svg>
-        ),
-      },
-      {
-        key: "general",
-        label: "通用设置",
-        icon: (
-          <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
-            <path d="M8 4.754a3.246 3.246 0 1 0 0 6.492 3.246 3.246 0 0 0 0-6.492zM9.75 8a1.75 1.75 0 1 1-3.5 0 1.75 1.75 0 0 1 3.5 0z" />
-            <path d="M9.796 1.343c-.527-1.79-3.065-1.79-3.592 0l-.094.319a.873.873 0 0 1-1.255.52l-.292-.16c-1.64-.892-3.433.902-2.54 2.541l.159.292a.873.873 0 0 1-.52 1.255l-.319.094c-1.79.527-1.79 3.065 0 3.592l.319.094a.873.873 0 0 1 .52 1.255l-.16.292c-.892 1.64.901 3.434 2.541 2.54l.292-.159a.873.873 0 0 1 1.255.52l.094.319c.527 1.79 3.065 1.79 3.592 0l.094-.319a.873.873 0 0 1 1.255-.52l.292.16c1.64.893 3.434-.902 2.54-2.541l-.159-.292a.873.873 0 0 1 .52-1.255l.319-.094c1.79-.527 1.79-3.065 0-3.592l-.319-.094a.873.873 0 0 1-.52-1.255l.16-.292c.893-1.64-.902-3.433-2.541-2.54l-.292.159a.873.873 0 0 1-1.255-.52l-.094-.319zm-2.633.283c.246-.835 1.428-.835 1.674 0l.094.319a1.873 1.873 0 0 0 2.693 1.115l.291-.16c.764-.415 1.6.42 1.185 1.184l-.159.292a1.873 1.873 0 0 0 1.116 2.692l.318.094c.835.246.835 1.428 0 1.674l-.319.094a1.873 1.873 0 0 0-1.115 2.693l.16.291c.415.764-.42 1.6-1.185 1.185l-.291-.159a1.873 1.873 0 0 0-2.693 1.116l-.094.318c-.246.835-1.428.835-1.674 0l-.094-.319a1.873 1.873 0 0 0-2.692-1.115l-.292.16c-.764.415-1.6-.42-1.184-1.185l.159-.291A1.873 1.873 0 0 0 1.945 8.93l-.319-.094c-.835-.246-.835-1.428 0-1.674l.319-.094A1.873 1.873 0 0 0 3.06 4.377l-.16-.292c-.415-.764.42-1.6 1.185-1.184l.292.159a1.873 1.873 0 0 0 2.692-1.115l.094-.319z" />
-          </svg>
-        ),
-      },
     ],
   },
   {
-    title: "青梧设置 (桌面客户端)",
+    title: "Agent 能力",
     items: [
       {
-        key: "application",
-        label: "窗口与常规",
+        key: "permissions",
+        label: "权限",
         icon: (
           <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
-            <path d="M1 2.5A1.5 1.5 0 0 1 2.5 1h11A1.5 1.5 0 0 1 15 2.5v11a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 1 13.5v-11zM2.5 2a.5.5 0 0 0-.5.5V4h12V2.5a.5.5 0 0 0-.5-.5h-11zM14 5H2v8.5a.5.5 0 0 0 .5.5h11a.5.5 0 0 0 .5-.5V5z" />
+            <path d="M8 1l5.5 2v4.2c0 3.4-2.3 6.3-5.5 7.3-3.2-1-5.5-3.9-5.5-7.3V3L8 1z" />
           </svg>
         ),
       },
@@ -332,7 +330,7 @@ function ProviderDetail(props: {
       ? stringAt(fallback, "protocol") === "messages"
         ? "https://api.deepseek.com/anthropic"
         : "https://api.deepseek.com"
-      : stringAt(fallback, "baseURL") ?? "提供方默认";
+      : (stringAt(fallback, "baseURL") ?? "提供方默认");
 
   return (
     <div className="native-provider-detail">
@@ -343,28 +341,22 @@ function ProviderDetail(props: {
       {row.error && <div className="native-provider-error">{row.error}</div>}
       {props.adding && (
         <div className="native-provider-card-desc">
-          该服务商还未添加，保存密钥后会加入左侧列表。
+          该服务商还未添加，保存后会加入左侧列表。
         </div>
       )}
 
       <div className="native-provider-field">
         <div className="native-provider-field-label">
           <span>API 密钥</span>
-          <span className="native-provider-ref-code">{ref}</span>
-          <span
-            className={`native-provider-status-badge ${
-              configured ? "configured" : "unconfigured"
-            }`}
-          >
-            {configured ? "已配置" : "未配置"}
-          </span>
         </div>
         <div className="native-provider-input-wrap">
           <input
             type={props.visible ? "text" : "password"}
             className="native-settings-input"
             placeholder={
-              configured ? "已配置 (输入新密钥可覆盖更新)" : "输入 API Key 凭据"
+              configured
+                ? "●●●●●●●●（已保存密钥，输入新值可覆盖）"
+                : "输入 API Key 凭据"
             }
             value={props.inputValue}
             onChange={(e) => props.onInputChange(ref, e.target.value)}
@@ -376,12 +368,22 @@ function ProviderDetail(props: {
             title={props.visible ? "隐藏密钥" : "显示密钥"}
           >
             {props.visible ? (
-              <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor">
+              <svg
+                viewBox="0 0 16 16"
+                width="14"
+                height="14"
+                fill="currentColor"
+              >
                 <path d="m10.79 12.912-1.614-1.615a3.5 3.5 0 0 1-4.474-4.474l-2.06-2.06C.938 6.278 0 8 0 8s3 5.5 8 5.5a7.029 7.029 0 0 0 2.79-.588zM5.21 3.088A7.028 7.028 0 0 1 8 2.5c5 0 8 5.5 8 5.5s-.939 1.721-2.641 3.238l-2.062-2.062a3.5 3.5 0 0 0-4.474-4.474L5.21 3.089z" />
                 <path d="M5.525 7.646a2.5 2.5 0 0 0 2.829 2.829l-2.83-2.829zm4.95.708-2.829-2.83a2.5 2.5 0 0 1 2.829 2.829zm3.171-5.006a.75.75 0 0 1 1.06 1.06l-12 12a.75.75 0 0 1-1.06-1.06l12-12z" />
               </svg>
             ) : (
-              <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor">
+              <svg
+                viewBox="0 0 16 16"
+                width="14"
+                height="14"
+                fill="currentColor"
+              >
                 <path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8zM1.173 8a13.133 13.133 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.133 13.133 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5c-2.12 0-3.879-1.168-5.168-2.457A13.134 13.134 0 0 1 1.172 8z" />
                 <path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0z" />
               </svg>
@@ -485,7 +487,9 @@ function ProviderDetail(props: {
                   </div>
                 )}
               </div>
-              {model.reasoning && <span className="native-model-tag">推理</span>}
+              {model.reasoning && (
+                <span className="native-model-tag">推理</span>
+              )}
             </div>
           ))
         )}
@@ -518,7 +522,9 @@ export function SettingsPage({
   const [credLoading, setCredLoading] = useState(false);
   const [credMessage, setCredMessage] = useState<string | null>(null);
   /** llm-* 设置命名空间视图（profile 解析值、用户段与修订号）。 */
-  const [llmViews, setLlmViews] = useState<Record<string, SettingsNamespaceView>>({});
+  const [llmViews, setLlmViews] = useState<
+    Record<string, SettingsNamespaceView>
+  >({});
   const [settingsWritable, setSettingsWritable] = useState(true);
   /**
    * 选中供应商的用户段草稿与基线。键含供应商与修订号：选中变化或写入落盘
@@ -531,7 +537,8 @@ export function SettingsPage({
   }>({ key: "", baseline: {}, draft: {} });
 
   // 3. DSH 默认值 (settings describe)
-  const [settingsSnapshot, setSettingsSnapshot] = useState<SettingsDescribeValue | null>(null);
+  const [settingsSnapshot, setSettingsSnapshot] =
+    useState<SettingsDescribeValue | null>(null);
   const [defaultPreset, setDefaultPreset] = useState<string>("standard");
   const [defaultModelKey, setDefaultModelKey] = useState<string>("");
   const [settingsMessage, setSettingsMessage] = useState<string | null>(null);
@@ -630,9 +637,9 @@ export function SettingsPage({
         if (prev !== null && joined.some((row) => row.provider === prev)) {
           return prev;
         }
-        // 默认落在第一个已添加（凭据已配置）的供应商，否则交给选择器
-        const firstAdded = joined.find((row) => row.credentialConfigured);
-        return (firstAdded ?? joined[0])?.provider ?? null;
+        // 默认落在第一个已添加（已注册路由）的供应商，否则交给选择器
+        const firstAdded = joined.find((row) => row.active);
+        return firstAdded?.provider ?? null;
       });
     } catch (e) {
       console.error("[SettingsPage] 读取供应商目录失败", e);
@@ -702,7 +709,9 @@ export function SettingsPage({
       setSettingsMessage("默认权限已更新");
       await loadSettings();
     } catch (e) {
-      setSettingsMessage(`更新失败: ${e instanceof Error ? e.message : String(e)}`);
+      setSettingsMessage(
+        `更新失败: ${e instanceof Error ? e.message : String(e)}`,
+      );
     }
   };
 
@@ -726,7 +735,9 @@ export function SettingsPage({
       setSettingsMessage("默认模型已更新");
       await loadSettings();
     } catch (e) {
-      setSettingsMessage(`更新失败: ${e instanceof Error ? e.message : String(e)}`);
+      setSettingsMessage(
+        `更新失败: ${e instanceof Error ? e.message : String(e)}`,
+      );
     }
   };
 
@@ -735,7 +746,9 @@ export function SettingsPage({
     try {
       await rpc(Endpoints.settingsOpenSettingsDocument, {});
     } catch (e) {
-      setSettingsMessage(`打开配置文件异常: ${e instanceof Error ? e.message : String(e)}`);
+      setSettingsMessage(
+        `打开配置文件异常: ${e instanceof Error ? e.message : String(e)}`,
+      );
     }
   };
 
@@ -764,11 +777,22 @@ export function SettingsPage({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onBack]);
 
-  const isDshGroup =
-    activeTab === "models" || activeTab === "defaults" || activeTab === "general";
-  // 列表只收已添加（凭据已配置）的供应商；其余收进「添加供应商」选择器
-  const addedRows = providerRows.filter((row) => row.credentialConfigured);
-  const availableRows = providerRows.filter((row) => !row.credentialConfigured);
+  // 模型与权限整页写入引擎配置目录，展示存储横幅；常规页混合两端设置，不展示
+  const showDshBanner = activeTab !== "general";
+  // 已添加 = 引擎已注册路由，与聊天框模型选择器同一数据源
+  const addedRows = providerRows.filter((row) => row.active);
+  // 可选供应商：已检测到密钥的排前面，其余按展示名排序
+  const availableRows = providerRows
+    .filter((row) => !row.active)
+    .sort((a, b) => {
+      if (a.credentialConfigured !== b.credentialConfigured) {
+        return a.credentialConfigured ? -1 : 1;
+      }
+      return providerDisplayName(a.provider, a.displayName).localeCompare(
+        providerDisplayName(b.provider, b.displayName),
+        "zh",
+      );
+    });
   const selectedRow =
     providerRows.find((row) => row.provider === selectedProvider) ?? null;
   const selectedIsAdded = selectedRow
@@ -810,10 +834,11 @@ export function SettingsPage({
     const rawKey = (keyInputs[ref] ?? "").trim();
     const view = row.settingsNs ? llmViews[row.settingsNs] : undefined;
     const draft = { ...draftStore.draft };
-    // pi-ai：输入了密钥而前后层都没有 apiKeyEnv 时物化派生引用（官方 applyOnce 语义）
+    // pi-ai：输入了密钥而前后层都没有 apiKeyEnv 时物化派生引用（官方 applyOnce 语义）；
+    // 添加态凭据已就绪（如来自环境变量或安全区）时同样物化，仅注册路由不重录密钥
     if (
       familyOf(row.settingsNs) === "pi-ai" &&
-      rawKey.length > 0 &&
+      (rawKey.length > 0 || row.credentialConfigured === true) &&
       stringAt(draft, "apiKeyEnv") === undefined &&
       stringAt(valueAtPath(view?.value, row.settingsPath), "apiKeyEnv") ===
         undefined
@@ -869,7 +894,9 @@ export function SettingsPage({
         {NAV_GROUPS.map((group) => (
           <div key={group.title} className="native-sidebar-section">
             <div className="native-sidebar-section-header">
-              <span className="native-sidebar-section-title">{group.title}</span>
+              <span className="native-sidebar-section-title">
+                {group.title}
+              </span>
             </div>
             {group.items.map((item) => (
               <button
@@ -900,44 +927,39 @@ export function SettingsPage({
 
       {/* 右侧：分区内容（复用主界面会话面板外观） */}
       <main className="native-chat native-settings-content">
-        {/* 存储位置透明度横幅 */}
-        <div className={`native-settings-storage-banner ${isDshGroup ? "dsh" : "app"}`}>
-          <div className="native-settings-storage-icon">
-            {isDshGroup ? (
-              <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
+        {/* 存储位置透明度横幅：仅覆盖整页写入引擎配置的分区 */}
+        {showDshBanner && (
+          <div className="native-settings-storage-banner">
+            <div className="native-settings-storage-icon">
+              <svg
+                viewBox="0 0 16 16"
+                width="16"
+                height="16"
+                fill="currentColor"
+              >
                 <path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0zm1 12H7V7h2v5zm0-6H7V4h2v2z" />
               </svg>
-            ) : (
-              <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
-                <path d="M4 1.5A1.5 1.5 0 0 0 2.5 3v10A1.5 1.5 0 0 0 4 14.5h8a1.5 1.5 0 0 0 1.5-1.5V3A1.5 1.5 0 0 0 12 1.5H4zM3.5 3a.5.5 0 0 1 .5-.5h8a.5.5 0 0 1 .5.5v10a.5.5 0 0 1-.5.5H4a.5.5 0 0 1-.5-.5V3z" />
-              </svg>
-            )}
+            </div>
+            <div className="native-settings-storage-desc">
+              <strong>存储位置：DSH 引擎配置目录 (~/.dsh)</strong>
+              <span>
+                此分区配置直接写入底层引擎并与 DeepSeek
+                界面共享互通，后续官方推出桌面版时可直接继承。
+              </span>
+            </div>
           </div>
-          <div className="native-settings-storage-desc">
-            {isDshGroup ? (
-              <>
-                <strong>存储位置：DSH 引擎配置目录 (~/.dsh)</strong>
-                <span>
-                  此分区配置直接写入底层引擎并与 DeepSeek WebUI 共享互通，后续官方推出桌面版时可直接继承。
-                </span>
-              </>
-            ) : (
-              <>
-                <strong>存储位置：青梧本地数据目录 (%APPDATA%/qingwu/settings.json)</strong>
-                <span>此分区配置存储于本地桌面客户端，仅对当前青梧桌面环境生效。</span>
-              </>
-            )}
-          </div>
-        </div>
+        )}
 
-        {/* 分区 1: 模型设置 */}
+        {/* 模型设置 */}
         {activeTab === "models" && (
           <div className="native-settings-panel">
             <div className="native-settings-panel-header native-models-header">
               <div>
                 <h2>模型设置</h2>
                 <p>
-                  管理各供应商的 API 地址、协议与密钥，配置后即可在对话中选择使用。
+                  管理各供应商的 API
+                  地址、协议与密钥，配置后即可在对话中选择使用；配置与 DeepSeek
+                  界面共享。
                 </p>
               </div>
               <div className="native-models-actions">
@@ -950,7 +972,12 @@ export function SettingsPage({
                     onRefreshCatalog?.();
                   }}
                 >
-                  <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor">
+                  <svg
+                    viewBox="0 0 16 16"
+                    width="14"
+                    height="14"
+                    fill="currentColor"
+                  >
                     <path d="M13.65 2.35a8 8 0 1 0 2.28 6.42c.04-.34-.25-.62-.59-.62-.31 0-.56.25-.6.56a6.8 6.8 0 1 1-1.79-5.06L10.5 5.1a.5.5 0 0 0 .36.86h4.1a.5.5 0 0 0 .5-.5v-4.1a.5.5 0 0 0-.86-.36l-.95.95z" />
                   </svg>
                 </button>
@@ -962,7 +989,12 @@ export function SettingsPage({
                     setSelectedProvider(null);
                   }}
                 >
-                  <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor">
+                  <svg
+                    viewBox="0 0 16 16"
+                    width="14"
+                    height="14"
+                    fill="currentColor"
+                  >
                     <path d="M8 2a.75.75 0 0 1 .75.75v4.5h4.5a.75.75 0 0 1 0 1.5h-4.5v4.5a.75.75 0 0 1-1.5 0v-4.5h-4.5a.75.75 0 0 1 0-1.5h4.5v-4.5A.75.75 0 0 1 8 2z" />
                   </svg>
                   添加供应商
@@ -970,7 +1002,13 @@ export function SettingsPage({
               </div>
             </div>
 
-            {credMessage && <div className="native-settings-alert">{credMessage}</div>}
+            {credMessage && (
+              <div className="native-settings-alert">{credMessage}</div>
+            )}
+
+            {settingsMessage && (
+              <div className="native-settings-alert">{settingsMessage}</div>
+            )}
 
             <div className="native-settings-card native-provider-layout">
               {/* 左：已添加供应商列表 */}
@@ -990,7 +1028,6 @@ export function SettingsPage({
                     }}
                     title={row.displayName}
                   >
-                    <span className="native-provider-dot configured" />
                     <span className="native-provider-nav-name">
                       {row.displayName}
                     </span>
@@ -1019,20 +1056,29 @@ export function SettingsPage({
                   onDraftField={setDraftField}
                   inputValue={
                     keyInputs[
-                      selectedRow.apiKeyEnv ?? deriveKeyRef(selectedRow.provider)
+                      selectedRow.apiKeyEnv ??
+                        deriveKeyRef(selectedRow.provider)
                     ] ?? ""
                   }
                   visible={
                     keyVisible[
-                      selectedRow.apiKeyEnv ?? deriveKeyRef(selectedRow.provider)
+                      selectedRow.apiKeyEnv ??
+                        deriveKeyRef(selectedRow.provider)
                     ] ?? false
                   }
                   loading={credLoading}
                   canSave={
                     profileDirty ||
-                    (keyInputs[
-                      selectedRow.apiKeyEnv ?? deriveKeyRef(selectedRow.provider)
-                    ] ?? "").trim().length > 0
+                    (
+                      keyInputs[
+                        selectedRow.apiKeyEnv ??
+                          deriveKeyRef(selectedRow.provider)
+                      ] ?? ""
+                    ).trim().length > 0 ||
+                    // 添加态且已检测到密钥（如环境变量）时可直接注册，无需重录
+                    (addingProvider &&
+                      !selectedIsAdded &&
+                      selectedRow.credentialConfigured === true)
                   }
                   onInputChange={(ref, value) =>
                     setKeyInputs((prev) => ({ ...prev, [ref]: value }))
@@ -1049,65 +1095,65 @@ export function SettingsPage({
               ) : (
                 <div className="native-provider-picker">
                   {availableRows.length === 0 ? (
-                    <div className="native-model-empty">所有内置服务商都已添加</div>
+                    <div className="native-model-empty">
+                      所有内置服务商都已添加
+                    </div>
                   ) : (
-                    availableRows.map((row) => (
-                      <button
-                        key={row.provider}
-                        type="button"
-                        className="native-provider-picker-item"
-                        onClick={() => setSelectedProvider(row.provider)}
-                      >
-                        <span className="native-provider-nav-name">
-                          {row.displayName}
-                        </span>
-                        <span className="native-provider-ref-code">
-                          {row.provider}
-                        </span>
-                      </button>
-                    ))
+                    availableRows.map((row) => {
+                      const brand = PROVIDER_BRANDS[row.provider];
+                      const name = providerDisplayName(
+                        row.provider,
+                        row.displayName,
+                      );
+                      const Icon = brand?.Icon;
+                      return (
+                        <button
+                          key={row.provider}
+                          type="button"
+                          className="native-provider-card"
+                          onClick={() => setSelectedProvider(row.provider)}
+                          title={row.provider}
+                        >
+                          <span className="native-provider-card-icon">
+                            {Icon ? (
+                              <Icon size={24} />
+                            ) : (
+                              <span className="native-provider-card-monogram">
+                                {name.slice(0, 1).toUpperCase()}
+                              </span>
+                            )}
+                          </span>
+                          <span className="native-provider-card-body">
+                            <span className="native-provider-card-name">
+                              {name}
+                            </span>
+                            {row.credentialConfigured && (
+                              <span className="native-provider-card-hint">
+                                已检测到密钥
+                              </span>
+                            )}
+                          </span>
+                        </button>
+                      );
+                    })
                   )}
                 </div>
               )}
             </div>
-          </div>
-        )}
 
-        {/* 分区 2: 默认值 */}
-        {activeTab === "defaults" && (
-          <div className="native-settings-panel">
-            <div className="native-settings-panel-header">
-              <h2>默认值</h2>
-              <p>配置新建会话时的默认执行权限与首选模型。</p>
-            </div>
-
-            {settingsMessage && <div className="native-settings-alert">{settingsMessage}</div>}
-
-            <div className="native-settings-card">
-              <SettingsRow
-                label="新会话执行权限"
-                desc="决定新建会话在执行命令与修改文件时的审批策略。"
-              >
-                <select
-                  className="native-settings-select"
-                  value={defaultPreset}
-                  onChange={(e) => void handleSaveDefaultPreset(e.target.value)}
-                >
-                  <option value="standard">标准询问</option>
-                  <option value="elevated">完全授权</option>
-                  <option value="restricted">安全只读</option>
-                </select>
-              </SettingsRow>
-
-              {modelOptions.length > 0 && (
+            {/* 新会话默认模型（引擎 agent-default-model 命名空间，与 DeepSeek 界面共享） */}
+            {modelOptions.length > 0 && (
+              <div className="native-settings-card">
                 <SettingsRow
-                  label="首选模型"
-                  desc="新会话默认使用的模型，选择后写入引擎设置并在重开后保持。"
+                  label="新会话默认模型"
+                  desc="未指定模型的新会话默认使用此模型；选择后写入引擎设置并在重开后保持。"
                 >
                   <select
                     className="native-settings-select"
                     value={defaultModelKey}
-                    onChange={(e) => void handleSaveDefaultModel(e.target.value)}
+                    onChange={(e) =>
+                      void handleSaveDefaultModel(e.target.value)
+                    }
                   >
                     <option value="">跟随引擎默认推选</option>
                     {modelOptions.map((opt) => (
@@ -1117,63 +1163,32 @@ export function SettingsPage({
                     ))}
                   </select>
                 </SettingsRow>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         )}
 
-        {/* 分区 3: 通用设置 */}
+        {/* 常规 */}
         {activeTab === "general" && (
           <div className="native-settings-panel">
             <div className="native-settings-panel-header">
-              <h2>通用设置</h2>
-              <p>界面语言与底层引擎配置文件入口。</p>
+              <h2>常规</h2>
+              <p>界面、窗口与配置文件入口等基础选项。</p>
             </div>
 
-            {settingsMessage && <div className="native-settings-alert">{settingsMessage}</div>}
-
             <div className="native-settings-card">
-              <SettingsRow label="界面语言" desc="当前桌面客户端与底层引擎的界面语言。">
-                <select className="native-settings-select" defaultValue="zh" disabled>
+              <SettingsRow
+                label="界面语言"
+                desc="当前桌面客户端与底层引擎的界面语言。"
+              >
+                <select
+                  className="native-settings-select"
+                  defaultValue="zh"
+                  disabled
+                >
                   <option value="zh">简体中文</option>
                   <option value="en">English (跟随系统)</option>
                 </select>
-              </SettingsRow>
-
-              <SettingsRow
-                label="底层引擎配置文件"
-                desc="DSH 引擎的全局配置文件 (~/.dsh/settings.json)，包含所有已注册的扩展参数。"
-              >
-                <button
-                  type="button"
-                  className="native-btn native-btn-secondary"
-                  onClick={handleOpenDshConfig}
-                >
-                  在编辑器中打开
-                </button>
-              </SettingsRow>
-            </div>
-          </div>
-        )}
-
-        {/* 分区 4: 窗口与常规 (青梧专有) */}
-        {activeTab === "application" && (
-          <div className="native-settings-panel">
-            <div className="native-settings-panel-header">
-              <h2>窗口与常规</h2>
-              <p>管理青梧桌面窗口与应用数据的常规选项。</p>
-            </div>
-
-            <div className="native-settings-card">
-              <SettingsRow
-                label="最小化到系统托盘"
-                desc="关闭窗口后应用常驻系统托盘，后台会话不中断；关闭后点击关闭按钮将直接退出青梧。"
-              >
-                <SettingsSwitch
-                  checked={appSettings.closeToTray}
-                  onChange={(next) => void handleUpdateAppSetting({ closeToTray: next })}
-                  label="最小化到系统托盘"
-                />
               </SettingsRow>
 
               <SettingsRow label="默认界面" desc="启动青梧时默认展示的界面。">
@@ -1192,6 +1207,19 @@ export function SettingsPage({
               </SettingsRow>
 
               <SettingsRow
+                label="最小化到系统托盘"
+                desc="关闭窗口后应用常驻系统托盘，后台会话不中断；关闭后点击关闭按钮将直接退出青梧。"
+              >
+                <SettingsSwitch
+                  checked={appSettings.closeToTray}
+                  onChange={(next) =>
+                    void handleUpdateAppSetting({ closeToTray: next })
+                  }
+                  label="最小化到系统托盘"
+                />
+              </SettingsRow>
+
+              <SettingsRow
                 label="青梧应用数据目录"
                 desc="存放桌面窗口状态、应用配置与运行日志的本地目录 (%APPDATA%/qingwu)。"
               >
@@ -1202,6 +1230,50 @@ export function SettingsPage({
                 >
                   在文件管理器中打开
                 </button>
+              </SettingsRow>
+
+              <SettingsRow
+                label="底层引擎配置文件"
+                desc="DSH 引擎的全局配置文件 (~/.dsh/settings.json)，包含所有已注册的扩展参数。"
+              >
+                <button
+                  type="button"
+                  className="native-btn native-btn-secondary"
+                  onClick={handleOpenDshConfig}
+                >
+                  在编辑器中打开
+                </button>
+              </SettingsRow>
+            </div>
+          </div>
+        )}
+
+        {/* 权限 */}
+        {activeTab === "permissions" && (
+          <div className="native-settings-panel">
+            <div className="native-settings-panel-header">
+              <h2>权限</h2>
+              <p>配置写入引擎配置目录，与 DeepSeek 界面共享。</p>
+            </div>
+
+            {settingsMessage && (
+              <div className="native-settings-alert">{settingsMessage}</div>
+            )}
+
+            <div className="native-settings-card">
+              <SettingsRow
+                label="新会话执行权限"
+                desc="决定新建会话在执行命令与修改文件时的审批策略。"
+              >
+                <select
+                  className="native-settings-select"
+                  value={defaultPreset}
+                  onChange={(e) => void handleSaveDefaultPreset(e.target.value)}
+                >
+                  <option value="standard">标准询问</option>
+                  <option value="elevated">完全授权</option>
+                  <option value="restricted">安全只读</option>
+                </select>
               </SettingsRow>
             </div>
           </div>
