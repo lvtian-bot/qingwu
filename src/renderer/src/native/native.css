@@ -3116,7 +3116,8 @@ body.native-resizing {
   align-items: center;
   gap: 8px;
   height: 34px;
-  margin: 14px 6px 10px;
+  /* 水平几何与下方导航项一致（padding 0 10px），箭头与分组图标、文字与条目标签同线 */
+  margin: 14px 0 10px;
   padding: 0 10px;
   border: none;
   border-radius: 6px;
@@ -3168,6 +3169,9 @@ body.native-resizing {
 }
 
 .native-settings-nav-icon {
+  /* span 包裹的 SVG 是行内元素坐在基线上会偏高，改为 flex 居中与文字对齐 */
+  display: flex;
+  align-items: center;
   flex-shrink: 0;
   opacity: 0.85;
 }
