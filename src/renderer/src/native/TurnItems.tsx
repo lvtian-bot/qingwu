@@ -174,21 +174,34 @@ export function TurnItems({
   if (!view.foldable || !view.answer) {
     return <>{view.items.map((item) => renderItem(item))}</>;
   }
+
+  const answerIndex = view.items.findIndex(
+    (item) => item.key === view.answer?.key,
+  );
+  const leadingUserItems =
+    answerIndex >= 0
+      ? view.items.slice(0, answerIndex).filter((item) => item.kind === "user")
+      : [];
+  const trailingItems =
+    answerIndex >= 0 ? view.items.slice(answerIndex + 1) : [];
+
   return (
     <>
+      {leadingUserItems.map((item) => renderItem(item))}
       <TurnProcessRow
         toolCount={view.toolCount}
         messageCount={view.messageCount}
         open={open}
         onToggle={() => setOpen((value) => !value)}
       />
-      {open && (
+      {open && view.context.length > 0 && (
         <div className="native-turn-process-items">
           {view.context.map((item) => renderItem(item))}
         </div>
       )}
       {/* 折叠行收起时思考由它代表，展开后答复里的思考行照常显示 */}
       {renderItem(view.answer, open)}
+      {trailingItems.map((item) => renderItem(item))}
     </>
   );
 }

@@ -150,30 +150,50 @@ function groupTurns(
         answerKey: null,
       });
     }
-    const view = turns[index];
-    view.items.push(item);
-    if (item.tier === "answer") {
-      view.answerKey = item.key;
-    } else if (item.tier === "context") {
-      view.context.push(item);
-      if (item.kind === "tool") view.toolCount += 1;
-      else if (item.kind === "assistant") view.messageCount += 1;
-    }
+    turns[index].items.push(item);
   }
+
   for (const view of turns) {
-    if (view.answerKey === null) continue;
-    view.answer =
-      view.items.find((item) => item.key === view.answerKey) ?? null;
+    // 尚未收到 turn/end 的轮次仍在进行中：照旧逐条显示，不折叠
     if (!endedTurns.has(view.turn)) continue;
-    // 过程里没有可收的东西（例如整轮只有工具卡片）：不收，避免折叠行点开是空的
+
+    // 一轮里最后一条有正文的助手消息就是这一轮的正式答复
+    let answerIndex = -1;
+    for (let index = view.items.length - 1; index >= 0; index -= 1) {
+      const item = view.items[index];
+      if (item.kind === "assistant" && item.text.trim() !== "") {
+        answerIndex = index;
+        break;
+      }
+    }
+    if (answerIndex < 0) continue;
+
+    const answerItem = view.items[answerIndex];
+    answerItem.tier = "answer";
+    view.answer = answerItem;
+    view.answerKey = answerItem.key;
+
+    for (let index = 0; index < answerIndex; index += 1) {
+      const item = view.items[index];
+      // 用户消息属于输入提示，不作为内部执行过程收进折叠
+      if (item.kind !== "user") {
+        item.tier = "context";
+        view.context.push(item);
+        if (item.kind === "tool") view.toolCount += 1;
+        else if (item.kind === "assistant") view.messageCount += 1;
+      }
+    }
+
+    // 过程里有内容（工具或中间消息），或答复自身带有思考过程：收起为过程折叠行
     view.foldable =
       view.context.length > 0 ||
       Boolean(
         view.answer &&
-        view.answer.kind === "assistant" &&
-        view.answer.reasoning,
+          view.answer.kind === "assistant" &&
+          view.answer.reasoning,
       );
   }
+
   return turns;
 }
 
@@ -296,27 +316,9 @@ export function foldChatItems(events: SessionEvent[]): TurnView[] {
     }
   }
 
-  // 一轮里最后一条有正文的助手消息就是这一轮的答复；它之前的条目都是过程。
+  // 一轮里最后一条有正文的助手消息就是这一轮的答复；它之前的内部条目都是过程。
   // 只有已经收到 turn/end 的轮次才收：正在跑的轮次中途也可能已经有一条答复，
   // 那时收起来会把后面还在跑的过程挡在外面（且运行中用户正要看过程）。
-  const marked = groupTurns(items, endedTurns);
-  for (const view of marked) {
-    if (!view.foldable) continue;
-    let answerIndex = -1;
-    for (let index = view.items.length - 1; index >= 0; index -= 1) {
-      const item = view.items[index];
-      if (item.kind === "assistant" && item.text.trim() !== "") {
-        answerIndex = index;
-        break;
-      }
-    }
-    if (answerIndex < 0) continue;
-    view.items.forEach((item, index) => {
-      if (index === answerIndex) item.tier = "answer";
-      else if (index < answerIndex) item.tier = "context";
-    });
-  }
-
   return groupTurns(items, endedTurns);
 }
 

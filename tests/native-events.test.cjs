@@ -74,6 +74,13 @@ test('落库与入队请求标识能够退休乐观回显，重复消息不产�
   assert.deepEqual(['request-done', 'request-waiting', 'request-in-flight'].filter((id) => !settled.has(id)), ['request-in-flight']);
 });
 
+test('排队与插话模式映射：普通提交归入 next-turn，插话提交归入 next-step', () => {
+  const resolveSubmitPlacement = (mode) => (mode === 'steer' ? 'next-step' : 'next-turn');
+  assert.equal(resolveSubmitPlacement('queue'), 'next-turn');
+  assert.equal(resolveSubmitPlacement('steer'), 'next-step');
+  assert.equal(resolveSubmitPlacement(undefined), 'next-turn');
+});
+
 test('历史工具结果按调用标识合并，并保留用户附件、思考与中断正文', () => {
   const history = [
     event('turn/start', { turn: 7 }, 1),
@@ -106,6 +113,83 @@ test('截断历史中的孤立工具结果仍可显示，待完成调用保持�
   assert.equal(items[0].tool.isError, true);
   assert.equal(items[0].tool.pending, false);
   assert.equal(items[1].tool.pending, true);
+});
+
+test('完成回合的过程折叠：含思考/工具调用时折叠生效，用户消息与未完成/无过程回合不折叠', () => {
+  // 1. 最小事件序列：turn/start → 含 reasoning/text 的 assistant/message → turn/end
+  const minimalHistory = [
+    event('turn/start', { turn: 1 }, 1),
+    event('assistant/message', {
+      turn: 1,
+      message: {
+        content: [
+          { type: 'reasoning', text: '深入思考中' },
+          { type: 'text', text: '这是最终答复' },
+        ],
+      },
+    }, 2),
+    event('turn/end', { turn: 1 }, 3),
+  ];
+  const [minimalView] = foldChatItems(minimalHistory);
+  assert.equal(minimalView.turn, 1);
+  assert.equal(minimalView.foldable, true);
+  assert.equal(minimalView.answer?.text, '这是最终答复');
+  assert.equal(minimalView.answer?.reasoning, '深入思考中');
+  assert.equal(minimalView.answer?.tier, 'answer');
+  assert.equal(minimalView.context.length, 0);
+  assert.equal(minimalView.toolCount, 0);
+  assert.equal(minimalView.messageCount, 0);
+
+  // 2. 含用户消息、工具调用、中间消息的完整收束回合
+  const fullHistory = [
+    event('turn/start', { turn: 2 }, 1),
+    event('user/message', message('u1', '请读取文件并总结'), 2),
+    event('tool/call', { callId: 'call-1', name: 'read', arguments: '{"file":"a.txt"}', turn: 2 }, 3),
+    event('tool/result', result('call-1', '文件正文'), 4),
+    event('assistant/message', {
+      turn: 2,
+      message: { content: [{ type: 'reasoning', text: '整理结论' }, { type: 'text', text: '总结完毕' }] },
+    }, 5),
+    event('turn/end', { turn: 2 }, 6),
+  ];
+  const [fullView] = foldChatItems(fullHistory);
+  assert.equal(fullView.turn, 2);
+  assert.equal(fullView.foldable, true);
+  assert.equal(fullView.answer?.text, '总结完毕');
+  assert.equal(fullView.toolCount, 1);
+  assert.equal(fullView.context.length, 1);
+  assert.equal(fullView.context[0].kind, 'tool');
+  assert.equal(fullView.context[0].tier, 'context');
+  // 用户消息保留在 items 中且不在 context 过程组中
+  assert.equal(fullView.items[0].kind, 'user');
+  assert.equal(fullView.items[0].tier, undefined);
+
+  // 3. 无过程的回合（纯对话无思考、无工具）：不折叠
+  const plainHistory = [
+    event('turn/start', { turn: 3 }, 1),
+    event('user/message', message('u2', '你好'), 2),
+    event('assistant/message', {
+      turn: 3,
+      message: { content: [{ type: 'text', text: '你好！有什么可以帮你？' }] },
+    }, 3),
+    event('turn/end', { turn: 3 }, 4),
+  ];
+  const [plainView] = foldChatItems(plainHistory);
+  assert.equal(plainView.turn, 3);
+  assert.equal(plainView.foldable, false);
+
+  // 4. 正在运行的回合（未收到 turn/end）：不折叠
+  const runningHistory = [
+    event('turn/start', { turn: 4 }, 1),
+    event('tool/call', { callId: 'call-2', name: 'read', arguments: '{}', turn: 4 }, 2),
+    event('assistant/message', {
+      turn: 4,
+      message: { content: [{ type: 'reasoning', text: '思考中' }, { type: 'text', text: '临时答复' }] },
+    }, 3),
+  ];
+  const [runningView] = foldChatItems(runningHistory);
+  assert.equal(runningView.turn, 4);
+  assert.equal(runningView.foldable, false);
 });
 
 test('面板保留最新任务与同文件修改计数，并排除失败及非法参数调用', () => {
