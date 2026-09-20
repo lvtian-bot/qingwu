@@ -78,6 +78,13 @@ export interface QingwuApi {
     outcome: unknown
   ) => Promise<DshRpcResult<unknown>>;
 
+  /** 查询当前引擎通信连接状态。 */
+  getDshConnectionStatus: () => Promise<boolean>;
+  /** 主动请求重新连接引擎。 */
+  reconnectDsh: () => Promise<void>;
+  /** 订阅引擎连接状态变化（connected: true 为已连通，false 为断连）。 */
+  onDshConnectionChanged: (listener: (connected: boolean) => void) => () => void;
+
   getUiMode: () => Promise<UiMode>;
   setUiMode: (mode: UiMode) => Promise<void>;
   onUiModeChanged: (listener: (mode: UiMode) => void) => () => void;

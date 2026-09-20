@@ -10,6 +10,8 @@ import {
   Endpoints,
   type ConfigurableProviderEntry,
   type CredentialInfo,
+  type LlmDiscoveredModel,
+  type LlmModelDiscoveryRequest,
   type ModelCatalog,
   type ModelCatalogModel,
   type RegisteredProvider,
@@ -18,7 +20,7 @@ import {
   type SettingsPathOp,
 } from "./protocol";
 import { rpc } from "./rpc";
-import { PROVIDER_BRANDS, providerDisplayName } from "./provider-brand";
+import { providerDisplayName } from "./provider-brand";
 import type { PanelWidth } from "./usePanelWidth";
 
 export interface SettingsPageProps {
@@ -28,6 +30,9 @@ export interface SettingsPageProps {
   modelCatalog?: ModelCatalog | null;
   /** 凭据变化后刷新引擎模型目录（供应商注册与模型清单随之更新）。 */
   onRefreshCatalog?: () => void;
+  dshConnected?: boolean;
+  reconnecting?: boolean;
+  onReconnect?: () => void;
 }
 
 type TabKey = "models" | "general" | "permissions";
@@ -286,6 +291,544 @@ function SettingsSwitch({
   );
 }
 
+interface CustomModelEntry {
+  id: string;
+  name?: string;
+  reasoning?: boolean;
+}
+
+const ROUTE_PATTERN = /^[a-z][a-z0-9-]*$/;
+
+function isHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+/** 候选模型多选弹层：从服务商接口拉取成功后供用户勾选添加。 */
+function CandidateModelPicker(props: {
+  candidates: LlmDiscoveredModel[];
+  onAdd: (selected: LlmDiscoveredModel[]) => void;
+  onClose: () => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(
+    () => new Set(props.candidates.map((c) => c.id)),
+  );
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return props.candidates;
+    return props.candidates.filter(
+      (c) =>
+        c.id.toLowerCase().includes(q) ||
+        (c.name && c.name.toLowerCase().includes(q)),
+    );
+  }, [props.candidates, query]);
+
+  const allFilteredSelected =
+    filtered.length > 0 && filtered.every((c) => selectedIds.has(c.id));
+
+  const toggleAllFiltered = () => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allFilteredSelected) {
+        for (const c of filtered) next.delete(c.id);
+      } else {
+        for (const c of filtered) next.add(c.id);
+      }
+      return next;
+    });
+  };
+
+  const toggleOne = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleConfirm = () => {
+    const chosen = props.candidates.filter((c) => selectedIds.has(c.id));
+    props.onAdd(chosen);
+  };
+
+  return (
+    <div className="native-model-picker-overlay" onClick={props.onClose}>
+      <div
+        className="native-model-picker-modal"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="native-model-picker-header">
+          <div className="native-model-picker-title">
+            选择要添加的模型 ({filtered.length} / {props.candidates.length})
+          </div>
+          <button
+            type="button"
+            className="native-model-picker-close"
+            onClick={props.onClose}
+            title="关闭"
+          >
+            ×
+          </button>
+        </div>
+        <div className="native-model-picker-search-row">
+          <input
+            type="text"
+            className="native-settings-input"
+            placeholder="搜索模型 ID 或名称..."
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+          <button
+            type="button"
+            className="native-btn native-btn-secondary"
+            onClick={toggleAllFiltered}
+          >
+            {allFilteredSelected ? "取消全选" : "全选"}
+          </button>
+        </div>
+        <div className="native-model-picker-list">
+          {filtered.length === 0 ? (
+            <div className="native-model-empty">无匹配模型</div>
+          ) : (
+            filtered.map((c) => (
+              <label
+                key={c.id}
+                className={`native-model-picker-item ${
+                  selectedIds.has(c.id) ? "selected" : ""
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={selectedIds.has(c.id)}
+                  onChange={() => toggleOne(c.id)}
+                />
+                <div className="native-model-picker-info">
+                  <div className="native-model-picker-name">
+                    {c.name || c.id}
+                    {c.name && c.name !== c.id && (
+                      <span className="native-model-id">{c.id}</span>
+                    )}
+                  </div>
+                  {c.contextWindow && (
+                    <div className="native-model-picker-meta">
+                      上下文: {c.contextWindow.toLocaleString()} tokens
+                    </div>
+                  )}
+                </div>
+              </label>
+            ))
+          )}
+        </div>
+        <div className="native-model-picker-footer">
+          <span className="native-model-picker-count">
+            已选 {selectedIds.size} 个模型
+          </span>
+          <div className="native-model-picker-actions">
+            <button
+              type="button"
+              className="native-btn native-btn-secondary"
+              onClick={props.onClose}
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              className="native-btn native-btn-primary"
+              disabled={selectedIds.size === 0}
+              onClick={handleConfirm}
+            >
+              添加所选
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** 添加自定义服务商表单面板。 */
+function CustomProviderCreate(props: {
+  existingRoutes: string[];
+  protocols: string[];
+  writable: boolean;
+  loading: boolean;
+  onSave: (data: {
+    route: string;
+    displayName?: string;
+    api: string;
+    baseURL: string;
+    apiKey?: string;
+    models: CustomModelEntry[];
+  }) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [route, setRoute] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [api, setApi] = useState(props.protocols[0] ?? "openai-completions");
+  const [baseURL, setBaseURL] = useState("");
+  const [apiKey, setApiKey] = useState("");
+  const [keyVisible, setKeyVisible] = useState(false);
+  const [models, setModels] = useState<CustomModelEntry[]>([]);
+  const [newModelId, setNewModelId] = useState("");
+  const [newModelName, setNewModelName] = useState("");
+  const [newModelReasoning, setNewModelReasoning] = useState(false);
+  const [candidateModels, setCandidateModels] = useState<
+    LlmDiscoveredModel[] | null
+  >(null);
+  const [fetching, setFetching] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+
+  const cleanRoute = route.trim().toLowerCase();
+  const routeInvalid = cleanRoute.length > 0 && !ROUTE_PATTERN.test(cleanRoute);
+  const routeTaken = props.existingRoutes.includes(cleanRoute);
+  const cleanBaseURL = baseURL.trim();
+  const baseUrlInvalid = cleanBaseURL.length > 0 && !isHttpUrl(cleanBaseURL);
+  const canSave =
+    cleanRoute.length > 0 &&
+    !routeInvalid &&
+    !routeTaken &&
+    cleanBaseURL.length > 0 &&
+    !baseUrlInvalid &&
+    models.length > 0 &&
+    !props.loading &&
+    props.writable;
+
+  const handleFetchModels = async () => {
+    if (!cleanBaseURL || !isHttpUrl(cleanBaseURL)) {
+      setFetchError("请先输入有效的接口地址 (HTTP/HTTPS URL)");
+      return;
+    }
+    setFetching(true);
+    setFetchError(null);
+    try {
+      const discReq: LlmModelDiscoveryRequest = {
+        baseURL: cleanBaseURL,
+        api: api || undefined,
+      };
+      if (apiKey.trim()) {
+        discReq.apiKey = apiKey.trim();
+      }
+      const res = await rpc<LlmDiscoveredModel[]>(Endpoints.llmDiscoverModels, {
+        settingsNs: "llm-pi-ai",
+        request: discReq,
+      });
+      if (!res || res.length === 0) {
+        setFetchError("服务商接口未返回任何候选模型，请手动输入添加");
+      } else {
+        setCandidateModels(res);
+      }
+    } catch (err) {
+      setFetchError(
+        `获取失败: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    } finally {
+      setFetching(false);
+    }
+  };
+
+  const handleAddCandidates = (chosen: LlmDiscoveredModel[]) => {
+    const existing = new Set(models.map((m) => m.id));
+    const toAdd: CustomModelEntry[] = [];
+    for (const c of chosen) {
+      if (!existing.has(c.id)) {
+        toAdd.push({
+          id: c.id,
+          name: c.name && c.name !== c.id ? c.name : undefined,
+        });
+      }
+    }
+    setModels((prev) => [...prev, ...toAdd]);
+    setCandidateModels(null);
+  };
+
+  const handleAddManualModel = () => {
+    const id = newModelId.trim();
+    if (!id) return;
+    if (models.some((m) => m.id === id)) {
+      setFetchError(`模型 ID「${id}」已在列表中`);
+      return;
+    }
+    setModels((prev) => [
+      ...prev,
+      {
+        id,
+        name: newModelName.trim() ? newModelName.trim() : undefined,
+        reasoning: newModelReasoning || undefined,
+      },
+    ]);
+    setNewModelId("");
+    setNewModelName("");
+    setNewModelReasoning(false);
+    setFetchError(null);
+  };
+
+  const handleRemoveModel = (id: string) => {
+    setModels((prev) => prev.filter((m) => m.id !== id));
+  };
+
+  return (
+    <div className="native-provider-detail">
+      {candidateModels && (
+        <CandidateModelPicker
+          candidates={candidateModels}
+          onAdd={handleAddCandidates}
+          onClose={() => setCandidateModels(null)}
+        />
+      )}
+      <div className="native-provider-head">
+        <span className="native-provider-title">添加自定义服务商</span>
+        <button
+          type="button"
+          className="native-btn native-btn-secondary native-btn-sm"
+          onClick={props.onCancel}
+        >
+          返回列表
+        </button>
+      </div>
+
+      <div className="native-provider-card-desc">
+        声明一条由用户自行配置的 LLM 路由，支持自建网关或 OpenAI / Anthropic 兼容端点。
+      </div>
+
+      {fetchError && <div className="native-provider-error">{fetchError}</div>}
+
+      <div className="native-provider-field">
+        <div className="native-provider-field-label">
+          <span>服务商 ID (Route)</span>
+        </div>
+        <input
+          type="text"
+          className={`native-settings-input native-provider-text-input ${
+            routeInvalid || routeTaken ? "input-error" : ""
+          }`}
+          placeholder="例如: one-api 或 my-gateway"
+          value={route}
+          onChange={(e) => setRoute(e.target.value.toLowerCase())}
+        />
+        <div className="native-provider-card-desc">
+          {routeInvalid
+            ? "服务商 ID 须以小写字母开头，仅由小写英文字母、数字和连字符（-）组成"
+            : routeTaken
+              ? "已存在相同 ID 的服务商"
+              : "用于唯一标识服务商并在配置与凭据中寻址，创建后不可修改"}
+        </div>
+      </div>
+
+      <div className="native-provider-field">
+        <div className="native-provider-field-label">
+          <span>显示名称</span>
+        </div>
+        <input
+          type="text"
+          className="native-settings-input native-provider-text-input"
+          placeholder="例如: 我的自建网关（可选）"
+          value={displayName}
+          onChange={(e) => setDisplayName(e.target.value)}
+        />
+      </div>
+
+      <div className="native-provider-field">
+        <div className="native-provider-field-label">
+          <span>API 协议</span>
+        </div>
+        <select
+          className="native-settings-select native-provider-field-select"
+          value={api}
+          onChange={(e) => setApi(e.target.value)}
+        >
+          {props.protocols.map((p) => (
+            <option key={p} value={p}>
+              {p}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="native-provider-field">
+        <div className="native-provider-field-label">
+          <span>接口地址 (Base URL)</span>
+        </div>
+        <input
+          type="text"
+          className={`native-settings-input native-provider-text-input ${
+            baseUrlInvalid ? "input-error" : ""
+          }`}
+          placeholder="例如: https://api.openai-proxy.com/v1"
+          value={baseURL}
+          onChange={(e) => setBaseURL(e.target.value)}
+        />
+        {baseUrlInvalid && (
+          <div className="native-provider-error">
+            请输入以 http:// 或 https:// 开头的合法 URL
+          </div>
+        )}
+      </div>
+
+      <div className="native-provider-field">
+        <div className="native-provider-field-label">
+          <span>API 密钥</span>
+        </div>
+        <div className="native-provider-input-wrap">
+          <input
+            type={keyVisible ? "text" : "password"}
+            className="native-settings-input"
+            placeholder="输入 API Key（无需鉴权可留空）"
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+          />
+          <button
+            type="button"
+            className="native-provider-visible-toggle"
+            onClick={() => setKeyVisible(!keyVisible)}
+            title={keyVisible ? "隐藏密钥" : "显示密钥"}
+          >
+            {keyVisible ? (
+              <svg
+                viewBox="0 0 16 16"
+                width="14"
+                height="14"
+                fill="currentColor"
+              >
+                <path d="m10.79 12.912-1.614-1.615a3.5 3.5 0 0 1-4.474-4.474l-2.06-2.06C.938 6.278 0 8 0 8s3 5.5 8 5.5a7.029 7.029 0 0 0 2.79-.588zM5.21 3.088A7.028 7.028 0 0 1 8 2.5c5 0 8 5.5 8 5.5s-.939 1.721-2.641 3.238l-2.062-2.062a3.5 3.5 0 0 0-4.474-4.474L5.21 3.089z" />
+                <path d="M5.525 7.646a2.5 2.5 0 0 0 2.829 2.829l-2.83-2.829zm4.95.708-2.829-2.83a2.5 2.5 0 0 1 2.829 2.829zm3.171-5.006a.75.75 0 0 1 1.06 1.06l-12 12a.75.75 0 0 1-1.06-1.06l12-12z" />
+              </svg>
+            ) : (
+              <svg
+                viewBox="0 0 16 16"
+                width="14"
+                height="14"
+                fill="currentColor"
+              >
+                <path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8zM1.173 8a13.133 13.133 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.133 13.133 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5c-2.12 0-3.879-1.168-5.168-2.457A13.134 13.134 0 0 1 1.172 8z" />
+                <path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0z" />
+              </svg>
+            )}
+          </button>
+        </div>
+      </div>
+
+      <div className="native-provider-models">
+        <div className="native-provider-models-head">
+          <span className="native-provider-models-title">模型清单</span>
+          <span className="native-provider-models-meta">
+            {models.length} 个
+          </span>
+          <div className="native-model-actions-head">
+            <button
+              type="button"
+              className="native-btn native-btn-secondary native-btn-sm"
+              disabled={fetching || !cleanBaseURL || baseUrlInvalid}
+              onClick={handleFetchModels}
+              title={cleanBaseURL ? "从接口拉取候选模型" : "请先输入有效的接口地址"}
+            >
+              {fetching ? "获取中..." : "获取可用模型"}
+            </button>
+          </div>
+        </div>
+
+        {models.length === 0 ? (
+          <div className="native-model-empty">
+            尚未添加模型。请点击「获取可用模型」从服务商拉取，或在下方手动添加。
+          </div>
+        ) : (
+          models.map((model) => (
+            <div key={model.id} className="native-model-item">
+              <div className="native-settings-row-text">
+                <div className="native-model-name">
+                  {model.name || model.id}
+                  {model.name && model.name !== model.id && (
+                    <span className="native-model-id">{model.id}</span>
+                  )}
+                </div>
+              </div>
+              <div className="native-model-item-side">
+                {model.reasoning && (
+                  <span className="native-model-tag">推理</span>
+                )}
+                <button
+                  type="button"
+                  className="native-model-remove-btn"
+                  onClick={() => handleRemoveModel(model.id)}
+                  title="移除模型"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+          ))
+        )}
+
+        <div className="native-model-add-row">
+          <input
+            type="text"
+            className="native-settings-input"
+            placeholder="模型 ID (例如 gpt-4o)"
+            value={newModelId}
+            onChange={(e) => setNewModelId(e.target.value)}
+          />
+          <input
+            type="text"
+            className="native-settings-input"
+            placeholder="显示名称 (可选)"
+            value={newModelName}
+            onChange={(e) => setNewModelName(e.target.value)}
+          />
+          <label className="native-model-checkbox-label">
+            <input
+              type="checkbox"
+              checked={newModelReasoning}
+              onChange={(e) => setNewModelReasoning(e.target.checked)}
+            />
+            <span>推理</span>
+          </label>
+          <button
+            type="button"
+            className="native-btn native-btn-secondary"
+            disabled={!newModelId.trim()}
+            onClick={handleAddManualModel}
+          >
+            添加模型
+          </button>
+        </div>
+      </div>
+
+      <div className="native-provider-card-action">
+        <button
+          type="button"
+          className="native-btn native-btn-primary"
+          disabled={!canSave}
+          onClick={() => {
+            void props.onSave({
+              route: cleanRoute,
+              displayName: displayName.trim() || undefined,
+              api,
+              baseURL: cleanBaseURL,
+              apiKey: apiKey.trim() || undefined,
+              models,
+            });
+          }}
+        >
+          保存并添加
+        </button>
+        <button
+          type="button"
+          className="native-btn native-btn-secondary"
+          onClick={props.onCancel}
+        >
+          取消
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /** 供应商详情区：密钥 + 连接参数（API 地址/协议）+ 模型目录。 */
 function ProviderDetail(props: {
   row: ProviderRow;
@@ -297,7 +840,7 @@ function ProviderDetail(props: {
   writable: boolean;
   /** 用户段草稿（完整子树副本；受管字段经 onDraftField 修改）。 */
   draft: Record<string, unknown>;
-  onDraftField: (key: string, value: string) => void;
+  onDraftField: (key: string, value: unknown) => void;
   inputValue: string;
   visible: boolean;
   loading: boolean;
@@ -307,6 +850,7 @@ function ProviderDetail(props: {
   onToggleVisible: (ref: string) => void;
   onSave: () => void;
   onUnset: (ref: string) => void;
+  onDelete?: () => void;
 }) {
   const row = props.row;
   const ref = row.apiKeyEnv ?? deriveKeyRef(row.provider);
@@ -332,8 +876,118 @@ function ProviderDetail(props: {
         : "https://api.deepseek.com"
       : (stringAt(fallback, "baseURL") ?? "提供方默认");
 
+  const declaredModels: CustomModelEntry[] = useMemo(() => {
+    if (Array.isArray(props.draft.models)) {
+      return props.draft.models as CustomModelEntry[];
+    }
+    const fbModels = (fallback as { models?: unknown })?.models;
+    if (Array.isArray(fbModels)) {
+      return fbModels as CustomModelEntry[];
+    }
+    return props.models.map((m) => ({
+      id: m.id,
+      name: m.name,
+      reasoning: Boolean(m.reasoning),
+    }));
+  }, [props.draft.models, fallback, props.models]);
+
+  const [candidateModels, setCandidateModels] = useState<
+    LlmDiscoveredModel[] | null
+  >(null);
+  const [fetchingModels, setFetchingModels] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+  const [manualModelId, setManualModelId] = useState("");
+  const [manualModelName, setManualModelName] = useState("");
+  const [manualModelReasoning, setManualModelReasoning] = useState(false);
+
+  const effectiveBaseURL =
+    draftBaseURL || (stringAt(fallback, "baseURL") ?? "");
+
+  const handleDiscoverInDetail = async () => {
+    if (!effectiveBaseURL || !isHttpUrl(effectiveBaseURL)) {
+      setFetchError("请先配置有效的 API 地址 (HTTP/HTTPS URL)");
+      return;
+    }
+    setFetchingModels(true);
+    setFetchError(null);
+    try {
+      const discReq: LlmModelDiscoveryRequest = {
+        baseURL: effectiveBaseURL.trim(),
+        api: effectiveApi,
+      };
+      if (props.inputValue.trim()) {
+        discReq.apiKey = props.inputValue.trim();
+      }
+      const res = await rpc<LlmDiscoveredModel[]>(Endpoints.llmDiscoverModels, {
+        settingsNs: row.settingsNs || "llm-pi-ai",
+        request: discReq,
+      });
+      if (!res || res.length === 0) {
+        setFetchError("服务商接口未返回任何候选模型，请手动输入添加");
+      } else {
+        setCandidateModels(res);
+      }
+    } catch (err) {
+      setFetchError(
+        `获取失败: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    } finally {
+      setFetchingModels(false);
+    }
+  };
+
+  const handleAddCandidatesInDetail = (chosen: LlmDiscoveredModel[]) => {
+    const existing = new Set(declaredModels.map((m) => m.id));
+    const toAdd: CustomModelEntry[] = [];
+    for (const c of chosen) {
+      if (!existing.has(c.id)) {
+        toAdd.push({
+          id: c.id,
+          name: c.name && c.name !== c.id ? c.name : undefined,
+        });
+      }
+    }
+    props.onDraftField("models", [...declaredModels, ...toAdd]);
+    setCandidateModels(null);
+  };
+
+  const handleAddManualInDetail = () => {
+    const id = manualModelId.trim();
+    if (!id) return;
+    if (declaredModels.some((m) => m.id === id)) {
+      setFetchError(`模型 ID「${id}」已在列表中`);
+      return;
+    }
+    props.onDraftField("models", [
+      ...declaredModels,
+      {
+        id,
+        name: manualModelName.trim() ? manualModelName.trim() : undefined,
+        reasoning: manualModelReasoning || undefined,
+      },
+    ]);
+    setManualModelId("");
+    setManualModelName("");
+    setManualModelReasoning(false);
+    setFetchError(null);
+  };
+
+  const handleRemoveModelInDetail = (id: string) => {
+    props.onDraftField(
+      "models",
+      declaredModels.filter((m) => m.id !== id),
+    );
+  };
+
   return (
     <div className="native-provider-detail">
+      {candidateModels && (
+        <CandidateModelPicker
+          candidates={candidateModels}
+          onAdd={handleAddCandidatesInDetail}
+          onClose={() => setCandidateModels(null)}
+        />
+      )}
       <div className="native-provider-head">
         <span className="native-provider-title">{row.displayName}</span>
         <span className="native-provider-ref-code">{row.provider}</span>
@@ -453,11 +1107,21 @@ function ProviderDetail(props: {
         {configured && (
           <button
             type="button"
-            className="native-btn native-btn-danger"
+            className="native-btn native-btn-secondary"
             disabled={props.loading}
             onClick={() => props.onUnset(ref)}
           >
-            清除
+            清除密钥
+          </button>
+        )}
+        {props.onDelete && (
+          <button
+            type="button"
+            className="native-btn native-btn-danger"
+            disabled={props.loading}
+            onClick={props.onDelete}
+          >
+            删除此服务商
           </button>
         )}
       </div>
@@ -466,10 +1130,64 @@ function ProviderDetail(props: {
         <div className="native-provider-models-head">
           <span className="native-provider-models-title">模型目录</span>
           <span className="native-provider-models-meta">
-            {props.models.length} 个
+            {(row.declared ? declaredModels.length : props.models.length)} 个
           </span>
+          {row.declared && (
+            <div className="native-model-actions-head">
+              <button
+                type="button"
+                className="native-btn native-btn-secondary native-btn-sm"
+                disabled={fetchingModels || props.loading || !effectiveBaseURL}
+                onClick={handleDiscoverInDetail}
+                title={
+                  effectiveBaseURL
+                    ? "从服务商接口拉取可用模型"
+                    : "请先填写并保存 API 地址"
+                }
+              >
+                {fetchingModels ? "获取中..." : "获取可用模型"}
+              </button>
+            </div>
+          )}
         </div>
-        {props.models.length === 0 ? (
+
+        {fetchError && (
+          <div className="native-provider-error">{fetchError}</div>
+        )}
+
+        {row.declared ? (
+          declaredModels.length === 0 ? (
+            <div className="native-model-empty">
+              未配置模型。请点击「获取可用模型」或在下方手动添加。
+            </div>
+          ) : (
+            declaredModels.map((model) => (
+              <div key={model.id} className="native-model-item">
+                <div className="native-settings-row-text">
+                  <div className="native-model-name">
+                    {model.name || model.id}
+                    {model.name && model.name !== model.id && (
+                      <span className="native-model-id">{model.id}</span>
+                    )}
+                  </div>
+                </div>
+                <div className="native-model-item-side">
+                  {model.reasoning && (
+                    <span className="native-model-tag">推理</span>
+                  )}
+                  <button
+                    type="button"
+                    className="native-model-remove-btn"
+                    onClick={() => handleRemoveModelInDetail(model.id)}
+                    title="移除此模型"
+                  >
+                    ×
+                  </button>
+                </div>
+              </div>
+            ))
+          )
+        ) : props.models.length === 0 ? (
           <div className="native-model-empty">未获取到该供应商的模型清单</div>
         ) : (
           props.models.map((model) => (
@@ -493,6 +1211,41 @@ function ProviderDetail(props: {
             </div>
           ))
         )}
+
+        {row.declared && (
+          <div className="native-model-add-row">
+            <input
+              type="text"
+              className="native-settings-input"
+              placeholder="模型 ID (例如 gpt-4o)"
+              value={manualModelId}
+              onChange={(e) => setManualModelId(e.target.value)}
+            />
+            <input
+              type="text"
+              className="native-settings-input"
+              placeholder="显示名称 (可选)"
+              value={manualModelName}
+              onChange={(e) => setManualModelName(e.target.value)}
+            />
+            <label className="native-model-checkbox-label">
+              <input
+                type="checkbox"
+                checked={manualModelReasoning}
+                onChange={(e) => setManualModelReasoning(e.target.checked)}
+              />
+              <span>推理</span>
+            </label>
+            <button
+              type="button"
+              className="native-btn native-btn-secondary"
+              disabled={!manualModelId.trim()}
+              onClick={handleAddManualInDetail}
+            >
+              添加模型
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -503,6 +1256,9 @@ export function SettingsPage({
   sidebarPanel,
   modelCatalog,
   onRefreshCatalog,
+  dshConnected,
+  reconnecting,
+  onReconnect,
 }: SettingsPageProps) {
   const [activeTab, setActiveTab] = useState<TabKey>("models");
 
@@ -517,6 +1273,8 @@ export function SettingsPage({
   const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
   /** 添加流程进行中：详情区展示「可选供应商」选择器或被选中的未配置供应商。 */
   const [addingProvider, setAddingProvider] = useState(false);
+  /** 自定义服务商添加进行中。 */
+  const [isAddingCustom, setIsAddingCustom] = useState(false);
   const [keyInputs, setKeyInputs] = useState<Record<string, string>>({});
   const [keyVisible, setKeyVisible] = useState<Record<string, boolean>>({});
   const [credLoading, setCredLoading] = useState(false);
@@ -819,13 +1577,135 @@ export function SettingsPage({
     draftStore.key === draftKey &&
     JSON.stringify(draftStore.draft) !== JSON.stringify(draftStore.baseline);
 
-  const setDraftField = (key: string, value: string) => {
+  const availableProtocols = useMemo(() => {
+    const piAi = llmViews["llm-pi-ai"];
+    const choices = schemaUnionChoices(piAi?.schema, [
+      "providers",
+      "\u0000probe",
+      "api",
+    ]);
+    return choices.length > 0
+      ? choices
+      : [
+          "openai-completions",
+          "anthropic-messages",
+          "google-generative-ai",
+          "mistral-chat",
+        ];
+  }, [llmViews]);
+
+  const setDraftField = (key: string, value: unknown) => {
     setDraftStore((store) => {
       const draft = { ...store.draft };
-      if (value.trim() === "") delete draft[key];
+      if (typeof value === "string" && value.trim() === "") delete draft[key];
+      else if (value === undefined) delete draft[key];
       else draft[key] = value;
       return { ...store, draft };
     });
+  };
+
+  // 添加自定义服务商保存
+  const handleSaveCustom = async (data: {
+    route: string;
+    displayName?: string;
+    api: string;
+    baseURL: string;
+    apiKey?: string;
+    models: CustomModelEntry[];
+  }) => {
+    try {
+      setCredLoading(true);
+      setCredMessage(null);
+      const keyRef = deriveKeyRef(data.route);
+      const storesKey = (data.apiKey ?? "").trim().length > 0;
+      const profile = {
+        ...(data.displayName ? { displayName: data.displayName } : {}),
+        ...(storesKey ? { apiKeyEnv: keyRef } : {}),
+        api: data.api,
+        baseURL: data.baseURL.trim(),
+        models: data.models.map((m) => ({
+          id: m.id,
+          ...(m.name && m.name !== m.id ? { name: m.name } : {}),
+          ...(m.reasoning ? { reasoning: true } : {}),
+        })),
+      };
+      const piAiView = llmViews["llm-pi-ai"];
+      await rpc(Endpoints.settingsMutate, {
+        ns: "llm-pi-ai",
+        ops: [
+          {
+            op: "set",
+            path: ["providers", data.route],
+            value: profile,
+          },
+        ],
+        expectedRevision: piAiView?.revision,
+      });
+      if (storesKey) {
+        await rpc<void>(Endpoints.credentialsSet, {
+          ref: keyRef,
+          value: data.apiKey!.trim(),
+        });
+      }
+      setCredMessage(
+        `自定义服务商「${data.displayName || data.route}」添加成功`,
+      );
+      await loadProviders();
+      onRefreshCatalog?.();
+      setIsAddingCustom(false);
+      setAddingProvider(false);
+      setSelectedProvider(data.route);
+    } catch (err) {
+      setCredMessage(
+        `添加失败: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    } finally {
+      setCredLoading(false);
+    }
+  };
+
+  // 删除自定义服务商
+  const handleDeleteProvider = async (row: ProviderRow) => {
+    const confirmed = window.confirm(
+      `确定要删除服务商「${row.displayName}」吗？相关配置与凭据将被移除。`,
+    );
+    if (!confirmed) return;
+    try {
+      setCredLoading(true);
+      setCredMessage(null);
+      const ref = row.apiKeyEnv ?? deriveKeyRef(row.provider);
+      if (row.credentialConfigured) {
+        try {
+          await rpc<void>(Endpoints.credentialsUnset, { ref });
+        } catch {
+          // 忽略凭据未配置错误
+        }
+      }
+      const view = row.settingsNs ? llmViews[row.settingsNs] : undefined;
+      await rpc(Endpoints.settingsMutate, {
+        ns: row.settingsNs || "llm-pi-ai",
+        ops: [
+          {
+            op: "unset",
+            path:
+              row.settingsPath.length > 0
+                ? row.settingsPath
+                : ["providers", row.provider],
+          },
+        ],
+        expectedRevision: view?.revision,
+      });
+      setCredMessage(`服务商 ${row.displayName} 已删除`);
+      await loadProviders();
+      onRefreshCatalog?.();
+      setSelectedProvider(null);
+    } catch (err) {
+      setCredMessage(
+        `删除失败: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    } finally {
+      setCredLoading(false);
+    }
   };
 
   // 统一保存：profile 的最小路径操作（settings/mutate）+ 新密钥（credentials/set）一次提交
@@ -927,6 +1807,38 @@ export function SettingsPage({
 
       {/* 右侧：分区内容（复用主界面会话面板外观） */}
       <main className="native-chat native-settings-content">
+        {dshConnected === false && (
+          <div className="native-connection-banner" role="alert">
+            <span className="native-connection-icon">
+              <svg
+                width="15"
+                height="15"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                <line x1="12" y1="9" x2="12" y2="13" />
+                <line x1="12" y1="17" x2="12.01" y2="17" />
+              </svg>
+            </span>
+            <span className="native-connection-text">
+              与 DeepSeek Harness 引擎连接中断，正在尝试重新连接…
+            </span>
+            <button
+              type="button"
+              className="native-connection-retry-btn"
+              disabled={reconnecting}
+              onClick={onReconnect}
+            >
+              {reconnecting ? "正在重连…" : "立即重试"}
+            </button>
+          </div>
+        )}
+
         {/* 存储位置透明度横幅：仅覆盖整页写入引擎配置的分区 */}
         {showDshBanner && (
           <div className="native-settings-storage-banner">
@@ -985,19 +1897,33 @@ export function SettingsPage({
                   type="button"
                   className="native-btn native-btn-primary"
                   onClick={() => {
-                    setAddingProvider(true);
-                    setSelectedProvider(null);
+                    if (addingProvider || isAddingCustom) {
+                      setAddingProvider(false);
+                      setIsAddingCustom(false);
+                      const firstAdded = addedRows[0]?.provider ?? null;
+                      setSelectedProvider(firstAdded);
+                    } else {
+                      setAddingProvider(true);
+                      setIsAddingCustom(false);
+                      setSelectedProvider(null);
+                    }
                   }}
                 >
-                  <svg
-                    viewBox="0 0 16 16"
-                    width="14"
-                    height="14"
-                    fill="currentColor"
-                  >
-                    <path d="M8 2a.75.75 0 0 1 .75.75v4.5h4.5a.75.75 0 0 1 0 1.5h-4.5v4.5a.75.75 0 0 1-1.5 0v-4.5h-4.5a.75.75 0 0 1 0-1.5h4.5v-4.5A.75.75 0 0 1 8 2z" />
-                  </svg>
-                  添加供应商
+                  {addingProvider || isAddingCustom ? (
+                    "取消添加"
+                  ) : (
+                    <>
+                      <svg
+                        viewBox="0 0 16 16"
+                        width="14"
+                        height="14"
+                        fill="currentColor"
+                      >
+                        <path d="M8 2a.75.75 0 0 1 .75.75v4.5h4.5a.75.75 0 0 1 0 1.5h-4.5v4.5a.75.75 0 0 1-1.5 0v-4.5h-4.5a.75.75 0 0 1 0-1.5h4.5v-4.5A.75.75 0 0 1 8 2z" />
+                      </svg>
+                      添加供应商
+                    </>
+                  )}
                 </button>
               </div>
             </div>
@@ -1018,12 +1944,15 @@ export function SettingsPage({
                     key={row.provider}
                     type="button"
                     className={`native-provider-nav-item ${
-                      selectedProvider === row.provider && !addingProvider
+                      selectedProvider === row.provider &&
+                      !addingProvider &&
+                      !isAddingCustom
                         ? "active"
                         : ""
                     }`}
                     onClick={() => {
                       setAddingProvider(false);
+                      setIsAddingCustom(false);
                       setSelectedProvider(row.provider);
                     }}
                     title={row.displayName}
@@ -1031,6 +1960,9 @@ export function SettingsPage({
                     <span className="native-provider-nav-name">
                       {row.displayName}
                     </span>
+                    {row.declared && (
+                      <span className="native-provider-badge">自定义</span>
+                    )}
                   </button>
                 ))}
                 {addedRows.length === 0 && (
@@ -1041,7 +1973,19 @@ export function SettingsPage({
               </nav>
 
               {/* 右：详情或「添加供应商」选择器 */}
-              {selectedRow && (selectedIsAdded || addingProvider) ? (
+              {isAddingCustom ? (
+                <CustomProviderCreate
+                  existingRoutes={providerRows.map((r) => r.provider)}
+                  protocols={availableProtocols}
+                  writable={settingsWritable}
+                  loading={credLoading}
+                  onSave={handleSaveCustom}
+                  onCancel={() => {
+                    setIsAddingCustom(false);
+                    setAddingProvider(true);
+                  }}
+                />
+              ) : selectedRow && (selectedIsAdded || addingProvider) ? (
                 <ProviderDetail
                   row={selectedRow}
                   adding={addingProvider && !selectedIsAdded}
@@ -1091,21 +2035,42 @@ export function SettingsPage({
                   }
                   onSave={() => void handleSaveProvider(selectedRow)}
                   onUnset={(ref) => void handleUnsetCredential(ref)}
+                  onDelete={
+                    selectedRow.declared
+                      ? () => void handleDeleteProvider(selectedRow)
+                      : undefined
+                  }
                 />
               ) : (
                 <div className="native-provider-picker">
+                  <button
+                    type="button"
+                    className="native-provider-card native-provider-card-custom"
+                    onClick={() => {
+                      setIsAddingCustom(true);
+                      setSelectedProvider(null);
+                    }}
+                    title="添加自定义服务商"
+                  >
+                    <span className="native-provider-card-body">
+                      <span className="native-provider-card-name">
+                        + 添加自定义服务商
+                      </span>
+                      <span className="native-provider-picker-hint">
+                        支持 OpenAI / Anthropic 兼容端点、自建网关或第三方 API
+                      </span>
+                    </span>
+                  </button>
                   {availableRows.length === 0 ? (
                     <div className="native-model-empty">
-                      所有内置服务商都已添加
+                      所有内置服务商都已添加，您可以添加自定义服务商
                     </div>
                   ) : (
                     availableRows.map((row) => {
-                      const brand = PROVIDER_BRANDS[row.provider];
                       const name = providerDisplayName(
                         row.provider,
                         row.displayName,
                       );
-                      const Icon = brand?.Icon;
                       return (
                         <button
                           key={row.provider}
@@ -1114,15 +2079,6 @@ export function SettingsPage({
                           onClick={() => setSelectedProvider(row.provider)}
                           title={row.provider}
                         >
-                          <span className="native-provider-card-icon">
-                            {Icon ? (
-                              <Icon size={24} />
-                            ) : (
-                              <span className="native-provider-card-monogram">
-                                {name.slice(0, 1).toUpperCase()}
-                              </span>
-                            )}
-                          </span>
                           <span className="native-provider-card-body">
                             <span className="native-provider-card-name">
                               {name}

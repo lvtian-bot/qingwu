@@ -47,6 +47,14 @@ const api: QingwuApi = {
   dshEventResult: (clientId, eventId, outcome) =>
     ipcRenderer.invoke('dsh:event-result', { clientId, eventId, outcome }),
 
+  getDshConnectionStatus: () => ipcRenderer.invoke('dsh:getConnectionStatus'),
+  reconnectDsh: () => ipcRenderer.invoke('dsh:reconnect'),
+  onDshConnectionChanged: (listener) => {
+    const handler = (_event: IpcRendererEvent, connected: boolean) => listener(connected);
+    ipcRenderer.on('dsh:connection-status', handler);
+    return () => ipcRenderer.removeListener('dsh:connection-status', handler);
+  },
+
   getUiMode: () => ipcRenderer.invoke('ui:getMode'),
   setUiMode: (mode) => ipcRenderer.invoke('ui:setMode', mode),
   onUiModeChanged: (listener) => {

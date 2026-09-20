@@ -154,7 +154,9 @@ test("真实桥过滤畸形控制帧，并转发业务项和完整的流错误",
   bridge.start();
   await Promise.resolve();
   const socket = sockets[0];
+  assert.equal(bridge.isConnected(), false);
   socket.emit("open");
+  assert.equal(bridge.isConnected(), true);
   const streamId = bridge.openStream("session/follow", {
     request: { address: { kind: "session", sessionId: "s1" } },
   });
@@ -167,7 +169,8 @@ test("真实桥过滤畸形控制帧，并转发业务项和完整的流错误",
     "message",
     JSON.stringify({ type: "item", streamId: "unknown", value: "不能转发" }),
   );
-  assert.equal(delivered.length, 0);
+  const streamDelivered = () => delivered.filter((d) => d.channel === "dsh:stream-item");
+  assert.equal(streamDelivered().length, 0);
   socket.emit(
     "message",
     JSON.stringify({
@@ -184,11 +187,17 @@ test("真实桥过滤畸形控制帧，并转发业务项和完整的流错误",
       error: { code: "session/not-found", message: "会话不存在" },
     }),
   );
-  assert.equal(delivered.length, 2);
-  assert.equal(delivered[0].item.endpoint, "session/follow");
-  assert.equal(delivered[0].item.value.type, "event");
-  assert.deepEqual(delivered[1].item.value, {
+  assert.equal(streamDelivered().length, 2);
+  assert.equal(streamDelivered()[0].item.endpoint, "session/follow");
+  assert.equal(streamDelivered()[0].item.value.type, "event");
+  assert.deepEqual(streamDelivered()[1].item.value, {
     type: "stream/error",
     error: { code: "session/not-found", message: "会话不存在" },
   });
+
+  // 测试连接关闭与断连状态投递
+  socket.emit("close");
+  assert.equal(bridge.isConnected(), false);
+  const statusDelivered = delivered.filter((d) => d.channel === "dsh:connection-status");
+  assert.deepEqual(statusDelivered.map((d) => d.item), [true, false]);
 });

@@ -134,6 +134,10 @@ if (!gotTheLock) {
   ipcMain.handle("dsh:event-result", (_event, { clientId, eventId, outcome }) =>
     dshBridge.eventResult(clientId, eventId, outcome),
   );
+  ipcMain.handle("dsh:getConnectionStatus", () => dshBridge.isConnected?.() ?? false);
+  ipcMain.handle("dsh:reconnect", () => {
+    dshBridge.reconnect?.();
+  });
 
   ipcMain.handle("ui:getMode", () => settings.get("uiMode"));
   ipcMain.handle("ui:setMode", (_event, mode: UiMode) => {

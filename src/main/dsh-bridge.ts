@@ -199,6 +199,32 @@ export class DshBridge {
     }
   }
 
+  isConnected(): boolean {
+    return this.wsConnected;
+  }
+
+  /** 主动触发重连（例如用户在断连提示中点击「立即重试」）。 */
+  reconnect(): void {
+    if (this.stopped) return;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    if (this.ws) {
+      try {
+        this.ws.close();
+      } catch {
+        // 忽略关闭旧连接的异常
+      }
+      this.ws = null;
+    }
+    this.wsConnected = false;
+    this.sendToRenderer("dsh:connection-status", false);
+    void this.acquireAuthCookie().finally(() => {
+      this.connectStreamSocket();
+    });
+  }
+
   private connectStreamSocket(): void {
     if (this.stopped || this.ws) return;
     const base = new URL(this.getServiceUrl());
@@ -215,6 +241,8 @@ export class DshBridge {
         "[DshBridge] 流连接创建失败:",
         redactSecrets(err instanceof Error ? err.message : String(err)),
       );
+      this.wsConnected = false;
+      this.sendToRenderer("dsh:connection-status", false);
       this.scheduleReconnect();
       return;
     }
@@ -222,6 +250,7 @@ export class DshBridge {
 
     socket.on("open", () => {
       this.wsConnected = true;
+      this.sendToRenderer("dsh:connection-status", true);
       for (const [streamId, stream] of this.streams) {
         this.sendStreamOpen(streamId, stream.endpoint, stream.payload);
       }
@@ -253,6 +282,7 @@ export class DshBridge {
     socket.on("close", () => {
       this.ws = null;
       this.wsConnected = false;
+      this.sendToRenderer("dsh:connection-status", false);
       if (!this.stopped) this.scheduleReconnect();
     });
 

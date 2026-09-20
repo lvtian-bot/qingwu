@@ -5,7 +5,7 @@ import type { UiMode } from '../shared/types';
 
 export interface AppSettings {
   closeToTray: boolean;
-  /** 界面模式：official = 官方 dsh web UI（默认），native = 自研界面。 */
+  /** 界面模式：official = 官方 dsh web UI，native = 青梧界面（默认）。 */
   uiMode: UiMode;
 }
 
@@ -24,7 +24,7 @@ class SettingsManager {
   constructor() {
     this.settings = {
       closeToTray: true,
-      uiMode: 'official',
+      uiMode: 'native',
     };
     this.listeners = new Set();
     this.loaded = false;
@@ -48,7 +48,7 @@ class SettingsManager {
         if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
           this.settings = { ...this.settings, ...(parsed as Partial<AppSettings>) };
           if (this.settings.uiMode !== 'official' && this.settings.uiMode !== 'native') {
-            this.settings.uiMode = 'official';
+            this.settings.uiMode = 'native';
           }
         }
       }

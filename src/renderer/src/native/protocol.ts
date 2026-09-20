@@ -23,11 +23,13 @@ export const Endpoints = {
   sessionRename: 'session/rename',
   commandsList: 'commands/list',
   commandsExecute: 'commands/execute',
+  skillsList: 'skills/list',
   credentialsDescribe: 'credentials/describe',
   credentialsSet: 'credentials/set',
   credentialsUnset: 'credentials/unset',
   llmListProviders: 'llm/listProviders',
   llmListConfigurableProviders: 'llm/listConfigurableProviders',
+  llmDiscoverModels: 'llm/discoverModels',
   settingsDescribe: 'settings/describe',
   settingsMutate: 'settings/mutate',
   settingsOpenSettingsDocument: 'settings/openSettingsDocument',
@@ -38,6 +40,7 @@ export const Endpoints = {
   workspaceDelete: 'workspace/delete',
   workspaceArchiveSession: 'workspace/archiveSession',
   directoryPickerPick: 'directoryPicker/pick',
+  fileReferencesList: 'fileReferences/list',
   eventsResult: '$events/result',
 } as const;
 
@@ -154,6 +157,20 @@ export interface CommandExecution {
   result: { kind: 'success'; text?: string } | { kind: 'error'; text: string };
 }
 
+/** skills/list 返回：会话可用的技能描述符。 */
+export interface SkillDescriptor {
+  name: string;
+  description: string;
+  path?: string;
+  whenToUse?: string;
+  modelInvocable?: boolean;
+}
+
+/** skills/list 返回包络。 */
+export interface SkillListResult {
+  skills: SkillDescriptor[];
+}
+
 // ---------- 引擎 LLM 供应商目录（llm/listProviders、llm/listConfigurableProviders） ----------
 
 /** 引擎 LLM 注册表里当前注册的供应商路由。 */
@@ -173,6 +190,23 @@ export interface ConfigurableProviderEntry {
   settingsPath: string[];
   declared?: boolean;
   error?: string;
+}
+
+/** llm/discoverModels 查询参数：探针 endpoint、协议与可选即时凭据。 */
+export interface LlmModelDiscoveryRequest {
+  provider?: string;
+  baseURL?: string;
+  api?: string;
+  apiKey?: string;
+}
+
+/** llm/discoverModels 返回的候选模型条目。 */
+export interface LlmDiscoveredModel {
+  id: string;
+  name?: string;
+  contextWindow?: number;
+  maxTokens?: number;
+  inputModalities?: readonly string[];
 }
 
 // ---------- 设置命名空间（settings/describe、settings/mutate） ----------

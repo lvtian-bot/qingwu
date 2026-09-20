@@ -58,6 +58,7 @@ export type QuestionRequest = Assert<Fits<Omit<AskUserQuestionRequestEvent, 'age
 export type QuestionAnswer = Assert<Fits<{answers: UI.UserQuestionAnswer[]}, AskUserQuestionAnswer>>;
 export type Commands = Assert<Fits<Mutable<UpstreamCommandDescriptor>, UI.CommandDescriptor>>;
 export type CommandFields = Assert<Fits<keyof UI.CommandDescriptor, keyof UpstreamCommandDescriptor>>;
+export type Skills = Assert<Fits<Mutable<S.SkillListValue>, UI.SkillListResult>>;
 `;
 
 function createContractProgram(source = contract) {
