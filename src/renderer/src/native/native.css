@@ -926,6 +926,11 @@ textarea {
   margin: 18px 0;
 }
 
+/* 流式在飞阶段仅有思考/工具等待而无正文答复时，采用与工具卡片一致的紧凑间距 */
+.native-msg.assistant.process-only {
+  margin: 2px 0;
+}
+
 .native-msg.assistant .native-msg-body {
   font-size: 14px;
   line-height: 1.75;
@@ -976,13 +981,18 @@ textarea {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  margin-top: 4px;
+  margin: 2px 0;
 }
 
-/* 折叠态固定一行高：摘要逐增量刷新时不会带着下面的答案上下跳 */
+/* 当思考行位于已有正文的助手答复内时，顶部贴齐消息、底部留出 8px 与正文隔开 */
+.native-msg.assistant > .native-reasoning {
+  margin: 0 0 8px 0;
+}
+
+/* 折叠态固定高度：与工具调用行（36px）一致，摘要逐增量刷新时不会带着下面的答案上下跳 */
 .native-reasoning:not(.open) {
   contain: size layout;
-  height: 24px;
+  height: 36px;
 }
 
 .native-reasoning-row {
@@ -990,10 +1000,18 @@ textarea {
   overflow: hidden;
   display: flex;
   align-items: center;
-  height: 24px;
+  min-height: 24px;
+  padding: 6px 8px 6px 0;
+  line-height: 24px;
+  box-sizing: border-box;
   min-width: 0;
   cursor: pointer;
   user-select: none;
+  border-radius: 6px;
+}
+
+.native-reasoning-row:hover {
+  background: var(--native-hover);
 }
 
 .native-reasoning-leading {

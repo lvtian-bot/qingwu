@@ -140,6 +140,13 @@ export function TurnItems({
       ) {
         return null;
       }
+      // 没有正文回复且未中断的独立思考步骤：直接作为过程折叠行渲染，
+      // 不包裹助手答复气泡外壳（.native-msg.assistant），与工具卡片保持统一行距与行高
+      if (!item.text && !item.interrupted) {
+        return showReasoning && item.reasoning ? (
+          <ReasoningRow key={item.key} text={item.reasoning} />
+        ) : null;
+      }
       return (
         <div key={item.key} className="native-msg assistant">
           {showReasoning && item.reasoning && (

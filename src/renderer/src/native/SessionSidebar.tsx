@@ -6,6 +6,7 @@ import {
   loadPinnedData,
   savePinnedData,
   sessionTitle,
+  sortSessionsByRecency,
   WORKSPACE_SESSION_PREVIEW_LIMIT,
   type PinnedData,
 } from "./sidebar-data";
@@ -90,12 +91,13 @@ export function useSessionSidebar(
     [workspaces],
   );
 
-  /** 获取指定工作区下当前匹配的有效会话（保持工作区登记顺序） */
+  /** 获取指定工作区下当前匹配的有效会话（按最近更新时间倒序） */
   const getWorkspaceSessions = useCallback(
     (ws: WorkspaceView) => {
-      return ws.sessionIds
+      const matched = ws.sessionIds
         .map((id) => filteredSessionById.get(id))
         .filter((s): s is SessionSummary => Boolean(s));
+      return sortSessionsByRecency(matched);
     },
     [filteredSessionById],
   );
@@ -131,12 +133,13 @@ export function useSessionSidebar(
     return workspaces.filter((ws) => !pinnedWsSet.has(ws.workspaceId));
   }, [workspaces, pinnedWsSet]);
 
-  // 4. 普通独立会话（未关联项目且未置顶）
+  // 4. 普通独立会话（未关联项目且未置顶，按最近更新时间倒序）
   const normalUngroupedSessions = useMemo(() => {
-    return filteredVisibleSessions.filter(
+    const list = filteredVisibleSessions.filter(
       (s) =>
         !allWsSessionIds.has(s.sessionId) && !pinnedSessionSet.has(s.sessionId),
     );
+    return sortSessionsByRecency(list);
   }, [filteredVisibleSessions, allWsSessionIds, pinnedSessionSet]);
 
   return {

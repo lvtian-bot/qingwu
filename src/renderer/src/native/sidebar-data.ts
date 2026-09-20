@@ -73,3 +73,19 @@ export function sessionTitle(session: SessionSummary): string {
     return session.cwd.split(/[\\/]/).filter(Boolean).pop() ?? "未命名";
   return "未命名";
 }
+
+/**
+ * 会话按最近更新时间倒序排列：最新的在最上方。
+ * 更新时间相同时，按 sessionId 降序作为确定性平局决胜（tie-break），避免列表随机跳动。
+ */
+export function sortSessionsByRecency(
+  sessions: SessionSummary[],
+): SessionSummary[] {
+  return [...sessions].sort((a, b) => {
+    const timeA = a.updatedAt ?? 0;
+    const timeB = b.updatedAt ?? 0;
+    if (timeB !== timeA) return timeB - timeA;
+    return b.sessionId.localeCompare(a.sessionId);
+  });
+}
+

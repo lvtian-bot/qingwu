@@ -105,26 +105,6 @@ export function WorkspaceRow({
             </svg>
             <span className="native-ws-title">{workspace.title}</span>
           </button>
-          <button
-            className="native-ws-act"
-            onClick={onNewSession}
-            title={`在“${workspace.title}”中新建会话`}
-            aria-label={`在“${workspace.title}”中新建会话`}
-          >
-            <svg
-              viewBox="0 0 24 24"
-              width="14"
-              height="14"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M12 5v14M5 12h14" />
-            </svg>
-          </button>
           {onTogglePin && (
             <button
               className={`native-ws-act${pinned ? " pinned" : ""}`}
@@ -167,6 +147,26 @@ export function WorkspaceRow({
               <circle cx="5" cy="12" r="1.6" />
               <circle cx="12" cy="12" r="1.6" />
               <circle cx="19" cy="12" r="1.6" />
+            </svg>
+          </button>
+          <button
+            className="native-ws-act"
+            onClick={onNewSession}
+            title={`在“${workspace.title}”中新建会话`}
+            aria-label={`在“${workspace.title}”中新建会话`}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              width="14"
+              height="14"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M12 5v14M5 12h14" />
             </svg>
           </button>
           {menuOpen && !confirmDelete && (

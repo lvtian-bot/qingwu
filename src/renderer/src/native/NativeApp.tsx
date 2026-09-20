@@ -1484,6 +1484,12 @@ export function NativeApp({
     // 发出即清空该会话的草稿桶；失败时再写回（输入框高度由 Composer 按 value 重算）
     composerDraftsRef.current.delete(sessionId);
     composerImagesRef.current.delete(sessionId);
+    // 乐观更新会话 updatedAt：会话立即浮顶，无需等待引擎事件轮询
+    setSessions((prev) =>
+      prev.map((s) =>
+        s.sessionId === sessionId ? { ...s, updatedAt: Date.now() } : s,
+      ),
+    );
     const submitMode = options?.mode ?? "queue";
     // 乐观回显：提交当帧就显示，宿主落库或入队后由 refreshFromEvents 退休
     const requestId = crypto.randomUUID();
@@ -1914,7 +1920,10 @@ export function NativeApp({
                 {(liveReasoning || draft || toolCalling) && (
                   // 本轮在飞内容合成一条助手消息：思考折叠行在上、正文在下，
                   // 与回合结束后的落库布局一致，收束时不会整块跳位。
-                  <div className="native-msg assistant">
+                  // 在仅有思考/工具调用提示、尚未输出正文答复时，采用紧凑过程间距。
+                  <div
+                    className={`native-msg assistant${!draft ? " process-only" : ""}`}
+                  >
                     {liveReasoning && (
                       <ReasoningRow
                         text={liveReasoning}
