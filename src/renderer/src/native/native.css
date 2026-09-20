@@ -2854,6 +2854,65 @@ body.native-resizing {
   z-index: 3;
 }
 
+/* ---------- 引擎断连提示横条 ---------- */
+
+.native-connection-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  background: rgba(245, 158, 11, 0.12);
+  border-bottom: 1px solid rgba(245, 158, 11, 0.28);
+  color: #b45309;
+  font-size: 13px;
+  line-height: 1.4;
+  z-index: 5;
+  flex-shrink: 0;
+}
+
+@media (prefers-color-scheme: dark) {
+  .native-connection-banner {
+    background: rgba(245, 158, 11, 0.18);
+    border-bottom: 1px solid rgba(245, 158, 11, 0.35);
+    color: #fbbf24;
+  }
+}
+
+.native-connection-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.native-connection-text {
+  flex: 1;
+  font-weight: 500;
+}
+
+.native-connection-retry-btn {
+  padding: 3px 12px;
+  border-radius: 6px;
+  border: 1px solid currentColor;
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.15s ease, background 0.15s ease;
+  flex-shrink: 0;
+}
+
+.native-connection-retry-btn:hover:not(:disabled) {
+  background: rgba(245, 158, 11, 0.15);
+}
+
+.native-connection-retry-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 /* ---------- 输入框草稿图片附件行 ---------- */
 
 .native-composer-attachments {
@@ -3473,24 +3532,6 @@ body.native-resizing {
   border-color: var(--settings-muted);
 }
 
-.native-provider-card-icon {
-  width: 44px;
-  height: 44px;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 10px;
-  background: var(--settings-sidebar-bg);
-  color: var(--native-fg);
-}
-
-.native-provider-card-monogram {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--settings-muted);
-}
-
 .native-provider-card-body {
   display: flex;
   flex-direction: column;
@@ -3786,14 +3827,138 @@ body.native-resizing {
   background: var(--native-hover);
 }
 
-/* ---------- 斜杠命令菜单（输入框上方浮层） ---------- */
+/* ---------- 斜杠命令菜单（支持顶部浮层与底部浮层两种展示模式） ---------- */
 
 .native-slash-menu {
   position: absolute;
-  bottom: calc(100% + 8px);
   left: 0;
   right: 0;
-  max-height: 280px;
+  max-height: 290px;
+  background: var(--native-surface);
+  border: 1px solid var(--native-border);
+  border-radius: 14px;
+  box-shadow:
+    0 10px 30px rgba(0, 0, 0, 0.12),
+    0 2px 8px rgba(0, 0, 0, 0.04);
+  padding: 5px;
+  z-index: 35;
+  overflow: hidden;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  user-select: none;
+}
+
+/* 顶部浮层形态（对话区底部输入框使用，向上浮出） */
+.native-slash-menu.placement-top {
+  bottom: calc(100% + 8px);
+}
+
+/* 底部浮层形态（空态居中输入卡片使用，向下浮出且绝对定位，不引起聊天框位移） */
+.native-slash-menu.placement-bottom {
+  top: calc(100% + 8px);
+}
+
+.native-slash-list {
+  padding: 0;
+  overflow-y: auto;
+  max-height: 270px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+/* 细长轻量滚动条 */
+.native-slash-list::-webkit-scrollbar {
+  width: 5px;
+}
+
+.native-slash-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.native-slash-list::-webkit-scrollbar-thumb {
+  background: var(--native-border);
+  border-radius: 999px;
+}
+
+.native-slash-list::-webkit-scrollbar-thumb:hover {
+  background: var(--native-muted);
+}
+
+.native-slash-empty {
+  padding: 14px 10px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--native-muted);
+}
+
+.native-slash-section-header {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--native-muted);
+  padding: 6px 10px 2px 10px;
+  letter-spacing: 0.3px;
+  user-select: none;
+}
+
+.native-slash-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.1s ease;
+  min-height: 32px;
+  box-sizing: border-box;
+}
+
+.native-slash-item:hover,
+.native-slash-item.active {
+  background: var(--native-hover);
+}
+
+.native-slash-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: var(--native-muted);
+  flex-shrink: 0;
+}
+
+.native-slash-item.active .native-slash-icon {
+  color: var(--native-fg);
+}
+
+.native-slash-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--native-fg);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.native-slash-desc {
+  font-size: 13px;
+  color: var(--native-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+  margin-left: 2px;
+}
+
+/* ---------- @ 文件引用菜单（支持顶部浮层与底部浮层两种展示模式） ---------- */
+
+.native-file-mention-menu {
+  position: absolute;
+  left: 0;
+  right: 0;
+  max-height: 290px;
   display: flex;
   flex-direction: column;
   background: var(--native-surface);
@@ -3802,95 +3967,396 @@ body.native-resizing {
   box-shadow:
     0 10px 30px rgba(0, 0, 0, 0.12),
     0 2px 8px rgba(0, 0, 0, 0.04);
+  padding: 5px;
   overflow: hidden;
   z-index: 35;
   user-select: none;
+  box-sizing: border-box;
 }
 
-.native-slash-list {
-  padding: 6px;
+/* 顶部浮层形态（对话区底部输入框使用，向上浮出） */
+.native-file-mention-menu.placement-top {
+  bottom: calc(100% + 8px);
+}
+
+/* 底部浮层形态（空态居中输入卡片使用，向下浮出且绝对定位，不引起聊天框位移） */
+.native-file-mention-menu.placement-bottom {
+  top: calc(100% + 8px);
+}
+
+.native-file-mention-header {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--native-muted);
+  padding: 6px 10px 2px 10px;
+  letter-spacing: 0.3px;
+  user-select: none;
+}
+
+.native-file-mention-list {
+  padding: 0;
   overflow-y: auto;
-  max-height: 240px;
+  max-height: 250px;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
 }
 
-.native-slash-empty {
-  padding: 16px;
+/* 细长轻量滚动条，对齐斜杠命令面板质感 */
+.native-file-mention-list::-webkit-scrollbar {
+  width: 5px;
+}
+
+.native-file-mention-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.native-file-mention-list::-webkit-scrollbar-thumb {
+  background: var(--native-border);
+  border-radius: 999px;
+}
+
+.native-file-mention-list::-webkit-scrollbar-thumb:hover {
+  background: var(--native-muted);
+}
+
+.native-file-mention-empty {
+  padding: 14px 10px;
   text-align: center;
   font-size: 13px;
   color: var(--native-muted);
 }
 
-.native-slash-item {
+.native-file-mention-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 8px 10px;
+  gap: 10px;
+  padding: 5px 8px;
   border-radius: 8px;
   cursor: pointer;
   transition: background-color 0.1s ease;
+  min-height: 32px;
+  box-sizing: border-box;
 }
 
-.native-slash-item:hover,
-.native-slash-item.active {
+.native-file-mention-item:hover,
+.native-file-mention-item.active {
   background: var(--native-hover);
 }
 
-.native-slash-item-left {
+.native-file-mention-item-left {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   min-width: 0;
-  flex: none;
-}
-
-.native-slash-name {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--native-fg);
-  font-family: var(--native-font-mono, monospace);
-}
-
-.native-slash-hint {
-  font-size: 11px;
-  color: var(--native-muted);
-  background: var(--native-bg-subtle, rgba(0, 0, 0, 0.04));
-  padding: 1px 6px;
-  border-radius: 4px;
-  font-family: var(--native-font-mono, monospace);
-}
-
-.native-slash-desc {
-  font-size: 12px;
-  color: var(--native-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  text-align: right;
   flex: 1;
 }
 
-.native-slash-footer {
-  display: flex;
+.native-file-mention-icon {
+  display: inline-flex;
   align-items: center;
-  justify-content: flex-end;
-  gap: 12px;
-  padding: 6px 12px;
-  background: var(--native-bg-subtle, rgba(0, 0, 0, 0.02));
-  border-top: 1px solid var(--native-border-subtle, rgba(0, 0, 0, 0.06));
-  font-size: 11px;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
   color: var(--native-muted);
+  flex-shrink: 0;
 }
 
-.native-slash-footer kbd {
-  font-family: inherit;
-  background: var(--native-hover);
-  border: 1px solid var(--native-border);
+.native-file-mention-item.active .native-file-mention-icon {
+  color: var(--native-fg);
+}
+
+.native-file-mention-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--native-fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--native-font-mono, monospace);
+}
+
+.native-file-mention-item-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.native-file-mention-parent {
+  font-size: 11px;
+  color: var(--native-muted);
+  max-width: 180px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--native-font-mono, monospace);
+}
+
+.native-file-mention-drill-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  background: transparent;
+  border: none;
   border-radius: 4px;
-  padding: 1px 4px;
+  color: var(--native-muted);
+  cursor: pointer;
+  transition: background-color 0.1s ease, color 0.1s ease;
+}
+
+.native-file-mention-drill-btn:hover {
+  background: var(--native-bg-subtle, rgba(0, 0, 0, 0.05));
+  color: var(--native-fg);
+}
+
+/* 自定义服务商卡片与标记 */
+.native-provider-card-custom {
+  border-style: dashed;
+  border-color: var(--native-accent, #3b82f6);
+}
+
+.native-provider-card-custom:hover {
+  background: var(--native-hover);
+  border-color: var(--native-accent, #3b82f6);
+}
+
+.native-provider-badge {
   font-size: 10px;
-  margin: 0 2px;
+  font-weight: 500;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--native-hover);
+  color: var(--native-accent, #3b82f6);
+  margin-left: auto;
+}
+
+.input-error {
+  border-color: var(--native-error, #ef4444) !important;
+}
+
+.native-btn-sm {
+  height: 26px;
+  padding: 0 8px;
+  font-size: 11px;
+}
+
+.native-model-actions-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.native-model-add-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--settings-border);
+}
+
+.native-model-add-row .native-settings-input {
+  height: 32px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+
+.native-model-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--settings-muted);
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.native-model-item-side {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.native-model-remove-btn {
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: transparent;
+  color: var(--settings-muted);
+  cursor: pointer;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  line-height: 1;
+  transition: all 0.12s ease;
+}
+
+.native-model-remove-btn:hover {
+  background: rgba(255, 77, 79, 0.12);
+  color: var(--native-error, #ef4444);
+}
+
+/* 候选模型选择弹层 */
+.native-model-picker-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.native-model-picker-modal {
+  width: 520px;
+  max-width: 90vw;
+  max-height: 80vh;
+  background: var(--settings-bg, #ffffff);
+  border: 1px solid var(--settings-border);
+  border-radius: 12px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.35);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: nativeModalIn 0.15s ease-out;
+}
+
+@keyframes nativeModalIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.native-model-picker-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--settings-border);
+}
+
+.native-model-picker-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--settings-fg);
+}
+
+.native-model-picker-close {
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: var(--settings-muted);
+  font-size: 20px;
+  cursor: pointer;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.native-model-picker-close:hover {
+  background: var(--native-hover);
+  color: var(--settings-fg);
+}
+
+.native-model-picker-search-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--settings-border);
+}
+
+.native-model-picker-search-row .native-settings-input {
+  height: 32px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.native-model-picker-list {
+  flex: 1;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 8px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.native-model-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.1s ease;
+  user-select: none;
+}
+
+.native-model-picker-item:hover {
+  background: var(--native-hover);
+}
+
+.native-model-picker-item.selected {
+  background: rgba(59, 130, 246, 0.08);
+}
+
+.native-model-picker-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.native-model-picker-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--settings-fg);
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.native-model-picker-meta {
+  font-size: 11px;
+  color: var(--settings-muted);
+}
+
+.native-model-picker-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 18px;
+  border-top: 1px solid var(--settings-border);
+  background: var(--settings-sidebar-bg);
+}
+
+.native-model-picker-count {
+  font-size: 12px;
+  color: var(--settings-muted);
+}
+
+.native-model-picker-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }

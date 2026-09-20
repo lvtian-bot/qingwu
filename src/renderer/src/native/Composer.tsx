@@ -1,19 +1,29 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { isSupportedImage, type DraftImage } from "./images";
 import { SlashMenu } from "./SlashMenu";
+import { FileMentionMenu } from "./FileMentionMenu";
 import {
   detectSlashTrigger,
   filterSlashCommands,
   type SlashCommandItem,
 } from "./slash-commands";
+import {
+  detectAtTrigger,
+  formatFileMention,
+  type FileReferenceCandidate,
+} from "./file-mentions";
 
 interface ComposerProps {
   input: string;
   onInputChange: (value: string) => void;
-  onSend: () => void;
+  onSend: (options?: { mode?: "queue" | "steer" }) => void;
   running: boolean;
   onStop: () => void;
   textareaRef: { current: HTMLTextAreaElement | null };
+  /** 是否允许快捷批量插话发送全部排队消息（运行中、草稿为空、有排队项）。 */
+  canSteerQueue?: boolean;
+  /** 批量插话发送全部排队消息。 */
+  onSteerQueue?: () => void;
   /** 工具行左侧控件（模型/强度/权限选择器）。 */
   controls?: ReactNode;
   /** 上下文占用环（贴发送按钮；无提供方用量时自身不渲染）。 */
@@ -27,7 +37,11 @@ interface ComposerProps {
   /** 触发客户端特定命令（如 model）。 */
   onClientCommand?: (commandName: string) => void;
   /** 触发直接执行斜杠命令（无参数命令）。 */
-  onExecuteCommand?: (line: string) => void;
+  onExecuteCommand?: (line: string, options?: { preserveInput?: boolean }) => void;
+  /** 根据当前会话和 query 查询文件候选。 */
+  onQueryFileReferences?: (query: string, signal: AbortSignal) => Promise<FileReferenceCandidate[]>;
+  /** 弹出菜单展示方位：'top'（底部停靠输入框，向上浮出）或 'bottom'（空态居中卡片，向下内嵌展开）。缺省为 'top'。 */
+  menuPlacement?: 'top' | 'bottom';
 }
 
 /** 输入框高度上限，与 .native-composer-box textarea 的 max-height 一致（超出后内部滚动）。 */
@@ -52,6 +66,8 @@ export function Composer({
   running,
   onStop,
   textareaRef,
+  canSteerQueue,
+  onSteerQueue,
   controls,
   meter,
   draftImages,
@@ -61,32 +77,177 @@ export function Composer({
   commands,
   onClientCommand,
   onExecuteCommand,
+  onQueryFileReferences,
+  menuPlacement = "top",
 }: ComposerProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [menuDismissed, setMenuDismissed] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [cursorPos, setCursorPos] = useState<number | undefined>(undefined);
 
-  // 监听输入，计算是否触发斜杠菜单
+  const isMac = useMemo(() => {
+    return (
+      typeof navigator !== "undefined" &&
+      /Mac|iPhone|iPod|iPad/i.test(navigator.platform)
+    );
+  }, []);
+
+  const steerQueueHint = isMac
+    ? "Cmd+Enter 插话发送全部排队消息"
+    : "Ctrl+Enter 插话发送全部排队消息";
+
+  // @ 文件引用状态
+  const [fileCandidates, setFileCandidates] = useState<FileReferenceCandidate[]>([]);
+  const [fileSelectedIndex, setFileSelectedIndex] = useState(0);
+  const [fileMenuDismissed, setFileMenuDismissed] = useState(false);
+
+  // 监听输入，计算是否触发斜杠菜单（对齐官方词边界与光标检测）
   const trigger = useMemo(() => {
-    return detectSlashTrigger(input);
-  }, [input]);
+    return detectSlashTrigger(input, cursorPos);
+  }, [input, cursorPos]);
+
+  // 监听输入，计算是否触发 @ 文件引用菜单
+  const atTrigger = useMemo(() => {
+    return detectAtTrigger(input, cursorPos);
+  }, [input, cursorPos]);
+
+  // 异步拉取 @ 文件引用候选
+  useEffect(() => {
+    if (!atTrigger.active || !onQueryFileReferences) {
+      setFileCandidates([]);
+      return;
+    }
+    const abortCtrl = new AbortController();
+    onQueryFileReferences(atTrigger.query, abortCtrl.signal)
+      .then((candidates) => {
+        if (!abortCtrl.signal.aborted) {
+          setFileCandidates(candidates);
+          setFileSelectedIndex(0);
+        }
+      })
+      .catch(() => {
+        if (!abortCtrl.signal.aborted) {
+          setFileCandidates([]);
+        }
+      });
+    return () => abortCtrl.abort();
+  }, [atTrigger.active, atTrigger.query, onQueryFileReferences]);
 
   const filteredCommands = useMemo(() => {
     if (!trigger.active || !commands || commands.length === 0) return [];
-    return filterSlashCommands(commands, trigger.query);
-  }, [trigger.active, trigger.query, commands]);
+    return filterSlashCommands(commands, trigger.query, trigger.position);
+  }, [trigger.active, trigger.query, trigger.position, commands]);
 
   const isMenuOpen =
     trigger.active && !menuDismissed && filteredCommands.length > 0;
 
-  // 当 query 变化时，如果之前被 Esc 关闭过，重新激活菜单并将 selectedIndex 重置为 0
+  const isFileMenuOpen =
+    atTrigger.active && !fileMenuDismissed && onQueryFileReferences !== undefined;
+
+  // 当 query 或激活态变化时，如果之前被 Esc 关闭过，重新激活菜单并将 selectedIndex 重置为 0
   useEffect(() => {
     setMenuDismissed(false);
     setSelectedIndex(0);
-  }, [trigger.query]);
+  }, [trigger.query, trigger.active]);
+
+  useEffect(() => {
+    setFileMenuDismissed(false);
+    setFileSelectedIndex(0);
+  }, [atTrigger.query, atTrigger.active]);
+
+  // 处理文件采纳或下钻
+  const handleSelectFile = (item: FileReferenceCandidate, action: 'pick' | 'drill' = 'pick') => {
+    const formatted = formatFileMention(item, atTrigger.quoted);
+    if (!formatted) return;
+
+    const prefix = input.slice(0, atTrigger.span.start);
+    const suffix = input.slice(atTrigger.span.end);
+
+    if (item.kind === 'directory' && action === 'drill') {
+      // 下钻：将目录 mention 插入，末尾保留未闭合引号或斜杠，不关闭菜单以便继续打字
+      const nextVal = prefix + formatted + suffix;
+      const nextCaret = prefix.length + formatted.length;
+      onInputChange(nextVal);
+      setCursorPos(nextCaret);
+      setTimeout(() => {
+        if (textareaRef.current) {
+          textareaRef.current.focus();
+          textareaRef.current.setSelectionRange(nextCaret, nextCaret);
+        }
+      }, 0);
+      return;
+    }
+
+    // 采纳普通文件或普通目录：追加空格并关闭菜单
+    const tokenWithSpace = `${formatted} `;
+    const nextVal = prefix + tokenWithSpace + suffix;
+    const nextCaret = prefix.length + tokenWithSpace.length;
+    onInputChange(nextVal);
+    setFileMenuDismissed(true);
+    setCursorPos(nextCaret);
+    setTimeout(() => {
+      if (textareaRef.current) {
+        textareaRef.current.focus();
+        textareaRef.current.setSelectionRange(nextCaret, nextCaret);
+      }
+    }, 0);
+  };
 
   // 处理命令采纳
   const handleSelectCommand = (cmd: SlashCommandItem) => {
+    if (cmd.isSkill) {
+      // 技能（Skill）采纳：补全 /<skill-name> 加空格，等待用户继续补充问题或直接发送
+      const skillToken = `/${cmd.name} `;
+      if (trigger.position === "inline") {
+        const prefix = input.slice(0, trigger.span.start);
+        const suffix = input.slice(trigger.span.end);
+        const nextVal = prefix + skillToken + suffix;
+        const nextCaret = prefix.length + skillToken.length;
+        onInputChange(nextVal);
+        setMenuDismissed(true);
+        setTimeout(() => {
+          if (textareaRef.current) {
+            textareaRef.current.focus();
+            textareaRef.current.setSelectionRange(nextCaret, nextCaret);
+          }
+        }, 0);
+        return;
+      }
+
+      onInputChange(skillToken);
+      setMenuDismissed(true);
+      setTimeout(() => {
+        if (textareaRef.current) {
+          textareaRef.current.focus();
+          textareaRef.current.setSelectionRange(skillToken.length, skillToken.length);
+        }
+      }, 0);
+      return;
+    }
+
+    if (trigger.position === "inline") {
+      // 行内触发采纳：消费光标处的触发 token，保留上下文文本并执行命令
+      const prefix = input.slice(0, trigger.span.start);
+      const suffix = input.slice(trigger.span.end);
+      const nextVal = prefix + suffix;
+      onInputChange(nextVal);
+      setMenuDismissed(true);
+
+      setTimeout(() => {
+        if (textareaRef.current) {
+          textareaRef.current.focus();
+          textareaRef.current.setSelectionRange(prefix.length, prefix.length);
+        }
+      }, 0);
+
+      if (cmd.isClient) {
+        onClientCommand?.(cmd.name);
+      } else if (onExecuteCommand) {
+        onExecuteCommand(`/${cmd.name}`, { preserveInput: true });
+      }
+      return;
+    }
+
     if (cmd.isClient) {
       setMenuDismissed(true);
       onInputChange("");
@@ -185,12 +346,14 @@ export function Composer({
       onDragOver={handleDragOver}
       onDrop={handleDrop}
     >
-      {isMenuOpen && (
-        <SlashMenu
-          items={filteredCommands}
-          selectedIndex={selectedIndex}
-          onSelect={handleSelectCommand}
-          onHoverIndex={setSelectedIndex}
+      {!isMenuOpen && isFileMenuOpen && (
+        <FileMentionMenu
+          items={fileCandidates}
+          selectedIndex={fileSelectedIndex}
+          onSelect={handleSelectFile}
+          onHoverIndex={setFileSelectedIndex}
+          query={atTrigger.query}
+          placement={menuPlacement}
         />
       )}
       {draftImages.length > 0 && (
@@ -235,8 +398,28 @@ export function Composer({
         ref={textareaRef}
         value={input}
         rows={1}
-        placeholder="询问任何问题（输入 / 查看斜杠命令）"
-        onChange={(e) => onInputChange(e.target.value)}
+        placeholder={
+          canSteerQueue && !input && draftImages.length === 0
+            ? steerQueueHint
+            : "询问任何问题"
+        }
+        onFocus={() => {
+          if (trigger.active) setMenuDismissed(false);
+          if (textareaRef.current) setCursorPos(textareaRef.current.selectionStart);
+        }}
+        onClick={(e) => {
+          setCursorPos(e.currentTarget.selectionStart);
+        }}
+        onKeyUp={(e) => {
+          setCursorPos(e.currentTarget.selectionStart);
+        }}
+        onSelect={(e) => {
+          setCursorPos(e.currentTarget.selectionStart);
+        }}
+        onChange={(e) => {
+          setCursorPos(e.target.selectionStart);
+          onInputChange(e.target.value);
+        }}
         onPaste={handlePaste}
         onKeyDown={(e) => {
           if (isMenuOpen) {
@@ -275,12 +458,77 @@ export function Composer({
               }
               return;
             }
+          } else if (isFileMenuOpen) {
+            if (e.key === "ArrowDown") {
+              e.preventDefault();
+              if (fileCandidates.length > 0) {
+                setFileSelectedIndex((prev) => (prev + 1) % fileCandidates.length);
+              }
+              return;
+            }
+            if (e.key === "ArrowUp") {
+              e.preventDefault();
+              if (fileCandidates.length > 0) {
+                setFileSelectedIndex(
+                  (prev) => (prev - 1 + fileCandidates.length) % fileCandidates.length,
+                );
+              }
+              return;
+            }
+            if (e.key === "Tab") {
+              const activeItem = fileCandidates[fileSelectedIndex];
+              if (activeItem) {
+                e.preventDefault();
+                // 目录按 Tab 下钻，文件按 Tab 直接插入
+                handleSelectFile(activeItem, activeItem.kind === 'directory' ? 'drill' : 'pick');
+              }
+              return;
+            }
+            if (e.key === "Escape") {
+              e.preventDefault();
+              setFileMenuDismissed(true);
+              return;
+            }
+            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+              const activeItem = fileCandidates[fileSelectedIndex];
+              if (activeItem) {
+                e.preventDefault();
+                handleSelectFile(activeItem, 'pick');
+                return;
+              }
+            }
           }
 
-          if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+          // Ctrl+Enter / Cmd+Enter 快捷键：
+          // - 草稿可提交时：运行中以 steer 插话模式发送（立即生效），空闲态以普通模式发送
+          // - 草稿为空且有排队项时：批量插话发送全部排队消息（对齐官方 steerQueue 体验）
+          if (
+            e.key === "Enter" &&
+            (e.ctrlKey || e.metaKey) &&
+            !e.nativeEvent.isComposing
+          ) {
             if (canSend) {
               e.preventDefault();
-              onSend();
+              onSend({ mode: running ? "steer" : "queue" });
+              return;
+            }
+            if (canSteerQueue) {
+              e.preventDefault();
+              onSteerQueue?.();
+              return;
+            }
+          }
+
+          if (
+            e.key === "Enter" &&
+            !e.shiftKey &&
+            !e.ctrlKey &&
+            !e.metaKey &&
+            !e.nativeEvent.isComposing
+          ) {
+            if (canSend) {
+              e.preventDefault();
+              onSend({ mode: "queue" });
             }
           }
         }}
@@ -340,9 +588,13 @@ export function Composer({
           <button
             className="native-send"
             disabled={!canSend}
-            onClick={onSend}
+            onClick={() => onSend({ mode: "queue" })}
             // 运行中有草稿或附件时改为排队发送（与官方一致：同一位置按草稿是否可提交切换）
-            title={running ? "排队发送" : "发送"}
+            title={
+              running
+                ? `排队发送（${isMac ? "Cmd" : "Ctrl"}+Enter 插话发送）`
+                : "发送"
+            }
           >
             <svg
               viewBox="0 0 24 24"
@@ -360,6 +612,15 @@ export function Composer({
           </button>
         )}
       </div>
+      {isMenuOpen && (
+        <SlashMenu
+          items={filteredCommands}
+          selectedIndex={selectedIndex}
+          onSelect={handleSelectCommand}
+          onHoverIndex={setSelectedIndex}
+          placement={menuPlacement}
+        />
+      )}
     </div>
   );
 }

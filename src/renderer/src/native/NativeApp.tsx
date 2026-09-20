@@ -27,13 +27,21 @@ import type {
   SessionHistoryRecord,
   SessionSummary,
   SettingsDescribeValue,
+  SkillDescriptor,
+  SkillListResult,
   UserQuestionAnswer,
   UserQuestionsRequestPayload,
   WorkspaceFollowFrame,
   WorkspaceView,
 } from "./protocol";
 import { Endpoints } from "./protocol";
-import { mergeCommands, parseSlashLine } from "./slash-commands";
+import {
+  BASELINE_HOST_COMMANDS,
+  CLIENT_COMMANDS,
+  mergeCommands,
+  parseSlashLine,
+} from "./slash-commands";
+import { type FileReferenceCandidate } from "./file-mentions";
 import { ReasoningRow } from "./ReasoningRow";
 import { PanelIcon, RightPanel } from "./RightPanel";
 import { TodoPanel } from "./TodoPanel";
@@ -177,6 +185,12 @@ export function NativeApp({
   >(null);
   /** 当前会话可用的宿主斜杠命令列表。 */
   const [hostCommands, setHostCommands] = useState<CommandDescriptor[]>([]);
+  /** 当前会话可用的技能列表。 */
+  const [skills, setSkills] = useState<SkillDescriptor[]>([]);
+  /** 引擎连接状态（由主进程通信桥维护）。 */
+  const [dshConnected, setDshConnected] = useState(true);
+  /** 用户手动触发重连中。 */
+  const [reconnecting, setReconnecting] = useState(false);
   /** 右侧面板宽度（拖拽调节，localStorage 记忆，双击复位）。 */
   const rightPanel = usePanelWidth({
     storageKey: "qingwu.native.panelWidth",
@@ -385,6 +399,33 @@ export function NativeApp({
     qingwu.setActiveWorkspacePath?.(activeWs?.path ?? null);
   }, [workspaces, activeWorkspaceId, qingwu]);
 
+  // 监听引擎断连与重连状态
+  useEffect(() => {
+    qingwu.getDshConnectionStatus?.()
+      .then((status) => {
+        if (typeof status === "boolean") setDshConnected(status);
+      })
+      .catch(() => {});
+    const cleanup = qingwu.onDshConnectionChanged?.((connected) => {
+      setDshConnected(connected);
+      if (connected) setReconnecting(false);
+    });
+    return () => cleanup?.();
+  }, [qingwu]);
+
+  const handleManualReconnect = useCallback(async () => {
+    if (reconnecting) return;
+    setReconnecting(true);
+    try {
+      await qingwu.reconnectDsh?.();
+    } catch (err) {
+      console.error("[qingwu] 重连引擎失败:", err);
+    }
+    window.setTimeout(() => {
+      setReconnecting(false);
+    }, 3000);
+  }, [qingwu, reconnecting]);
+
   // 全局流：$events（会话增删/状态/审批/问答）+ workspace/follow（项目注册表）
   useEffect(() => {
     const openStream = (endpoint: string, payload: unknown) => {
@@ -571,6 +612,7 @@ export function NativeApp({
     setDraftImages(composerImagesRef.current.get(currentId ?? "") ?? []);
     if (!currentId) {
       setHostCommands([]);
+      setSkills([]);
       return;
     }
 
@@ -583,6 +625,17 @@ export function NativeApp({
       })
       .catch(() => {
         if (!cancelled) setHostCommands([]);
+      });
+
+    // 会话可用技能目录
+    void rpc<SkillListResult>(Endpoints.skillsList, {
+      request: { sessionId: currentId },
+    })
+      .then((res) => {
+        if (!cancelled && res?.skills) setSkills(res.skills);
+      })
+      .catch(() => {
+        if (!cancelled) setSkills([]);
       });
 
     setLoadingHistory(true);
@@ -991,23 +1044,43 @@ export function NativeApp({
   };
 
   const availableCommands = useMemo(() => {
-    return mergeCommands(hostCommands);
-  }, [hostCommands]);
+    return mergeCommands(hostCommands, CLIENT_COMMANDS, skills);
+  }, [hostCommands, skills]);
 
-  const handleExecuteCommand = async (line: string) => {
+  const handleExecuteCommand = async (
+    line: string,
+    options?: { preserveInput?: boolean },
+  ) => {
     const text = line.trim();
     const parsed = parseSlashLine(text);
     if (!parsed) return;
 
-    if (parsed.name === "model") {
-      setInput("");
-      composerDraftsRef.current.delete(currentId ?? "");
+    if (!dshConnected) {
+      setError("与引擎连接中断，无法执行命令，请等待重连或点击重试");
       return;
     }
 
-    if (!currentId) {
-      setError(`请先选择或新建一个会话以执行 /${parsed.name}`);
+    if (parsed.name === "model") {
+      if (!options?.preserveInput) {
+        setInput("");
+        composerDraftsRef.current.delete(currentId ?? "");
+      }
       return;
+    }
+
+    let targetSessionId = currentId;
+    if (!targetSessionId) {
+      let wsId = activeWorkspaceId;
+      if (!wsId) {
+        wsId = await handleAddWorkspace();
+        if (!wsId) return;
+      }
+      try {
+        targetSessionId = await createSessionIn(wsId);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+        return;
+      }
     }
 
     const cmdDesc = hostCommands.find(
@@ -1019,13 +1092,18 @@ export function NativeApp({
     }
 
     try {
-      setInput("");
-      setDraftImages([]);
-      composerDraftsRef.current.delete(currentId);
-      composerImagesRef.current.delete(currentId);
+      if (!options?.preserveInput) {
+        setInput("");
+        setDraftImages([]);
+        if (currentId) {
+          composerDraftsRef.current.delete(currentId);
+          composerImagesRef.current.delete(currentId);
+        }
+      }
+      const canonicalLine = `/${parsed.name}${parsed.args ? ` ${parsed.args}` : ""}`;
       const res = await rpc<CommandExecution>(Endpoints.commandsExecute, {
-        agentId: currentId,
-        line: text,
+        agentId: targetSessionId,
+        line: canonicalLine,
         submittedAttachments: [],
       });
       if (res?.result?.kind === "error") {
@@ -1350,14 +1428,28 @@ export function NativeApp({
     }
   };
 
-  const handleSend = async () => {
+  const handleSend = async (options?: { mode?: "queue" | "steer" }) => {
     const text = input.trim();
     const images = [...draftImages];
     if (!text && images.length === 0) return;
 
-    // 斜杠命令拦截：直接交由宿主执行，绕过模型 Prompt 循环
+    if (!dshConnected) {
+      setError("与引擎连接中断，无法发送消息，请等待重连或点击重试");
+      return;
+    }
+
+    // 斜杠命令拦截：仅拦截真正的宿主系统命令与客户端自处理命令，交由宿主执行，绕过模型 Prompt 循环。
+    // 技能（Skill）发出的文本以 /<skill-name> 形式作为普通 prompt 提交给模型，触发底层技能调用。
     const parsedSlash = parseSlashLine(text);
-    if (parsedSlash) {
+    const isHostOrClientCommand =
+      parsedSlash &&
+      (parsedSlash.name === "model" ||
+        hostCommands.some((c) => c.name.toLowerCase() === parsedSlash.name) ||
+        BASELINE_HOST_COMMANDS.some(
+          (c) => c.name.toLowerCase() === parsedSlash.name,
+        ));
+
+    if (isHostOrClientCommand) {
       void handleExecuteCommand(text);
       return;
     }
@@ -1392,6 +1484,7 @@ export function NativeApp({
     // 发出即清空该会话的草稿桶；失败时再写回（输入框高度由 Composer 按 value 重算）
     composerDraftsRef.current.delete(sessionId);
     composerImagesRef.current.delete(sessionId);
+    const submitMode = options?.mode ?? "queue";
     // 乐观回显：提交当帧就显示，宿主落库或入队后由 refreshFromEvents 退休
     const requestId = crypto.randomUUID();
     setEchoes((prev) => [
@@ -1399,7 +1492,7 @@ export function NativeApp({
       {
         id: `echo-${requestId}`,
         rpcId: requestId,
-        placement: "next-turn",
+        placement: submitMode === "steer" ? "next-step" : "next-turn",
         text,
         images: images.map((img) => ({
           id: img.id,
@@ -1436,7 +1529,7 @@ export function NativeApp({
         request: {
           requestId,
           sessionId,
-          mode: "queue",
+          mode: submitMode,
           content,
           clientTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         },
@@ -1448,6 +1541,33 @@ export function NativeApp({
       composerDraftsRef.current.set(sessionId, text);
       composerImagesRef.current.set(sessionId, images);
       setEchoes((prev) => prev.filter((echo) => echo.rpcId !== requestId));
+    }
+  };
+
+  /** 批量插话发送全部排队消息（对齐官方 Cmd/Ctrl+Enter 在空草稿时的快捷手势）。 */
+  const handleSteerQueue = async () => {
+    if (!currentId || !running || queue.length === 0) return;
+    for (const item of queue) {
+      if (item.pending) continue;
+      try {
+        await rpc(Endpoints.sessionUpdateQueue, {
+          request: {
+            sessionId: currentId,
+            itemId: item.id,
+            action: { kind: "steer" },
+          },
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (
+          msg.includes("steer-unavailable") ||
+          msg.includes("queue-item-not-found")
+        ) {
+          break;
+        }
+        setError(msg);
+        break;
+      }
     }
   };
 
@@ -1573,6 +1693,35 @@ export function NativeApp({
     }
   };
 
+  /** 查询当前会话或活跃工作区关联的文件/目录引用候选。 */
+  const handleQueryFileReferences = useCallback(
+    async (query: string, signal: AbortSignal): Promise<FileReferenceCandidate[]> => {
+      let agentSessionId = currentId;
+      if (!agentSessionId) {
+        // 空白页：如果已有会话列表，借用一个有效会话查候选；若无会话，先建一个轻量会话
+        const allSessions = sessions;
+        if (allSessions.length > 0) {
+          agentSessionId = allSessions[0].sessionId;
+        } else {
+          return [];
+        }
+      }
+
+      try {
+        const result = await rpc<FileReferenceCandidate[]>(
+          Endpoints.fileReferencesList,
+          { agentId: agentSessionId, query },
+        );
+        if (signal.aborted) return [];
+        return Array.isArray(result) ? result : [];
+      } catch (err) {
+        console.warn('拉取文件引用失败:', err);
+        return [];
+      }
+    },
+    [currentId, sessions],
+  );
+
   if (!visible) return null;
 
   const chipWorkspaceId = currentId
@@ -1605,6 +1754,37 @@ export function NativeApp({
         onDragOver={handleChatDragOver}
         onDrop={handleChatDrop}
       >
+        {!dshConnected && (
+          <div className="native-connection-banner" role="alert">
+            <span className="native-connection-icon">
+              <svg
+                width="15"
+                height="15"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                <line x1="12" y1="9" x2="12" y2="13" />
+                <line x1="12" y1="17" x2="12.01" y2="17" />
+              </svg>
+            </span>
+            <span className="native-connection-text">
+              与 DeepSeek Harness 引擎连接中断，正在尝试重新连接…
+            </span>
+            <button
+              type="button"
+              className="native-connection-retry-btn"
+              disabled={reconnecting}
+              onClick={() => void handleManualReconnect()}
+            >
+              {reconnecting ? "正在重连…" : "立即重试"}
+            </button>
+          </div>
+        )}
         {showGreeting ? (
           <>
             <div className="native-chat-header">
@@ -1628,9 +1808,10 @@ export function NativeApp({
               <div className="native-empty-title">有什么可以帮你？</div>
               <div className="native-composer-stack">
                 <Composer
+                  menuPlacement="bottom"
                   input={input}
                   onInputChange={handleInputChange}
-                  onSend={() => void handleSend()}
+                  onSend={(opts) => void handleSend(opts)}
                   running={false}
                   onStop={() => void handleStop()}
                   textareaRef={textareaRef}
@@ -1640,6 +1821,7 @@ export function NativeApp({
                   onPreviewImage={(url) => setLightboxUrl(url)}
                   commands={availableCommands}
                   onExecuteCommand={(line) => void handleExecuteCommand(line)}
+                  onQueryFileReferences={handleQueryFileReferences}
                   meter={
                     <ContextMeter
                       pressure={currentProjections?.contextPressure}
@@ -1778,9 +1960,12 @@ export function NativeApp({
                   />
                 ) : (
                   <Composer
+                    menuPlacement="top"
                     input={input}
                     onInputChange={handleInputChange}
-                    onSend={() => void handleSend()}
+                    onSend={(opts) => void handleSend(opts)}
+                    canSteerQueue={running && queue.length > 0}
+                    onSteerQueue={() => void handleSteerQueue()}
                     running={running}
                     onStop={() => void handleStop()}
                     textareaRef={textareaRef}
@@ -1790,6 +1975,7 @@ export function NativeApp({
                     onPreviewImage={(url) => setLightboxUrl(url)}
                     commands={availableCommands}
                     onExecuteCommand={(line) => void handleExecuteCommand(line)}
+                    onQueryFileReferences={handleQueryFileReferences}
                     meter={
                       <ContextMeter
                         pressure={currentProjections?.contextPressure}
@@ -1846,6 +2032,9 @@ export function NativeApp({
           sidebarPanel={sidebarPanel}
           modelCatalog={modelCatalog}
           onRefreshCatalog={() => void refreshModelCatalog()}
+          dshConnected={dshConnected}
+          reconnecting={reconnecting}
+          onReconnect={() => void handleManualReconnect()}
         />
       )}
     </div>
