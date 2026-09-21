@@ -1835,7 +1835,7 @@ export function NativeApp({
               </div>
             </div>
             <div className="native-empty">
-              <div className="native-empty-title">有什么可以帮你？</div>
+              <div className="native-empty-title">我们要做什么？</div>
               <div className="native-composer-stack">
                 <Composer
                   menuPlacement="bottom"
