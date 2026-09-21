@@ -1212,6 +1212,29 @@ export function NativeApp({
     );
   };
 
+  /** 调整工作区顺序（workspace/insertBefore，follow 流推送 order 帧自动更新列表）。 */
+  const handleWorkspaceReorder = useCallback(
+    async (workspaceId: string, beforeWorkspaceId?: string) => {
+      try {
+        const result = await rpc<{ workspaceIds: string[] }>(
+          Endpoints.workspaceInsertBefore,
+          {
+            request: {
+              workspaceId,
+              ...(beforeWorkspaceId ? { beforeWorkspaceId } : {}),
+            },
+          },
+        );
+        if (result?.workspaceIds) {
+          setWorkspaces((prev) => orderWorkspaces(prev, result.workspaceIds));
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [],
+  );
+
   /** 重命名会话（session/rename，更新本地会话投影标题）。 */
   const handleSessionRename = useCallback(
     async (sessionId: string, title: string) => {
@@ -1749,6 +1772,7 @@ export function NativeApp({
         handleAddWorkspace={handleAddWorkspace}
         handleWorkspaceRename={handleWorkspaceRename}
         handleWorkspaceDelete={handleWorkspaceDelete}
+        handleWorkspaceReorder={handleWorkspaceReorder}
         handleSessionRename={handleSessionRename}
         handleSessionArchive={handleSessionArchive}
         setError={setError}

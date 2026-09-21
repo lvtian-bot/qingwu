@@ -10,20 +10,53 @@ export function WorkspaceRow({
   workspace,
   collapsed,
   pinned,
+  canMoveUp,
+  canMoveDown,
+  draggable,
+  isDragging,
+  dropPosition,
   onToggle,
   onNewSession,
   onRename,
   onDelete,
   onTogglePin,
+  onMoveUp,
+  onMoveDown,
+  onDragStart,
+  onDragEnd,
+  onDragOver,
+  onDragLeave,
+  onDrop,
 }: {
   workspace: WorkspaceView;
   collapsed: boolean;
   pinned?: boolean;
+  canMoveUp?: boolean;
+  canMoveDown?: boolean;
+  draggable?: boolean;
+  isDragging?: boolean;
+  dropPosition?: "before" | "after" | null;
   onToggle: () => void;
   onNewSession: () => void;
   onRename: (title: string) => void;
   onDelete: () => void;
   onTogglePin?: () => void;
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
+  onDragStart?: (
+    e: React.DragEvent<HTMLDivElement>,
+    workspaceId: string,
+  ) => void;
+  onDragEnd?: (e: React.DragEvent<HTMLDivElement>) => void;
+  onDragOver?: (
+    e: React.DragEvent<HTMLDivElement>,
+    workspaceId: string,
+  ) => void;
+  onDragLeave?: (
+    e: React.DragEvent<HTMLDivElement>,
+    workspaceId: string,
+  ) => void;
+  onDrop?: (e: React.DragEvent<HTMLDivElement>, workspaceId: string) => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -55,10 +88,39 @@ export function WorkspaceRow({
     else setDraftTitle(workspace.title);
   };
 
+  const rowClasses = [
+    "native-ws-row",
+    collapsed ? "collapsed" : "",
+    isDragging ? "dragging" : "",
+    dropPosition ? `drop-${dropPosition}` : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   return (
     <div
-      className={`native-ws-row${collapsed ? " collapsed" : ""}`}
+      className={rowClasses}
       ref={rootRef}
+      draggable={draggable && !renaming}
+      onDragStart={(e) => {
+        if (!draggable || renaming) return;
+        onDragStart?.(e, workspace.workspaceId);
+      }}
+      onDragEnd={(e) => {
+        onDragEnd?.(e);
+      }}
+      onDragOver={(e) => {
+        if (!draggable || renaming) return;
+        onDragOver?.(e, workspace.workspaceId);
+      }}
+      onDragLeave={(e) => {
+        if (!draggable || renaming) return;
+        onDragLeave?.(e, workspace.workspaceId);
+      }}
+      onDrop={(e) => {
+        if (!draggable || renaming) return;
+        onDrop?.(e, workspace.workspaceId);
+      }}
     >
       {renaming ? (
         <input
@@ -79,9 +141,17 @@ export function WorkspaceRow({
         />
       ) : (
         <>
-          <button
+          <div
+            role="button"
+            tabIndex={0}
             className="native-ws-main"
             onClick={onToggle}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onToggle();
+              }
+            }}
             title={workspace.path}
           >
             {/* 文件夹图标即展开/收起状态指示：展开显示打开的文件夹，收起显示关闭的 */}
@@ -104,11 +174,16 @@ export function WorkspaceRow({
               )}
             </svg>
             <span className="native-ws-title">{workspace.title}</span>
-          </button>
+          </div>
           {onTogglePin && (
             <button
+              type="button"
+              draggable={false}
               className={`native-ws-act${pinned ? " pinned" : ""}`}
-              onClick={onTogglePin}
+              onClick={(e) => {
+                e.stopPropagation();
+                onTogglePin();
+              }}
               title={pinned ? "取消置顶项目" : "置顶项目"}
               aria-label={pinned ? "取消置顶项目" : "置顶项目"}
             >
@@ -129,8 +204,11 @@ export function WorkspaceRow({
             </button>
           )}
           <button
+            type="button"
+            draggable={false}
             className={`native-ws-act${menuOpen ? " visible" : ""}`}
-            onClick={() => {
+            onClick={(e) => {
+              e.stopPropagation();
               setMenuOpen((v) => !v);
               setConfirmDelete(false);
             }}
@@ -150,8 +228,13 @@ export function WorkspaceRow({
             </svg>
           </button>
           <button
+            type="button"
+            draggable={false}
             className="native-ws-act"
-            onClick={onNewSession}
+            onClick={(e) => {
+              e.stopPropagation();
+              onNewSession();
+            }}
             title={`在“${workspace.title}”中新建会话`}
             aria-label={`在“${workspace.title}”中新建会话`}
           >
@@ -173,6 +256,7 @@ export function WorkspaceRow({
             <div className="native-ws-menu">
               {onTogglePin && (
                 <button
+                  type="button"
                   className="native-popover-item"
                   onClick={() => {
                     onTogglePin();
@@ -184,7 +268,34 @@ export function WorkspaceRow({
                   </span>
                 </button>
               )}
+              {onMoveUp && (
+                <button
+                  type="button"
+                  className="native-popover-item"
+                  disabled={!canMoveUp}
+                  onClick={() => {
+                    onMoveUp();
+                    setMenuOpen(false);
+                  }}
+                >
+                  <span className="native-popover-item-name">上移项目</span>
+                </button>
+              )}
+              {onMoveDown && (
+                <button
+                  type="button"
+                  className="native-popover-item"
+                  disabled={!canMoveDown}
+                  onClick={() => {
+                    onMoveDown();
+                    setMenuOpen(false);
+                  }}
+                >
+                  <span className="native-popover-item-name">下移项目</span>
+                </button>
+              )}
               <button
+                type="button"
                 className="native-popover-item"
                 onClick={() => {
                   void window.qingwu?.openTerminal?.(workspace.path);
@@ -194,15 +305,19 @@ export function WorkspaceRow({
                 <span className="native-popover-item-name">在终端中打开</span>
               </button>
               <button
+                type="button"
                 className="native-popover-item"
                 onClick={() => {
                   void window.qingwu?.openPath?.(workspace.path);
                   setMenuOpen(false);
                 }}
               >
-                <span className="native-popover-item-name">在文件管理器中打开</span>
+                <span className="native-popover-item-name">
+                  在文件管理器中打开
+                </span>
               </button>
               <button
+                type="button"
                 className="native-popover-item"
                 onClick={() => {
                   setRenaming(true);
@@ -212,6 +327,7 @@ export function WorkspaceRow({
                 <span className="native-popover-item-name">重命名工作区</span>
               </button>
               <button
+                type="button"
                 className="native-popover-item native-ws-menu-delete"
                 onClick={() => setConfirmDelete(true)}
               >

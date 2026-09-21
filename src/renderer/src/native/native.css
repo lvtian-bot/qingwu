@@ -625,6 +625,31 @@ textarea {
   border-radius: 8px;
 }
 
+.native-ws-row.dragging {
+  opacity: 0.4;
+}
+
+.native-ws-row.drop-before::before,
+.native-ws-row.drop-after::after {
+  content: "";
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  height: 2px;
+  background: var(--native-accent, #3b82f6);
+  border-radius: 1px;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.native-ws-row.drop-before::before {
+  top: -1px;
+}
+
+.native-ws-row.drop-after::after {
+  bottom: -1px;
+}
+
 .native-ws-row:hover {
   background: var(--native-sidebar-hover);
 }
@@ -642,6 +667,7 @@ textarea {
   font-size: 14px;
   cursor: pointer;
   text-align: left;
+  user-select: none;
 }
 
 .native-ws-icon {
@@ -2466,6 +2492,12 @@ body.native-ui-active .titlebar {
 
 .native-popover-item:hover {
   background: var(--native-hover);
+}
+
+.native-popover-item:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
 }
 
 .native-popover-item.active {

@@ -3,7 +3,9 @@ import type { PendingKind } from "./PendingInteraction";
 import { SessionRow, WorkspaceRow } from "./SidebarRows";
 import type { SessionSummary, WorkspaceView } from "./protocol";
 import {
+  calculateMoveAnchor,
   loadPinnedData,
+  reorderIds,
   savePinnedData,
   sessionTitle,
   sortSessionsByRecency,
@@ -43,6 +45,22 @@ export function useSessionSidebar(
       return next;
     });
   }, []);
+
+  const reorderPinnedWorkspace = useCallback(
+    (workspaceId: string, beforeWorkspaceId?: string) => {
+      setPinnedData((prev) => {
+        const nextWorkspaces = reorderIds(
+          prev.workspaces,
+          workspaceId,
+          beforeWorkspaceId,
+        );
+        const next = { ...prev, workspaces: nextWorkspaces };
+        savePinnedData(next);
+        return next;
+      });
+    },
+    [],
+  );
   /** 会话搜索（纯前端标题过滤）。 */
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchText, setSearchText] = useState("");
@@ -154,6 +172,7 @@ export function useSessionSidebar(
     setSessionVisibleByGroup,
     toggleWorkspacePin,
     toggleSessionPin,
+    reorderPinnedWorkspace,
     getWorkspaceSessions,
     isWorkspaceMatched,
     pinnedWorkspaces,
@@ -177,6 +196,7 @@ interface SessionSidebarProps {
   handleAddWorkspace: () => Promise<string | null>;
   handleWorkspaceRename: (id: string, title: string) => void;
   handleWorkspaceDelete: (id: string) => void;
+  handleWorkspaceReorder: (id: string, beforeId?: string) => Promise<void>;
   handleSessionRename: (id: string, title: string) => Promise<void>;
   handleSessionArchive: (id: string) => Promise<void>;
   setError: (message: string) => void;
@@ -196,6 +216,7 @@ export function SessionSidebar({
   handleAddWorkspace,
   handleWorkspaceRename,
   handleWorkspaceDelete,
+  handleWorkspaceReorder,
   handleSessionRename,
   handleSessionArchive,
   setError,
@@ -213,6 +234,7 @@ export function SessionSidebar({
     setSessionVisibleByGroup,
     toggleWorkspacePin,
     toggleSessionPin,
+    reorderPinnedWorkspace,
     getWorkspaceSessions,
     isWorkspaceMatched,
     pinnedWorkspaces,
@@ -221,6 +243,150 @@ export function SessionSidebar({
     normalUngroupedSessions,
   } = state;
   if (collapsed) return null;
+
+  const [dragWsId, setDragWsId] = useState<string | null>(null);
+  const [dragOverWs, setDragOverWs] = useState<{
+    id: string;
+    position: "before" | "after";
+  } | null>(null);
+
+  const canReorder = searchText.trim() === "";
+
+  const handleDragStart = (
+    e: React.DragEvent<HTMLDivElement>,
+    workspaceId: string,
+  ) => {
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", workspaceId);
+    setDragWsId(workspaceId);
+  };
+
+  const handleDragEnd = () => {
+    setDragWsId(null);
+    setDragOverWs(null);
+  };
+
+  const handleDragOver = (
+    e: React.DragEvent<HTMLDivElement>,
+    workspaceId: string,
+  ) => {
+    if (!dragWsId || dragWsId === workspaceId) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    const rect = e.currentTarget.getBoundingClientRect();
+    const position =
+      e.clientY - rect.top < rect.height / 2 ? "before" : "after";
+    if (dragOverWs?.id !== workspaceId || dragOverWs?.position !== position) {
+      setDragOverWs({ id: workspaceId, position });
+    }
+  };
+
+  const handleDragLeave = (
+    e: React.DragEvent<HTMLDivElement>,
+    workspaceId: string,
+  ) => {
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+      if (dragOverWs?.id === workspaceId) {
+        setDragOverWs(null);
+      }
+    }
+  };
+
+  const handlePinnedDrop = (
+    e: React.DragEvent<HTMLDivElement>,
+    targetWsId: string,
+  ) => {
+    e.preventDefault();
+    if (!dragWsId || !dragOverWs || dragWsId === targetWsId) {
+      handleDragEnd();
+      return;
+    }
+    const pinnedIds = pinnedWorkspaces.map((w) => w.workspaceId);
+    if (!pinnedIds.includes(dragWsId) || !pinnedIds.includes(targetWsId)) {
+      handleDragEnd();
+      return;
+    }
+    const { changed, beforeId } = calculateMoveAnchor(
+      pinnedIds,
+      dragWsId,
+      targetWsId,
+      dragOverWs.position,
+    );
+    if (changed) {
+      reorderPinnedWorkspace(dragWsId, beforeId);
+    }
+    handleDragEnd();
+  };
+
+  const handleNormalDrop = (
+    e: React.DragEvent<HTMLDivElement>,
+    targetWsId: string,
+  ) => {
+    e.preventDefault();
+    if (!dragWsId || !dragOverWs || dragWsId === targetWsId) {
+      handleDragEnd();
+      return;
+    }
+    const normalIds = normalWorkspaces.map((w) => w.workspaceId);
+    if (!normalIds.includes(dragWsId) || !normalIds.includes(targetWsId)) {
+      handleDragEnd();
+      return;
+    }
+    const { changed, beforeId } = calculateMoveAnchor(
+      normalIds,
+      dragWsId,
+      targetWsId,
+      dragOverWs.position,
+    );
+    if (changed) {
+      void handleWorkspaceReorder(dragWsId, beforeId);
+    }
+    handleDragEnd();
+  };
+
+  const handlePinnedMoveUp = (index: number) => {
+    if (index <= 0) return;
+    const ws = pinnedWorkspaces[index];
+    const prevWs = pinnedWorkspaces[index - 1];
+    reorderPinnedWorkspace(ws.workspaceId, prevWs.workspaceId);
+  };
+
+  const handlePinnedMoveDown = (index: number) => {
+    if (index >= pinnedWorkspaces.length - 1) return;
+    const ws = pinnedWorkspaces[index];
+    const targetWs = pinnedWorkspaces[index + 1];
+    const { changed, beforeId } = calculateMoveAnchor(
+      pinnedWorkspaces.map((w) => w.workspaceId),
+      ws.workspaceId,
+      targetWs.workspaceId,
+      "after",
+    );
+    if (changed) {
+      reorderPinnedWorkspace(ws.workspaceId, beforeId);
+    }
+  };
+
+  const handleNormalMoveUp = (index: number) => {
+    if (index <= 0) return;
+    const ws = normalWorkspaces[index];
+    const prevWs = normalWorkspaces[index - 1];
+    void handleWorkspaceReorder(ws.workspaceId, prevWs.workspaceId);
+  };
+
+  const handleNormalMoveDown = (index: number) => {
+    if (index >= normalWorkspaces.length - 1) return;
+    const ws = normalWorkspaces[index];
+    const targetWs = normalWorkspaces[index + 1];
+    const { changed, beforeId } = calculateMoveAnchor(
+      normalWorkspaces.map((w) => w.workspaceId),
+      ws.workspaceId,
+      targetWs.workspaceId,
+      "after",
+    );
+    if (changed) {
+      void handleWorkspaceReorder(ws.workspaceId, beforeId);
+    }
+  };
   /** 折叠/展开项目分组；折叠时同时复位该组会话展示条数，再点开回到默认上限。 */
   const toggleWorkspaceGroup = (workspaceId: string) => {
     const collapsing = !collapsedGroups.has(workspaceId);
@@ -370,9 +536,14 @@ export function SessionSidebar({
                 <span className="native-sidebar-section-title">置顶</span>
               </div>
               <div className="native-sidebar-section-content">
-                {pinnedWorkspaces.map((ws) => {
+                {pinnedWorkspaces.map((ws, index) => {
                   const wsSessions = getWorkspaceSessions(ws);
                   if (!isWorkspaceMatched(ws, wsSessions)) return null;
+                  const isDragging = dragWsId === ws.workspaceId;
+                  const dropPosition =
+                    dragOverWs?.id === ws.workspaceId
+                      ? dragOverWs.position
+                      : null;
                   return (
                     <div
                       key={ws.workspaceId}
@@ -382,6 +553,13 @@ export function SessionSidebar({
                         workspace={ws}
                         collapsed={collapsedGroups.has(ws.workspaceId)}
                         pinned={true}
+                        canMoveUp={canReorder && index > 0}
+                        canMoveDown={
+                          canReorder && index < pinnedWorkspaces.length - 1
+                        }
+                        draggable={canReorder}
+                        isDragging={isDragging}
+                        dropPosition={dropPosition}
                         onToggle={() => toggleWorkspaceGroup(ws.workspaceId)}
                         onNewSession={() =>
                           void createSessionIn(ws.workspaceId).catch((err) =>
@@ -395,6 +573,13 @@ export function SessionSidebar({
                         }
                         onDelete={() => handleWorkspaceDelete(ws.workspaceId)}
                         onTogglePin={() => toggleWorkspacePin(ws.workspaceId)}
+                        onMoveUp={() => handlePinnedMoveUp(index)}
+                        onMoveDown={() => handlePinnedMoveDown(index)}
+                        onDragStart={handleDragStart}
+                        onDragEnd={handleDragEnd}
+                        onDragOver={handleDragOver}
+                        onDragLeave={handleDragLeave}
+                        onDrop={handlePinnedDrop}
                       />
                       {renderWorkspaceSessions(ws, wsSessions)}
                     </div>
@@ -452,9 +637,14 @@ export function SessionSidebar({
               </button>
             </div>
             <div className="native-sidebar-section-content">
-              {normalWorkspaces.map((ws) => {
+              {normalWorkspaces.map((ws, index) => {
                 const wsSessions = getWorkspaceSessions(ws);
                 if (!isWorkspaceMatched(ws, wsSessions)) return null;
+                const isDragging = dragWsId === ws.workspaceId;
+                const dropPosition =
+                  dragOverWs?.id === ws.workspaceId
+                    ? dragOverWs.position
+                    : null;
                 return (
                   <div
                     key={ws.workspaceId}
@@ -464,6 +654,13 @@ export function SessionSidebar({
                       workspace={ws}
                       collapsed={collapsedGroups.has(ws.workspaceId)}
                       pinned={false}
+                      canMoveUp={canReorder && index > 0}
+                      canMoveDown={
+                        canReorder && index < normalWorkspaces.length - 1
+                      }
+                      draggable={canReorder}
+                      isDragging={isDragging}
+                      dropPosition={dropPosition}
                       onToggle={() => toggleWorkspaceGroup(ws.workspaceId)}
                       onNewSession={() =>
                         void createSessionIn(ws.workspaceId).catch((err) =>
@@ -477,6 +674,13 @@ export function SessionSidebar({
                       }
                       onDelete={() => handleWorkspaceDelete(ws.workspaceId)}
                       onTogglePin={() => toggleWorkspacePin(ws.workspaceId)}
+                      onMoveUp={() => handleNormalMoveUp(index)}
+                      onMoveDown={() => handleNormalMoveDown(index)}
+                      onDragStart={handleDragStart}
+                      onDragEnd={handleDragEnd}
+                      onDragOver={handleDragOver}
+                      onDragLeave={handleDragLeave}
+                      onDrop={handleNormalDrop}
                     />
                     {renderWorkspaceSessions(ws, wsSessions)}
                   </div>

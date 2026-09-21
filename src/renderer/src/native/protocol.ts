@@ -38,6 +38,7 @@ export const Endpoints = {
   workspaceCreate: 'workspace/create',
   workspaceRename: 'workspace/rename',
   workspaceDelete: 'workspace/delete',
+  workspaceInsertBefore: 'workspace/insertBefore',
   workspaceArchiveSession: 'workspace/archiveSession',
   directoryPickerPick: 'directoryPicker/pick',
   fileReferencesList: 'fileReferences/list',
