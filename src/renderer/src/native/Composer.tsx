@@ -573,7 +573,7 @@ export function Composer({
         {controls ?? <span style={{ flex: 1 }} />}
         {meter}
         {running && !canSend ? (
-          <button className="native-send stop" onClick={onStop} title="停止">
+          <button className="native-send stop" onClick={onStop} title="停止 (连按两次 Esc)">
             <svg
               viewBox="0 0 24 24"
               width="14"

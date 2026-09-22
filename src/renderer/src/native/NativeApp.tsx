@@ -140,16 +140,6 @@ export function NativeApp({
     max: 400,
   });
 
-  useEffect(() => {
-    const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === ",") {
-        e.preventDefault();
-        setSettingsOpen((prev) => !prev);
-      }
-    };
-    window.addEventListener("keydown", handleGlobalKeyDown);
-    return () => window.removeEventListener("keydown", handleGlobalKeyDown);
-  }, []);
 
   /** 最近活跃工作区（对齐官方 New Session 语义：新会话落在这里）。 */
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(
@@ -1762,6 +1752,46 @@ export function NativeApp({
       setError(err instanceof Error ? err.message : String(err));
     }
   };
+
+  /** 记录上次按下 Escape 的时间戳（连按两次 Esc 中断会话）。 */
+  const lastEscTimeRef = useRef(0);
+
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      // 呼出/关闭设置面板：Ctrl+, 或 Meta+,
+      if ((e.ctrlKey || e.metaKey) && e.key === ",") {
+        e.preventDefault();
+        setSettingsOpen((prev) => !prev);
+        return;
+      }
+
+      // 连按两次 Esc 中断当前会话（对齐 Codex 等工具的快捷叫停与防误触机制）
+      if (e.key === "Escape") {
+        // 若事件已被内层浮层或弹层消费（如 @ 补全下拉、/ 命令菜单、大图预览或设置页），重置计数并忽略
+        if (e.defaultPrevented || settingsOpen || lightboxUrl) {
+          lastEscTimeRef.current = 0;
+          return;
+        }
+        // 仅在会话处于运行态时生效
+        if (!running || !currentId) {
+          lastEscTimeRef.current = 0;
+          return;
+        }
+        const now = Date.now();
+        if (now - lastEscTimeRef.current <= 600) {
+          // 600ms 内连按第二次 Esc：立即中断会话并重置计时
+          lastEscTimeRef.current = 0;
+          e.preventDefault();
+          void handleStop();
+        } else {
+          // 第一次按下 Esc：记录当前时间戳
+          lastEscTimeRef.current = now;
+        }
+      }
+    };
+    window.addEventListener("keydown", handleGlobalKeyDown);
+    return () => window.removeEventListener("keydown", handleGlobalKeyDown);
+  }, [settingsOpen, lightboxUrl, running, currentId]);
 
   /** 查询当前会话或活跃工作区关联的文件/目录引用候选。 */
   const handleQueryFileReferences = useCallback(
