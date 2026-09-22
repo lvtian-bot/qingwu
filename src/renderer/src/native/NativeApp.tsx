@@ -223,6 +223,8 @@ export function NativeApp({
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const stickBottomRef = useRef(true);
+  /** 切换会话标志：新会话快照上屏初次沉底前置为 true，屏蔽高度剧变引发的 onScroll 误关贴底。 */
+  const initialScrollNeededRef = useRef(false);
   const currentIdRef = useRef<string | null>(null);
   /** follow 开场帧 cursor：session/page 的 throughSeq（含）日志切点，随每代快照更新。 */
   const historyThroughSeqRef = useRef(0);
@@ -619,6 +621,7 @@ export function NativeApp({
     setReasoningActive(false);
     setToolCalling(false);
     stickBottomRef.current = true;
+    initialScrollNeededRef.current = true;
     setQueue([]);
     setEchoes([]);
     // 运行态从会话列表播种：进入一个正在跑的会话时必须立刻显示「停止」，
@@ -816,10 +819,10 @@ export function NativeApp({
     };
   }, [currentId, appendEvent, refreshFromEvents]);
 
-  // 自动滚动：仅当用户位于底部附近时贴底跟随
+  // 自动滚动：仅当用户位于底部附近时贴底跟随；会话切换初次沉底期间忽略原生滚动事件，避免高度剧变误判关闭贴底
   const handleScroll = useCallback(() => {
     const el = scrollRef.current;
-    if (!el) return;
+    if (!el || initialScrollNeededRef.current) return;
     stickBottomRef.current =
       el.scrollHeight - el.scrollTop - el.clientHeight < 80;
   }, []);
@@ -832,6 +835,24 @@ export function NativeApp({
     restoreScrollRef.current = null;
     el.scrollTop = anchor.top + (el.scrollHeight - anchor.height);
   }, [items]);
+
+  // 切换会话快照载入后初次沉底：无条件拉至最新消息，并在下一帧复核校准，避开图片/代码块首次渲染撑高时停在顶部
+  useLayoutEffect(() => {
+    if (!initialScrollNeededRef.current || loadingHistory) return;
+    const el = scrollRef.current;
+    if (el) {
+      el.scrollTop = el.scrollHeight;
+    }
+    bottomRef.current?.scrollIntoView({ block: "end" });
+    const rafId = requestAnimationFrame(() => {
+      if (scrollRef.current) {
+        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      }
+      bottomRef.current?.scrollIntoView({ block: "end" });
+      initialScrollNeededRef.current = false;
+    });
+    return () => cancelAnimationFrame(rafId);
+  }, [items, loadingHistory]);
 
   useEffect(() => {
     if (stickBottomRef.current) {
