@@ -511,14 +511,14 @@ export function PendingInteraction({
             <div className="native-card-text">{entry.approval.reason}</div>
           )}
           <div className="native-card-actions">
+            <button onClick={() => void onApproval(entry.approval, "rejected")}>
+              拒绝
+            </button>
             <button
               className="primary"
               onClick={() => void onApproval(entry.approval, "allowed-once")}
             >
               允许一次
-            </button>
-            <button onClick={() => void onApproval(entry.approval, "rejected")}>
-              拒绝
             </button>
           </div>
         </div>
