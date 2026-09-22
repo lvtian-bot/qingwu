@@ -1221,7 +1221,8 @@ textarea {
   text-overflow: clip;
 }
 
-/* 思考中：一行微弱扫光，让「还在想」看得出来（关掉动效偏好时不显示） */
+/* 思考中：一行微弱扫光，让「还在想」看得出来；整条压低不透明度只留一丝
+   动感，避免形成明显色块盖住摘要文字（关掉动效偏好时不显示） */
 .native-reasoning-row.running::after {
   content: "";
   position: absolute;
@@ -1229,6 +1230,7 @@ textarea {
   inset-block: 0;
   width: 300px;
   pointer-events: none;
+  opacity: 0.25;
   background: linear-gradient(
     90deg,
     transparent 0%,
