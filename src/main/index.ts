@@ -17,7 +17,7 @@ import { AppLifecycle } from "./app-lifecycle";
 import { setupFileLogging, redactSecrets } from "./logging";
 import { openTerminal, openPath, setActiveWorkspacePath } from "./terminal";
 import { setupApplicationDiagnostics } from "./diagnostics";
-import type { UiMode } from "../shared/types";
+import type { RendererErrorReport, UiMode } from "../shared/types";
 
 setupFileLogging(path.join(app.getPath("userData"), "logs"));
 setupApplicationDiagnostics();
@@ -80,6 +80,36 @@ if (!gotTheLock) {
 
   const isUpdateWindowSender = (event: IpcMainInvokeEvent) =>
     updateWindowManager.isSender(event);
+
+  const trimDiagnostic = (value: unknown, maxLength: number): string | undefined => {
+    if (value === undefined || value === null || value === "") return undefined;
+    return redactSecrets(String(value)).slice(0, maxLength);
+  };
+
+  ipcMain.on(
+    "diagnostics:renderer-error",
+    (event, report: RendererErrorReport) => {
+      if (
+        !windowManager.mainWindow ||
+        windowManager.mainWindow.isDestroyed() ||
+        event.sender !== windowManager.mainWindow.webContents
+      ) {
+        return;
+      }
+      console.error(
+        "[Renderer] 青梧界面未捕获错误:",
+        JSON.stringify({
+          kind: trimDiagnostic(report?.kind, 40),
+          message: trimDiagnostic(report?.message, 2_000),
+          stack: trimDiagnostic(report?.stack, 8_000),
+          componentStack: trimDiagnostic(report?.componentStack, 8_000),
+          source: trimDiagnostic(report?.source, 500),
+          line: Number.isFinite(report?.line) ? report.line : undefined,
+          column: Number.isFinite(report?.column) ? report.column : undefined,
+        }),
+      );
+    },
+  );
 
   ipcMain.handle("update:getState", (event) =>
     isUpdateWindowSender(event) ? updateService.getState() : null,

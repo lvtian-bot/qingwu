@@ -46,11 +46,24 @@ export interface DshStreamItem {
   value: unknown;
 }
 
+/** 渲染层未捕获错误的原始结构；主进程负责裁剪和脱敏后落盘。 */
+export interface RendererErrorReport {
+  kind: "react-render" | "window-error" | "unhandled-rejection";
+  message: string;
+  stack?: string;
+  componentStack?: string;
+  source?: string;
+  line?: number;
+  column?: number;
+}
+
 /**
  * preload 暴露给渲染层的桥接 API。
  * 主进程、preload、渲染层共同以此为准，避免 IPC 契约漂移。
  */
 export interface QingwuApi {
+  /** 将青梧界面的未捕获错误交给主进程脱敏落盘。 */
+  reportRendererError: (report: RendererErrorReport) => void;
   onUpdateState: (listener: (state: UpdateState) => void) => () => void;
   getUpdateState: () => Promise<UpdateState | null>;
   checkForUpdates: () => Promise<UpdateState | null>;

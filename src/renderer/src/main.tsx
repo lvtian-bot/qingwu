@@ -2,6 +2,7 @@ import { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { UpdateWindow } from "./UpdateWindow";
 import { TitleBar } from "./TitleBar";
+import { AppErrorBoundary } from "./AppErrorBoundary";
 import { NativeApp } from "./native/NativeApp";
 import "./update.css";
 
@@ -13,7 +14,11 @@ if (!rootElement) {
 }
 
 if (view === "update") {
-  createRoot(rootElement).render(<UpdateWindow />);
+  createRoot(rootElement).render(
+    <AppErrorBoundary>
+      <UpdateWindow />
+    </AppErrorBoundary>,
+  );
 } else {
   /** 侧栏折叠态提到入口层：开关按钮在标题栏（对齐 ChatGPT 桌面版），状态由标题栏与侧栏共用。 */
   function MainWindow() {
@@ -28,5 +33,9 @@ if (view === "update") {
       </>
     );
   }
-  createRoot(rootElement).render(<MainWindow />);
+  createRoot(rootElement).render(
+    <AppErrorBoundary>
+      <MainWindow />
+    </AppErrorBoundary>,
+  );
 }

@@ -242,13 +242,14 @@ export function SessionSidebar({
     normalWorkspaces,
     normalUngroupedSessions,
   } = state;
-  if (collapsed) return null;
-
   const [dragWsId, setDragWsId] = useState<string | null>(null);
   const [dragOverWs, setDragOverWs] = useState<{
     id: string;
     position: "before" | "after";
   } | null>(null);
+
+  // Hook 必须无条件执行；放在 collapsed 提前返回之后会导致切换侧栏时整棵 React 树被卸载。
+  if (collapsed) return null;
 
   const canReorder = searchText.trim() === "";
 

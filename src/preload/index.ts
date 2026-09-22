@@ -1,8 +1,72 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { IpcRendererEvent } from 'electron';
-import type { DshStreamItem, QingwuApi, UiMode, UpdateState } from '../shared/types';
+import type {
+  DshStreamItem,
+  QingwuApi,
+  RendererErrorReport,
+  UiMode,
+  UpdateState,
+} from '../shared/types';
+
+interface PreloadWindowErrorEvent {
+  error?: unknown;
+  message?: string;
+  filename?: string;
+  lineno?: number;
+  colno?: number;
+}
+
+interface PreloadUnhandledRejectionEvent {
+  reason?: unknown;
+}
+
+declare const window: {
+  addEventListener(
+    type: 'error',
+    listener: (event: PreloadWindowErrorEvent) => void,
+  ): void;
+  addEventListener(
+    type: 'unhandledrejection',
+    listener: (event: PreloadUnhandledRejectionEvent) => void,
+  ): void;
+};
+
+function describeThrown(value: unknown): { message: string; stack?: string } {
+  if (value instanceof Error) {
+    return { message: value.message, stack: value.stack };
+  }
+  if (typeof value === 'string') return { message: value };
+  try {
+    return { message: JSON.stringify(value) };
+  } catch {
+    return { message: String(value) };
+  }
+}
+
+function reportRendererError(report: RendererErrorReport): void {
+  ipcRenderer.send('diagnostics:renderer-error', report);
+}
+
+window.addEventListener('error', (event) => {
+  const described = describeThrown(event.error ?? event.message);
+  reportRendererError({
+    kind: 'window-error',
+    ...described,
+    source: event.filename || undefined,
+    line: event.lineno || undefined,
+    column: event.colno || undefined,
+  });
+});
+
+window.addEventListener('unhandledrejection', (event) => {
+  reportRendererError({
+    kind: 'unhandled-rejection',
+    ...describeThrown(event.reason),
+  });
+});
 
 const api: QingwuApi = {
+  reportRendererError,
   onUpdateState: (listener) => {
     const handler = (_event: IpcRendererEvent, state: UpdateState) => listener(state);
     ipcRenderer.on('update:state-changed', handler);

@@ -2,6 +2,8 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const { loadTs } = require('./helpers/load-ts.cjs');
 const {
   sortSessionsByRecency,
@@ -12,6 +14,24 @@ const {
   calculateMoveAnchor,
   reorderWorkspaces,
 } = loadTs('src/renderer/src/native/sidebar-data.ts');
+
+test('侧栏折叠提前返回前先执行拖拽状态 Hook', () => {
+  const source = fs.readFileSync(
+    path.join(__dirname, '../src/renderer/src/native/SessionSidebar.tsx'),
+    'utf8',
+  );
+  const componentStart = source.indexOf('export function SessionSidebar');
+  const dragState = source.indexOf('const [dragWsId', componentStart);
+  const collapsedReturn = source.indexOf(
+    'if (collapsed) return null',
+    componentStart,
+  );
+  assert.ok(componentStart >= 0 && dragState >= 0 && collapsedReturn >= 0);
+  assert.ok(
+    dragState < collapsedReturn,
+    '条件返回之后调用 Hook 会在切换侧栏时卸载整棵 React 树',
+  );
+});
 
 test('sortSessionsByRecency 按最近更新时间倒序排列会话', () => {
   const sessions = [

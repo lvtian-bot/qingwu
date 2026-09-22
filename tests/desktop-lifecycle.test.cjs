@@ -355,7 +355,7 @@ test("主入口先提供托盘退出入口，启动期间退出后不创建窗�
     electron: {
       app,
       dialog: { showMessageBox: async () => ({ response: 1 }) },
-      ipcMain: { handle() {} },
+      ipcMain: { handle() {}, on() {} },
       powerMonitor: new EventEmitter(),
       shell: {},
     },
