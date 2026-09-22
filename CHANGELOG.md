@@ -2,6 +2,11 @@
 
 所有显著变更都记录在本文件中，格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## 0.1.9（2026-09-22）
+### 🐛 修复
+- 修复收起侧栏导致界面黑屏
+
+**完整对比**: [v0.1.8...v0.1.9](https://github.com/lvtian-bot/qingwu/compare/v0.1.8...v0.1.9)
 ## 0.1.8（2026-09-22）
 ### ⚙️ 工程维护
 - 调整空状态欢迎语文案
