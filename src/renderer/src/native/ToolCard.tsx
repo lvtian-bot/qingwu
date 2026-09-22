@@ -7,6 +7,7 @@ import { diffLines } from 'diff';
 import type {
   EditArgs,
   PatternArgs,
+  PresentArgs,
   PwshArgs,
   ReadArgs,
   TodoWriteArgs,
@@ -26,10 +27,6 @@ export interface ToolItem {
 }
 
 // ---------- 通用工具 ----------
-
-function basename(p: string): string {
-  return p.split(/[\\/]/).filter(Boolean).pop() ?? p;
-}
 
 /** 相对 cwd 显示路径，跨盘符等无法相对化时回退原路径。 */
 function relPath(p: string, cwd?: string): string {
@@ -74,6 +71,7 @@ const ICONS = {
   edit: 'M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4z',
   list: 'M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11',
   write: 'M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4z',
+  globe: 'M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 0c-2.5 3-4 6.5-4 10s1.5 7 4 10m0-20c2.5 3 4 6.5 4 10s-1.5 7-4 10M2 12h20',
   tool: 'M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z',
 } as const;
 
@@ -129,7 +127,12 @@ function CardShell({ icon, title, subtitle, status, detail, error }: CardShellPr
       <button className="native-tool-head" onClick={() => setOpen((v) => !v)}>
         <Icon path={icon} />
         <span className="native-tool-title">{title}</span>
-        {subtitle && <span className="native-tool-sub">{subtitle}</span>}
+        {subtitle && (
+          <>
+            <span className="native-tool-dot" aria-hidden="true" />
+            <span className="native-tool-sub">{subtitle}</span>
+          </>
+        )}
         <span className="native-tool-status">{status}</span>
         <span className={`native-tool-chevron${open ? ' open' : ''}`}>
           <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -189,15 +192,18 @@ function parseArgs<T>(tool: ToolItem): T | null {
 
 function PwshCard({ tool }: { tool: ToolItem }) {
   const args = parseArgs<PwshArgs>(tool);
-  const title = args?.description?.trim() || '执行命令';
+  const title = tool.name === 'bash' ? 'Bash' : 'Pwsh';
+  const subtitle = args?.description?.trim() || args?.command || undefined;
   return (
     <CardShell
       icon={ICONS.terminal}
       title={title}
+      subtitle={subtitle}
       status={<StatusView tool={tool} />}
       error={tool.isError || (parseExitCode(tool.resultText) ?? 0) !== 0}
       detail={
         <>
+          {args?.description && <div className="native-tool-filepath">{args.description}</div>}
           <pre className="native-tool-command">{args?.command ?? ''}</pre>
           <OutputView text={tool.resultText} />
         </>
@@ -212,11 +218,27 @@ function ReadCard({ tool, cwd }: { tool: ToolItem; cwd?: string }) {
   const range = args?.offset !== undefined || args?.limit !== undefined
     ? `（${args?.offset !== undefined ? `从第 ${args.offset} 行` : ''}${args?.limit !== undefined ? `${args?.offset !== undefined ? '起' : ''}取 ${args.limit} 行` : ''}）`
     : '';
+  const target = filePath ? `${relPath(filePath, cwd)}${range}` : '';
   return (
     <CardShell
       icon={ICONS.file}
-      title={basename(filePath) || '读取文件'}
-      subtitle={`${relPath(filePath, cwd)}${range}`}
+      title="读取"
+      subtitle={target}
+      status={<StatusView tool={tool} />}
+      error={tool.isError}
+      detail={<OutputView text={tool.resultText} />}
+    />
+  );
+}
+
+function ReadImageCard({ tool, cwd }: { tool: ToolItem; cwd?: string }) {
+  const args = parseArgs<{ file_path?: string }>(tool);
+  const filePath = args?.file_path ?? '';
+  return (
+    <CardShell
+      icon={ICONS.file}
+      title="读取图片"
+      subtitle={filePath ? relPath(filePath, cwd) : ''}
       status={<StatusView tool={tool} />}
       error={tool.isError}
       detail={<OutputView text={tool.resultText} />}
@@ -226,13 +248,15 @@ function ReadCard({ tool, cwd }: { tool: ToolItem; cwd?: string }) {
 
 function SearchCard({ tool, cwd, kind }: { tool: ToolItem; cwd?: string; kind: 'grep' | 'glob' }) {
   const args = parseArgs<PatternArgs>(tool);
-  const verb = kind === 'grep' ? '搜索' : '匹配';
-  const title = args?.pattern ? `${verb} "${args.pattern}"` : verb;
+  const title = kind === 'grep' ? '搜索' : '匹配';
+  const pattern = args?.pattern ? `"${args.pattern}"` : '';
+  const path = args?.path ? relPath(args.path, cwd) : '';
+  const subtitle = pattern && path ? `${pattern}（${path}）` : pattern || path;
   return (
     <CardShell
       icon={ICONS.search}
       title={title}
-      subtitle={args?.path ? relPath(args.path, cwd) : ''}
+      subtitle={subtitle}
       status={<StatusView tool={tool} />}
       error={tool.isError}
       detail={<OutputView text={tool.resultText} />}
@@ -246,8 +270,8 @@ function EditCard({ tool, cwd }: { tool: ToolItem; cwd?: string }) {
   return (
     <CardShell
       icon={ICONS.edit}
-      title={basename(filePath) || '编辑文件'}
-      subtitle={`编辑 · ${relPath(filePath, cwd)}`}
+      title="编辑"
+      subtitle={filePath ? relPath(filePath, cwd) : ''}
       status={<StatusView tool={tool} />}
       error={tool.isError}
       detail={
@@ -270,8 +294,8 @@ function WriteCard({ tool, cwd }: { tool: ToolItem; cwd?: string }) {
   return (
     <CardShell
       icon={ICONS.write}
-      title={basename(filePath) || '写入文件'}
-      subtitle={`写入 · ${relPath(filePath, cwd)}`}
+      title="写入"
+      subtitle={filePath ? relPath(filePath, cwd) : ''}
       status={<StatusView tool={tool} />}
       error={tool.isError}
       detail={
@@ -285,11 +309,47 @@ function WriteCard({ tool, cwd }: { tool: ToolItem; cwd?: string }) {
   );
 }
 
+function PresentCard({ tool, cwd }: { tool: ToolItem; cwd?: string }) {
+  const args = parseArgs<PresentArgs>(tool);
+  const files = args?.files ?? [];
+  const subtitle = files.length > 0
+    ? files.map((f) => relPath(f.path, cwd)).join(', ')
+    : '';
+  return (
+    <CardShell
+      icon={ICONS.file}
+      title="交付成果"
+      subtitle={subtitle}
+      status={<StatusView tool={tool} />}
+      error={tool.isError}
+      detail={<OutputView text={tool.resultText} />}
+    />
+  );
+}
+
+function WebCard({ tool, kind }: { tool: ToolItem; kind: 'search' | 'fetch' }) {
+  const args = parseArgs<{ queries?: string[]; url?: string }>(tool);
+  const title = kind === 'search' ? '网页搜索' : '网页获取';
+  const subtitle = kind === 'search'
+    ? (args?.queries?.filter(Boolean).join(', ') ?? '')
+    : (args?.url ?? '');
+  return (
+    <CardShell
+      icon={ICONS.globe}
+      title={title}
+      subtitle={subtitle}
+      status={<StatusView tool={tool} />}
+      error={tool.isError}
+      detail={<OutputView text={tool.resultText} />}
+    />
+  );
+}
+
 function TodoCard({ tool }: { tool: ToolItem }) {
   const args = parseArgs<TodoWriteArgs>(tool);
   const todos = args?.todos ?? [];
   const doing = todos.filter((t) => t.status === 'in_progress').length;
-  const done = todos.filter((t) => t.status === 'done').length;
+  const done = todos.filter((t) => t.status === 'completed' || (t as { status: string }).status === 'done').length;
   return (
     <CardShell
       icon={ICONS.list}
@@ -299,14 +359,17 @@ function TodoCard({ tool }: { tool: ToolItem }) {
       error={tool.isError}
       detail={
         <ul className="native-tool-todos">
-          {todos.map((todo, i) => (
-            <li key={i} className={`native-todo-${todo.status}`}>
-              <span className="native-todo-mark">
-                {todo.status === 'done' ? '✓' : todo.status === 'in_progress' ? '◐' : '○'}
-              </span>
-              <span className="native-todo-text">{todo.content}</span>
-            </li>
-          ))}
+          {todos.map((todo, i) => {
+            const isDone = todo.status === 'completed' || (todo as { status: string }).status === 'done';
+            return (
+              <li key={i} className={`native-todo-${todo.status}`}>
+                <span className="native-todo-mark">
+                  {isDone ? '✓' : todo.status === 'in_progress' ? '◐' : '○'}
+                </span>
+                <span className="native-todo-text">{todo.content}</span>
+              </li>
+            );
+          })}
         </ul>
       }
     />
@@ -346,6 +409,12 @@ export function ToolCard({ tool, cwd }: { tool: ToolItem; cwd?: string }) {
       return <PwshCard tool={tool} />;
     case 'read':
       return <ReadCard tool={tool} cwd={cwd} />;
+    case 'read_image':
+      return <ReadImageCard tool={tool} cwd={cwd} />;
+    case 'web_search':
+      return <WebCard tool={tool} kind="search" />;
+    case 'web_fetch':
+      return <WebCard tool={tool} kind="fetch" />;
     case 'grep':
       return <SearchCard tool={tool} cwd={cwd} kind="grep" />;
     case 'glob':
@@ -354,6 +423,8 @@ export function ToolCard({ tool, cwd }: { tool: ToolItem; cwd?: string }) {
       return <EditCard tool={tool} cwd={cwd} />;
     case 'write':
       return <WriteCard tool={tool} cwd={cwd} />;
+    case 'present':
+      return <PresentCard tool={tool} cwd={cwd} />;
     case 'todo_write':
       return <TodoCard tool={tool} />;
     default:

@@ -1576,7 +1576,7 @@ pre.native-codeblock-body.plain {
 }
 
 .native-tool-card.error .native-tool-svg {
-  color: var(--native-error);
+  color: var(--native-muted);
 }
 
 .native-tool-head {
@@ -1587,7 +1587,7 @@ pre.native-codeblock-body.plain {
   padding: 6px 8px 6px 0;
   border: none;
   background: transparent;
-  color: var(--native-fg);
+  color: var(--native-muted);
   cursor: pointer;
   text-align: left;
   line-height: 24px;
@@ -1603,12 +1603,23 @@ pre.native-codeblock-body.plain {
 }
 
 .native-tool-title {
-  font-weight: 500;
+  flex: none;
+  font-size: 13px;
+  font-weight: 400;
   line-height: 24px;
+  color: var(--native-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
+}
+
+.native-tool-dot {
+  flex: none;
+  width: 2px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--native-muted);
 }
 
 .native-tool-sub {
@@ -1624,6 +1635,7 @@ pre.native-codeblock-body.plain {
 
 .native-tool-status {
   flex-shrink: 0;
+  margin-left: auto;
   font-size: 13px;
   line-height: 24px;
   color: var(--native-muted);
