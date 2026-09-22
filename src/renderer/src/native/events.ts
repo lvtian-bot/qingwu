@@ -417,3 +417,15 @@ export function foldUserRpcIds(events: SessionEvent[]): Set<string> {
   }
   return ids;
 }
+
+/**
+ * 当前轮的开始时间（最近一次 turn/start 的事件时间戳），驱动底部「工作中 X 秒」计时。
+ * 从后往前找，多轮排队时取到的总是尚未收束的最新一轮；开场快照自带历史事件，
+ * 切进已经运行中的会话也能直接还原计时起点。窗口里没有 turn/start 时返回 null。
+ */
+export function lastTurnStartTime(events: SessionEvent[]): number | null {
+  for (let i = events.length - 1; i >= 0; i--) {
+    if (events[i].type === "turn/start") return events[i].time;
+  }
+  return null;
+}

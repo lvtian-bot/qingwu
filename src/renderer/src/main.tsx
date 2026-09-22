@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { UpdateWindow } from "./UpdateWindow";
+import { MenuPopupView } from "./MenuPopupView";
 import { TitleBar } from "./TitleBar";
 import { AppErrorBoundary } from "./AppErrorBoundary";
 import { NativeApp } from "./native/NativeApp";
@@ -17,6 +18,12 @@ if (view === "update") {
   createRoot(rootElement).render(
     <AppErrorBoundary>
       <UpdateWindow />
+    </AppErrorBoundary>,
+  );
+} else if (view === "menu") {
+  createRoot(rootElement).render(
+    <AppErrorBoundary>
+      <MenuPopupView />
     </AppErrorBoundary>,
   );
 } else {

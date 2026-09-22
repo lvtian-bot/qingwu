@@ -109,9 +109,10 @@ textarea {
   --native-scrollbar-thumb-hover: rgba(0, 0, 0, 0.38);
   --native-scrollbar-thumb-active: rgba(0, 0, 0, 0.54);
   /*
-   * 对话区与输入区的列宽：
+   * 对话区与输入区的列宽（紧凑档，默认值）：
    * 首页输入框宽 700px；会话展开后输入框宽 740px、正文列宽 720px（两侧各内收 10px）。
    * 等待回答/授权的卡片跟正文列等宽，队列条与输入框等宽。
+   * 三档宽度见 .native-chat 档位类；首页输入框固定紧凑档，不随档位变宽。
    */
   --native-empty-composer-w: 700px;
   --native-composer-w: 740px;
@@ -784,6 +785,22 @@ textarea {
   position: relative;
   min-width: 0;
   background: var(--native-bg);
+}
+
+/*
+ * 聊天区宽度三档（设置 → 常规 → 聊天区宽度）：
+ * 紧凑档即 :root 默认令牌，不加类；中/宽档整组覆盖。
+ * 首页输入框不跟随档位，固定用 :root 的紧凑值；类挂在聊天主列上，
+ * 设置页自身列宽（.native-settings-content）不受档位影响。
+ */
+.native-chat.chat-w-medium {
+  --native-composer-w: 820px;
+  --native-content-w: 800px;
+}
+
+.native-chat.chat-w-wide {
+  --native-composer-w: 920px;
+  --native-content-w: 900px;
 }
 
 .native-empty {
@@ -2273,6 +2290,27 @@ body.native-ui-active .titlebar {
   padding: 4px 10px 10px;
 }
 
+/* ---------- 运行状态行（工作中 X 秒）：属消息流，随内容滚动，对齐官方 webui ---------- */
+
+.native-running-strip {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 6px 0 0;
+  font-size: 14px;
+  line-height: 24px;
+}
+
+.native-running-strip-label {
+  color: var(--native-send);
+}
+
+.native-running-strip-time {
+  font-size: 13px;
+  color: var(--native-muted);
+  font-variant-numeric: tabular-nums;
+}
+
 /* ---------- 任务停靠面板（输入框上方，对齐官方 TodoPanel） ---------- */
 
 .native-todo-panel {
@@ -2407,94 +2445,152 @@ body.native-ui-active .titlebar {
   color: var(--native-fg);
 }
 
-/* ---------- 待发送队列（排队中／插话中／发送中） ---------- */
+/* ---------- 待发送队列（对齐官方 QueueDock 卡片化交互与贴合输入框质感） ---------- */
 
 .native-queue {
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin-bottom: 8px;
+  /* 官方 --dsh-composer-dock-inset 为 8px，左右各缩进 8px，露出输入框顶部大圆角 */
+  width: calc(100% - 16px);
+  max-width: calc(var(--native-composer-w) - 16px);
+  /* 官方通过负 margin-bottom 收进输入框背后，与输入框无缝紧密贴合 */
+  margin: 0 auto -8px;
+  position: relative;
+  z-index: 0;
+  border-radius: 12px 12px 0 0;
+  border: 1px solid var(--native-border);
+  border-bottom: none;
+  background: var(--native-surface);
+  overflow: hidden;
 }
 
 .native-queue-row {
   display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 6px 10px;
-  border: 1px solid var(--native-border);
-  border-radius: 10px;
-  background: var(--native-surface);
-  font-size: 12px;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  /* 底部预留 12px（其中 8px 收在输入框卡片背后），保证可见文本与操作按钮视觉完全居中 */
+  padding: 4px 8px 12px 12px;
+  background: transparent;
+  font-size: 13px;
+  box-sizing: border-box;
+  transition:
+    background 0.15s ease;
 }
 
-.native-queue-tag {
+.native-queue-row + .native-queue-row {
+  border-top: 1px solid var(--native-border);
+  min-height: 36px;
+  padding: 4px 8px 4px 12px;
+}
+
+.native-queue-row:last-child {
+  min-height: 44px;
+  padding-bottom: 12px;
+}
+
+.native-queue-lead {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
-  padding: 1px 6px;
-  border-radius: 999px;
-  background: var(--native-hover);
   color: var(--native-muted);
-  line-height: 18px;
+}
+
+.native-queue-attachments {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.native-queue-thumb {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  object-fit: cover;
+  border: 1px solid var(--native-border);
+  background: var(--native-bg);
+  flex-shrink: 0;
+}
+
+.native-queue-thumb-placeholder {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  border: 1px solid var(--native-border);
+  background: var(--native-hover);
+  flex-shrink: 0;
 }
 
 .native-queue-text {
   flex: 1;
   min-width: 0;
   color: var(--native-fg);
-  line-height: 18px;
+  line-height: 20px;
   overflow: hidden;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  white-space: pre-wrap;
-  word-break: break-word;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.native-queue-edit {
+.native-queue-status {
+  margin-left: 6px;
+  color: var(--native-muted);
+  font-size: 12px;
+}
+
+.native-queue-editor {
   flex: 1;
   min-width: 0;
-  resize: vertical;
-  padding: 4px 8px;
+  height: 28px;
+  padding: 0 8px;
   border: 1px solid var(--native-border);
-  border-radius: 8px;
+  border-radius: 6px;
   background: var(--native-bg);
   color: var(--native-fg);
   font-family: inherit;
-  font-size: 12px;
-  line-height: 18px;
+  font-size: 13px;
   outline: none;
+  box-sizing: border-box;
+}
+
+.native-queue-editor:focus {
+  border-color: var(--native-send);
 }
 
 .native-queue-actions {
   display: flex;
+  align-items: center;
+  gap: 2px;
   flex-shrink: 0;
-  gap: 4px;
 }
 
-.native-queue-actions button {
-  padding: 2px 8px;
-  border: 1px solid var(--native-border);
+.native-queue-action-btn {
+  width: 28px;
+  height: 28px;
   border-radius: 6px;
+  border: none;
   background: transparent;
   color: var(--native-muted);
-  font-size: 12px;
-  line-height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
+  padding: 0;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
 }
 
-.native-queue-actions button:hover:not(:disabled) {
+.native-queue-action-btn:hover:not(:disabled) {
   background: var(--native-hover);
   color: var(--native-fg);
 }
 
-.native-queue-actions button:disabled {
-  opacity: 0.5;
+.native-queue-action-btn:disabled {
+  opacity: 0.45;
   cursor: default;
-}
-
-.native-queue-actions button.primary {
-  background: var(--native-accent);
-  border-color: var(--native-accent);
-  color: var(--native-accent-fg);
 }
 
 /* 输入框工具行选择器（权限贴左，模型与推理强度贴右） */
@@ -2735,7 +2831,7 @@ body.native-ui-active .titlebar {
 }
 
 .native-send.stop {
-  background: var(--native-error);
+  background: var(--native-send);
   color: #ffffff;
 }
 

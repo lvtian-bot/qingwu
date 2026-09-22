@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { loadTs } = require('./helpers/load-ts.cjs');
-const { expandStreamRecords, foldChatItems, foldQueue, foldUserRpcIds } = loadTs('src/renderer/src/native/events.ts');
+const { expandStreamRecords, foldChatItems, foldQueue, foldUserRpcIds, lastTurnStartTime } = loadTs('src/renderer/src/native/events.ts');
 const { foldPanelData } = loadTs('src/renderer/src/native/panel-data.ts');
 const { progressLabel } = loadTs('src/renderer/src/native/TodoPanel.tsx');
 
@@ -270,6 +270,21 @@ test('任务进度文案对齐官方格式，按完成、进行中、待处理�
     '1 进行中 · 1 待处理',
   );
   assert.equal(progressLabel([]), '');
+});
+
+test('运行计时起点取最近一次 turn/start，无轮次开始时为 null', () => {
+  // 多轮事件：取最新一轮的 turn/start 时间（time = seq * 1000）
+  const multiTurn = [
+    event('turn/start', { turn: 1 }, 1),
+    event('user/message', message('a', '第一问'), 2),
+    event('turn/end', { turn: 1 }, 3),
+    event('turn/start', { turn: 2 }, 4),
+    event('assistant/message', { turn: 2, message: { content: [{ type: 'text', text: '回答' }] } }, 5),
+  ];
+  assert.equal(lastTurnStartTime(multiTurn), 4000);
+  // 窗口里没有 turn/start：返回 null（运行态指示条不渲染）
+  assert.equal(lastTurnStartTime([event('user/message', message('b', '没有轮次'), 1)]), null);
+  assert.equal(lastTurnStartTime([]), null);
 });
 
 test('对齐 DSH 官方投影生命周期：新轮次开始时清空上一轮待办，支持原生 todo/write 事件', () => {

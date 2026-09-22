@@ -1,4 +1,4 @@
-.titlebar {
+:root {
   --titlebar-bg: #181825;
   --titlebar-fg: #cdd6f4;
   --titlebar-menu-idle-fg: #a6adc8;
@@ -8,6 +8,39 @@
   --titlebar-active-bg: #283349;
   --titlebar-active-fg: #cdd6f4;
 
+  /* 自绘菜单配色（暗色，对齐 Codex / ChatGPT 桌面质感） */
+  --titlebar-dropdown-bg: #1f1f1f;
+  --titlebar-dropdown-border: rgba(255, 255, 255, 0.08);
+  --titlebar-dropdown-item-hover: rgba(255, 255, 255, 0.06);
+  --titlebar-dropdown-item-active: rgba(255, 255, 255, 0.09);
+  --titlebar-dropdown-text: #ececec;
+  --titlebar-dropdown-text-dim: rgba(255, 255, 255, 0.45);
+  --titlebar-dropdown-separator: rgba(255, 255, 255, 0.08);
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --titlebar-bg: #eef4f9;
+    --titlebar-fg: #1a1a1a;
+    --titlebar-menu-idle-fg: #6b6b6b;
+    --titlebar-border: #e2e2e4;
+    --titlebar-hover-bg: #d4e3f8;
+    --titlebar-hover-fg: #1a1a1a;
+    --titlebar-active-bg: #ffffff;
+    --titlebar-active-fg: #0d0d0d;
+
+    /* 自绘菜单配色（浅色，对齐 Codex / ChatGPT 桌面质感） */
+    --titlebar-dropdown-bg: #ffffff;
+    --titlebar-dropdown-border: rgba(0, 0, 0, 0.06);
+    --titlebar-dropdown-item-hover: rgba(0, 0, 0, 0.04);
+    --titlebar-dropdown-item-active: rgba(0, 0, 0, 0.07);
+    --titlebar-dropdown-text: #171717;
+    --titlebar-dropdown-text-dim: #9b9b9b;
+    --titlebar-dropdown-separator: rgba(0, 0, 0, 0.06);
+  }
+}
+
+.titlebar {
   display: flex;
   align-items: center;
   height: 35px;
@@ -25,19 +58,6 @@
   left: 0;
   right: 0;
   z-index: 9999;
-}
-
-@media (prefers-color-scheme: light) {
-  .titlebar {
-    --titlebar-bg: #eef4f9;
-    --titlebar-fg: #1a1a1a;
-    --titlebar-menu-idle-fg: #6b6b6b;
-    --titlebar-border: #e2e2e4;
-    --titlebar-hover-bg: #d4e3f8;
-    --titlebar-hover-fg: #1a1a1a;
-    --titlebar-active-bg: #d4e3f8;
-    --titlebar-active-fg: #1a1a1a;
-  }
 }
 
 .titlebar-left {
@@ -123,4 +143,108 @@
   height: 100%;
   flex-shrink: 0;
   -webkit-app-region: no-drag;
+}
+
+/* ---------- 自绘菜单面板（由独立透明子窗口 MenuPopupView 承载，对齐 Codex 质感） ---------- */
+
+.titlebar-dropdown-menu {
+  position: static;
+  /* 宽度随内容自适应（对齐原生菜单：不同顶级菜单宽度不同），min-width 兜底避免短菜单寒酸 */
+  width: max-content;
+  min-width: 180px;
+  box-sizing: border-box;
+  padding: 6px;
+  background: var(--titlebar-dropdown-bg);
+  border: 1px solid var(--titlebar-dropdown-border);
+  border-radius: 11px;
+  /* 不设 box-shadow：弹层窗口与面板同大，阴影沿四边被窗口裁掉，只在四角圆角凹槽露出灰色残影 */
+  color: var(--titlebar-dropdown-text);
+  font-family:
+    "Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, "Microsoft YaHei", sans-serif;
+  font-size: 12.5px;
+  user-select: none;
+}
+
+/* 弹层动画只在打开会话包裹层（见 MenuPopupView 的 key 设计）：
+   打开 = 整体弹出（缩放 + 上浮）；穿梭切换 = 瞬时换内容，面板本体与阴影纹丝不动。 */
+.menu-popup-enter {
+  transform-origin: top left;
+  animation: titlebarDropdownIn 0.14s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes titlebarDropdownIn {
+  from {
+    opacity: 0;
+    transform: translateY(-3px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.titlebar-dropdown-separator {
+  height: 1px;
+  margin: 6px 10px;
+  background-color: var(--titlebar-dropdown-separator);
+}
+
+.titlebar-dropdown-item {
+  display: flex;
+  align-items: center;
+  height: 34px;
+  padding: 0 10px 0 0;
+  border-radius: 6px;
+  cursor: default;
+  transition: background-color 0.06s ease;
+}
+
+.titlebar-dropdown-item.selected {
+  background-color: var(--titlebar-dropdown-item-hover);
+}
+
+.titlebar-dropdown-item:active {
+  background-color: var(--titlebar-dropdown-item-active);
+}
+
+.titlebar-dropdown-item.disabled {
+  opacity: 0.4;
+  cursor: default;
+  pointer-events: none;
+}
+
+/* 左侧指示槽：固定宽度居中放置对勾，确保所有菜单项文本垂直基准线绝对对齐 */
+.titlebar-dropdown-gutter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  min-width: 16px;
+  height: 100%;
+  color: currentColor;
+  flex-shrink: 0;
+}
+
+.titlebar-dropdown-check-icon {
+  display: block;
+}
+
+.titlebar-dropdown-item-label {
+  font-size: 12.5px;
+  line-height: 1;
+  letter-spacing: 0.1px;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.titlebar-dropdown-item-shortcut {
+  margin-left: auto;
+  padding-left: 14px;
+  font-size: 11.5px;
+  line-height: 1;
+  color: var(--titlebar-dropdown-text-dim);
+  font-family: inherit;
+  flex-shrink: 0;
 }

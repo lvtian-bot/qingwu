@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import type { MouseEvent } from "react";
+import type { MenuName } from "../../shared/menu-data";
 import "./titlebar.css";
 
 const MENU_ITEMS = ["文件", "编辑", "视图", "帮助"] as const;
-type MenuName = (typeof MENU_ITEMS)[number];
 
 function QingwuIcon() {
   return (
@@ -34,6 +34,11 @@ function QingwuIcon() {
   );
 }
 
+/**
+ * 标题栏菜单触发器：只负责高亮与向主进程子窗口弹层发指令。
+ * 菜单本体由独立透明子窗口渲染（MenuPopupView），双界面（青梧 / DeepSeek）共用同一套自绘样式，
+ * 官方界面下天然浮于 WebContentsView 之上，不推挤页面、无黑带。
+ */
 export function TitleBar({
   sidebarCollapsed,
   onToggleSidebar,
@@ -43,45 +48,61 @@ export function TitleBar({
 }) {
   const [activeMenu, setActiveMenu] = useState<MenuName | null>(null);
   const [isFullScreen, setIsFullScreen] = useState(false);
-  const disarmPointerGuardRef = useRef<() => void>(() => {});
+  const menuButtonsRef = useRef<Record<string, HTMLButtonElement | null>>({});
+  /** activeMenu 的同步镜像：menu-closed 回调订阅于挂载时，需读取最新值。 */
+  const activeMenuRef = useRef<MenuName | null>(null);
+  /**
+   * 弹窗聚焦期间主窗口收不到指针事件；弹窗因点击外部失焦关闭后，紧随的那次 click 不应把菜单再打开。
+   * 仅当关闭原因是 blur 且本次点击命中的正是刚关闭的那个菜单（同一次手势的 toggle 关闭）时抑制；
+   * 点击其他菜单标题（切换）、Esc / 执行动作后的再点（显式关闭）都应立即响应。
+   */
+  const lastClosedRef = useRef<{
+    menu: MenuName | null;
+    at: number;
+    byBlur: boolean;
+  } | null>(null);
 
-  const clearActiveMenu = () => {
-    disarmPointerGuardRef.current();
-    setActiveMenu(null);
+  const openMenu = (
+    menuName: MenuName,
+    btnEl: HTMLButtonElement,
+    viaSwitch = false,
+  ) => {
+    const rect = btnEl.getBoundingClientRect();
+    activeMenuRef.current = menuName;
+    setActiveMenu(menuName);
+    void window.qingwu?.openMenuPopup?.({
+      menuName,
+      x: rect.left,
+      y: rect.bottom,
+      viaSwitch,
+    });
   };
 
-  // 原生菜单开启期间持有鼠标捕获，页面收不到任何指针事件；Esc、再点菜单按钮、
-  // 点击标题栏其他位置等关闭路径既不触发 popup 回调也不改变焦点，因此页面
-  // 收到的第一个指针事件即意味着菜单已关闭，以此清除按钮高亮。
-  const armPointerGuard = () => {
-    disarmPointerGuardRef.current();
-    const onPointer = () => {
-      disarm();
-      setActiveMenu(null);
-    };
-    const disarm = () => {
-      window.removeEventListener("mousemove", onPointer, true);
-      window.removeEventListener("mousedown", onPointer, true);
-      disarmPointerGuardRef.current = () => {};
-    };
-    window.addEventListener("mousemove", onPointer, true);
-    window.addEventListener("mousedown", onPointer, true);
-    disarmPointerGuardRef.current = disarm;
+  const closeMenu = () => {
+    activeMenuRef.current = null;
+    setActiveMenu(null);
+    void window.qingwu?.closeMenuPopup?.();
   };
 
   useEffect(() => {
-    const unsubMenu = window.qingwu?.onMenuClosed?.(() => {
-      clearActiveMenu();
-    });
-
     const unsubFs = window.qingwu?.onFullscreenChanged?.((fs) => {
       setIsFullScreen(Boolean(fs));
     });
 
+    // 菜单关闭信号统一来自主进程弹层（动作 / Esc / 失焦 / 再点按钮），以此清除高亮。
+    const unsubMenu = window.qingwu?.onMenuClosed?.((reason) => {
+      lastClosedRef.current = {
+        menu: activeMenuRef.current,
+        at: Date.now(),
+        byBlur: reason === "blur",
+      };
+      activeMenuRef.current = null;
+      setActiveMenu(null);
+    });
+
     return () => {
-      disarmPointerGuardRef.current();
-      unsubMenu?.();
       unsubFs?.();
+      unsubMenu?.();
     };
   }, []);
 
@@ -89,14 +110,32 @@ export function TitleBar({
     menuName: MenuName,
     e: MouseEvent<HTMLButtonElement>,
   ) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    setActiveMenu(menuName);
-    armPointerGuard();
-    window.qingwu?.popupMenu?.({
-      menuName,
-      x: rect.left,
-      y: rect.bottom,
-    });
+    if (activeMenu === menuName) {
+      closeMenu();
+      return;
+    }
+    // 该 click 之前的 mousedown 已让弹窗失焦关闭（收到 menu-closed）：本次点击语义为“关闭”，不再重开。
+    const last = lastClosedRef.current;
+    if (
+      !activeMenu &&
+      last?.byBlur &&
+      last.menu === menuName &&
+      Date.now() - last.at < 350
+    ) {
+      return;
+    }
+    openMenu(menuName, e.currentTarget);
+  };
+
+  // 悬停穿梭切换（对齐现代桌面应用）：已展开时移到其他顶级项，直接原位切换弹层内容。
+  // viaSwitch：不递增打开会话号，弹层瞬时换内容、不重放入场动画。
+  const handleMenuMouseEnter = (
+    menuName: MenuName,
+    btnEl: HTMLButtonElement,
+  ) => {
+    if (activeMenu && activeMenu !== menuName) {
+      openMenu(menuName, btnEl, true);
+    }
   };
 
   if (isFullScreen) {
@@ -136,11 +175,18 @@ export function TitleBar({
           {MENU_ITEMS.map((item) => (
             <button
               key={item}
+              ref={(el) => {
+                menuButtonsRef.current[item] = el;
+              }}
               type="button"
               className={
                 "titlebar-menu-item" + (activeMenu === item ? " active" : "")
               }
               onClick={(e) => handleMenuClick(item, e)}
+              onMouseEnter={() => {
+                const el = menuButtonsRef.current[item];
+                if (el) handleMenuMouseEnter(item, el);
+              }}
             >
               {item}
             </button>

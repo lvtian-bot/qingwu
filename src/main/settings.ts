@@ -1,7 +1,7 @@
 import { app } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
-import type { AppSettings } from '../shared/types';
+import { CHAT_WIDTHS, type AppSettings, type ChatWidth } from '../shared/types';
 
 export type { AppSettings };
 
@@ -22,6 +22,7 @@ class SettingsManager {
       closeToTray: true,
       uiMode: 'native',
       collapseProcess: false,
+      chatWidth: 'narrow',
     };
     this.listeners = new Set();
     this.loaded = false;
@@ -46,6 +47,9 @@ class SettingsManager {
           this.settings = { ...this.settings, ...(parsed as Partial<AppSettings>) };
           if (this.settings.uiMode !== 'official' && this.settings.uiMode !== 'native') {
             this.settings.uiMode = 'native';
+          }
+          if (!CHAT_WIDTHS.includes(this.settings.chatWidth as ChatWidth)) {
+            this.settings.chatWidth = 'narrow';
           }
         }
       }

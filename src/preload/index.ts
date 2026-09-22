@@ -78,8 +78,28 @@ const api: QingwuApi = {
   downloadUpdate: () => ipcRenderer.invoke('update:download'),
   installUpdate: () => ipcRenderer.invoke('update:install'),
   openReleases: () => ipcRenderer.invoke('update:openReleases'),
+  openUpdateWindow: () => ipcRenderer.invoke('titlebar:openUpdateWindow'),
+  showAbout: () => ipcRenderer.invoke('titlebar:showAbout'),
 
-  popupMenu: ({ menuName, x, y }) => ipcRenderer.invoke('titlebar:popupMenu', { menuName, x, y }),
+  openMenuPopup: (options) => ipcRenderer.invoke('menu-popup:open', options),
+  switchMenuPopup: (direction) => ipcRenderer.invoke('menu-popup:switch', direction),
+  closeMenuPopup: () => ipcRenderer.invoke('menu-popup:close'),
+  executeMenuAction: (actionId) => ipcRenderer.invoke('menu-popup:action', actionId),
+  menuPopupReady: () => ipcRenderer.invoke('menu-popup:ready'),
+  resizeMenuPopup: (size) => ipcRenderer.invoke('menu-popup:resize', size),
+  onMenuPopupData: (listener) => {
+    const handler = (
+      _event: IpcRendererEvent,
+      data: {
+        menuName: import('../shared/menu-data').MenuName;
+        sessionId: number;
+        context: import('../shared/menu-data').MenuStateContext;
+      } | null,
+    ) => listener(data);
+    ipcRenderer.on('menu-popup:data', handler);
+    return () => ipcRenderer.removeListener('menu-popup:data', handler);
+  },
+
   getTitle: () => ipcRenderer.invoke('titlebar:getTitle'),
   onTitleChanged: (listener) => {
     const handler = (_event: IpcRendererEvent, title: string) => listener(title);
@@ -87,9 +107,15 @@ const api: QingwuApi = {
     return () => ipcRenderer.removeListener('titlebar:title-changed', handler);
   },
   onMenuClosed: (listener) => {
-    const handler = () => listener();
+    const handler = (_event: IpcRendererEvent, reason: 'blur' | 'explicit') =>
+      listener(reason);
     ipcRenderer.on('titlebar:menu-closed', handler);
     return () => ipcRenderer.removeListener('titlebar:menu-closed', handler);
+  },
+  onOpenSettings: (listener) => {
+    const handler = () => listener();
+    ipcRenderer.on('qingwu:open-settings', handler);
+    return () => ipcRenderer.removeListener('qingwu:open-settings', handler);
   },
   onFullscreenChanged: (listener) => {
     const handler = (_event: IpcRendererEvent, isFullScreen: boolean) =>

@@ -1317,7 +1317,7 @@ export function SettingsPage({
   onUnarchiveSession,
   onOpenSession,
 }: SettingsPageProps) {
-  const [activeTab, setActiveTab] = useState<TabKey>("models");
+  const [activeTab, setActiveTab] = useState<TabKey>("general");
 
   // 已归档会话搜索与操作状态
   const [archivedSearchQuery, setArchivedSearchQuery] = useState("");
@@ -1391,6 +1391,7 @@ export function SettingsPage({
     closeToTray: true,
     uiMode: "native",
     collapseProcess: false,
+    chatWidth: "narrow",
   });
 
   // 2. 引擎供应商目录、选中路由与凭据输入暂存
@@ -2340,6 +2341,22 @@ export function SettingsPage({
                 >
                   <option value="native">青梧界面</option>
                   <option value="official">DeepSeek 界面</option>
+                </select>
+              </SettingsRow>
+
+              <SettingsRow label="聊天区宽度" desc="对话正文与会话输入框的最大列宽，首页输入框固定紧凑档；默认紧凑，与 DeepSeek 界面保持一致。">
+                <select
+                  className="native-settings-select"
+                  value={appSettings.chatWidth ?? "narrow"}
+                  onChange={(e) =>
+                    void handleUpdateAppSetting({
+                      chatWidth: e.target.value as AppSettings["chatWidth"],
+                    })
+                  }
+                >
+                  <option value="narrow">紧凑</option>
+                  <option value="medium">适中</option>
+                  <option value="wide">宽敞</option>
                 </select>
               </SettingsRow>
 

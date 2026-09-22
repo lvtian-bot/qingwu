@@ -7,7 +7,7 @@ import {
   useRef,
   useState,
 } from "react";
-import type { DshStreamItem, UiMode } from "../../../shared/types";
+import type { ChatWidth, DshStreamItem, UiMode } from "../../../shared/types";
 import { Markdown } from "./markdown";
 import "./native.css";
 import { foldPanelData } from "./panel-data";
@@ -59,6 +59,7 @@ import {
   foldChatItems,
   foldQueue,
   foldUserRpcIds,
+  lastTurnStartTime,
   type QueuedItem,
   type TurnView,
 } from "./events";
@@ -83,6 +84,7 @@ import {
 } from "./PendingInteraction";
 import { QueueStrip } from "./QueueStrip";
 import { rpc } from "./rpc";
+import { RunningStrip } from "./RunningStrip";
 import { SessionSidebar, useSessionSidebar } from "./SessionSidebar";
 import { orderWorkspaces, sessionTitle, upsertWorkspace } from "./sidebar-data";
 import { TurnItems } from "./TurnItems";
@@ -90,6 +92,13 @@ import { WorkspaceChip } from "./WorkspaceChip";
 import { SettingsPage } from "./SettingsPage";
 
 const qingwu = window.qingwu;
+
+/** 聊天区宽度档位 → 聊天主列上的 CSS 类（紧凑档即默认令牌，无类）。 */
+function chatWidthClass(width: ChatWidth | undefined): string {
+  if (width === "medium") return " chat-w-medium";
+  if (width === "wide") return " chat-w-wide";
+  return "";
+}
 
 export function NativeApp({
   sidebarCollapsed,
@@ -115,19 +124,25 @@ export function NativeApp({
 
   /** 是否折叠回合执行过程与工具调用（应用设置项，默认 false 与 DSH 平铺一致） */
   const [collapseProcess, setCollapseProcess] = useState(false);
+  /** 聊天区内容列宽档位（应用设置项，默认紧凑与 DSH 一致） */
+  const [chatWidth, setChatWidth] = useState<ChatWidth>("narrow");
 
   useEffect(() => {
     if (window.qingwu?.getAppSettings) {
       window.qingwu
         .getAppSettings()
         .then((s) => {
-          if (s) setCollapseProcess(Boolean(s.collapseProcess));
+          if (s) {
+            setCollapseProcess(Boolean(s.collapseProcess));
+            setChatWidth(s.chatWidth ?? "narrow");
+          }
         })
         .catch(() => {});
     }
     if (window.qingwu?.onAppSettingsChanged) {
       return window.qingwu.onAppSettingsChanged((s) => {
         setCollapseProcess(Boolean(s.collapseProcess));
+        setChatWidth(s.chatWidth ?? "narrow");
       });
     }
     return undefined;
@@ -168,6 +183,8 @@ export function NativeApp({
   const composerImagesRef = useRef<Map<string, DraftImage[]>>(new Map());
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
+  /** 当前轮开始时间（最近一次 turn/start），驱动底部「工作中 X 秒」状态条。 */
+  const [turnStartedAt, setTurnStartedAt] = useState<number | null>(null);
   /** 引擎 inbox 里的待发送队列（排队中／插话中），由 agent/inbox/spliced 折出。 */
   const [queue, setQueue] = useState<QueuedItem[]>([]);
   /** 本地乐观回显：提交当帧即显示，宿主落库或入队后退休。 */
@@ -263,6 +280,7 @@ export function NativeApp({
     setItems(foldChatItems(eventsRef.current));
     const folded = foldQueue(eventsRef.current);
     setQueue(folded.queue);
+    setTurnStartedAt(lastTurnStartTime(eventsRef.current));
     // 回显退休：宿主已把这条提交落成 durable user/message 或队列项
     const settled = new Set([
       ...folded.rpcIds,
@@ -625,6 +643,7 @@ export function NativeApp({
     setShowScrollToBottom(false);
     setQueue([]);
     setEchoes([]);
+    setTurnStartedAt(null);
     // 运行态从会话列表播种：进入一个正在跑的会话时必须立刻显示「停止」，
     // 不能等 status 事件（它只在跳变时发出，切换会话不会重放）。
     setRunning(
@@ -1901,8 +1920,15 @@ export function NativeApp({
         }
       }
     };
+    // 主进程菜单动作「设置」经 IPC 通知打开设置页
+    const unsubOpenSettings = window.qingwu?.onOpenSettings?.(() => {
+      setSettingsOpen(true);
+    });
     window.addEventListener("keydown", handleGlobalKeyDown);
-    return () => window.removeEventListener("keydown", handleGlobalKeyDown);
+    return () => {
+      unsubOpenSettings?.();
+      window.removeEventListener("keydown", handleGlobalKeyDown);
+    };
   }, [settingsOpen, lightboxUrl, running, currentId]);
 
   /** 查询当前会话或活跃工作区关联的文件/目录引用候选。 */
@@ -1963,7 +1989,7 @@ export function NativeApp({
       />
 
       <main
-        className="native-chat"
+        className={`native-chat${chatWidthClass(chatWidth)}`}
         onDragOver={handleChatDragOver}
         onDrop={handleChatDrop}
       >
@@ -2153,6 +2179,11 @@ export function NativeApp({
                       )}
                     </div>
                   )}
+                  {running && (
+                    // 运行状态行跟在在飞内容之后、属消息流的一部分，
+                    // 随内容一起滚动（对齐官方 webui：不钉在输入框上方）
+                    <RunningStrip startedAt={turnStartedAt} />
+                  )}
                   <div ref={bottomRef} />
                 </div>
               </div>
@@ -2189,6 +2220,7 @@ export function NativeApp({
                   items={[...queue, ...echoes]}
                   running={running}
                   busyId={queueBusyId}
+                  sessionId={currentId}
                   onAction={(item, action) =>
                     void handleQueueAction(item, action)
                   }

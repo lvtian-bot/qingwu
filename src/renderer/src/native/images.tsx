@@ -76,7 +76,7 @@ export function fileToBase64(file: File): Promise<string> {
   });
 }
 
-function base64ToBlobUrl(base64: string, mediaType: string): string {
+export function base64ToBlobUrl(base64: string, mediaType: string): string {
   try {
     const binary = atob(base64);
     const bytes = new Uint8Array(binary.length);

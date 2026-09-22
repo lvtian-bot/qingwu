@@ -6,6 +6,7 @@ import { acquireHiddenConsole } from "./console";
 import { HarnessManager } from "./harness";
 import { WindowManager } from "./window";
 import { createApplicationMenu } from "./menu";
+import { MenuPopupManager } from "./menu-popup";
 import { setupAboutPanel } from "./about";
 import { UpdateService } from "./update";
 import { UpdateWindowManager } from "./update-window";
@@ -149,6 +150,13 @@ if (!gotTheLock) {
       ? windowManager.mainWindow.getTitle()
       : CONFIG.appName;
   });
+  ipcMain.handle("titlebar:openUpdateWindow", () => {
+    updateWindowManager.open();
+  });
+  ipcMain.handle("titlebar:showAbout", () => {
+    setupAboutPanel();
+    app.showAboutPanel();
+  });
 
   ipcMain.handle(
     "dsh:call",
@@ -224,6 +232,103 @@ if (!gotTheLock) {
       const serviceUrl = harnessManager.getWebUrl();
       windowManager.createWindow(serviceUrl);
       dshBridge.start();
+
+      // 菜单动作统一在主进程分发（自绘弹层经 menu-popup:action 上行）。
+      const handleMenuAction = (actionId: string) => {
+        switch (actionId) {
+          case "switchUiMode": {
+            const next: UiMode =
+              settings.get("uiMode") === "native" ? "official" : "native";
+            settings.set("uiMode", next);
+            windowManager.applyUiMode(next);
+            break;
+          }
+          case "toggleCloseToTray": {
+            settings.set("closeToTray", !settings.get("closeToTray"));
+            break;
+          }
+          case "openTerminal": {
+            void openTerminal();
+            break;
+          }
+          case "openFolder": {
+            void openPath();
+            break;
+          }
+          case "settings": {
+            windowManager.mainWindow?.webContents.send("qingwu:open-settings");
+            break;
+          }
+          case "reload": {
+            windowManager.getTargetWebContents()?.reload();
+            break;
+          }
+          case "reloadIgnoringCache": {
+            windowManager.getTargetWebContents()?.reloadIgnoringCache();
+            break;
+          }
+          case "toggleFullScreen": {
+            const win = windowManager.mainWindow;
+            if (win && !win.isDestroyed()) {
+              win.setFullScreen(!win.isFullScreen());
+            }
+            break;
+          }
+          case "zoomIn":
+          case "zoomOut":
+          case "resetZoom": {
+            const wc = windowManager.getTargetWebContents();
+            if (wc) {
+              const current = wc.getZoomLevel();
+              wc.setZoomLevel(
+                actionId === "zoomIn"
+                  ? current + 0.5
+                  : actionId === "zoomOut"
+                    ? current - 0.5
+                    : 0,
+              );
+            }
+            break;
+          }
+          case "toggleDevTools": {
+            windowManager.getTargetWebContents()?.toggleDevTools();
+            break;
+          }
+          case "undo":
+          case "redo":
+          case "cut":
+          case "copy":
+          case "paste":
+          case "selectAll":
+          case "delete": {
+            windowManager.getTargetWebContents?.()?.[actionId]?.();
+            break;
+          }
+          case "checkForUpdates": {
+            updateWindowManager.open();
+            break;
+          }
+          case "about": {
+            setupAboutPanel();
+            app.showAboutPanel();
+            break;
+          }
+          case "openGitHub": {
+            shell.openExternal(CONFIG.repositoryUrl);
+            break;
+          }
+          case "quit": {
+            app.quit();
+            break;
+          }
+        }
+      };
+
+      const menuPopupManager = new MenuPopupManager({
+        getMainWindow: () => windowManager.mainWindow,
+        onAction: handleMenuAction,
+      });
+      windowManager.mainWindow?.on("closed", () => menuPopupManager.destroy());
 
       createApplicationMenu({
         onCheckForUpdates: () => updateWindowManager.open(),

@@ -1,3 +1,5 @@
+import type { MenuName, MenuStateContext } from "./menu-data";
+
 export type UpdateStatus =
   | 'unsupported'
   | 'idle'
@@ -21,6 +23,11 @@ export interface UpdateState {
 /** 界面模式：official = 官方 dsh web UI，native = 自研界面。 */
 export type UiMode = 'official' | 'native';
 
+/** 聊天区内容列宽档位：narrow 紧凑（默认，与 DeepSeek 界面一致）、medium 适中、wide 宽敞。 */
+export type ChatWidth = 'narrow' | 'medium' | 'wide';
+
+export const CHAT_WIDTHS: readonly ChatWidth[] = ['narrow', 'medium', 'wide'];
+
 /** 青梧应用级本地配置（存储于用户数据目录 settings.json）。 */
 export interface AppSettings {
   /** 窗口关闭行为：true 为最小化到托盘，false 为直接退出。 */
@@ -29,6 +36,8 @@ export interface AppSettings {
   uiMode: UiMode;
   /** 是否折叠回合执行过程与工具调用（默认 false：不折叠与 DeepSeek 保持一致；开启时折叠为单行摘要）。 */
   collapseProcess?: boolean;
+  /** 聊天区内容列宽档位（默认 narrow 紧凑，与 DeepSeek 界面保持一致）。 */
+  chatWidth?: ChatWidth;
 }
 
 /** dsh RPC 业务错误（对齐 typert RemoteError 的线上形态）。 */
@@ -72,11 +81,42 @@ export interface QingwuApi {
   downloadUpdate: () => Promise<UpdateState | null>;
   installUpdate: () => Promise<boolean>;
   openReleases: () => Promise<void>;
-  popupMenu: (options: { menuName: string; x: number; y: number }) => Promise<void>;
+  openUpdateWindow: () => Promise<void>;
+  showAbout: () => Promise<void>;
+  /** 在主进程透明子窗口中打开自绘菜单弹层（坐标为主窗口内容区相对位置）；viaSwitch 表示悬停/方向键穿梭，原位换内容不重放入场动画。 */
+  openMenuPopup: (options: {
+    menuName: string;
+    x: number;
+    y: number;
+    viaSwitch?: boolean;
+  }) => Promise<void>;
+  /** 左右方向键在顶级菜单间穿梭（原位换内容）。 */
+  switchMenuPopup: (direction: "left" | "right") => Promise<void>;
+  closeMenuPopup: () => Promise<void>;
+  executeMenuAction: (actionId: string) => Promise<void>;
+  menuPopupReady: () => Promise<void>;
+  /** 弹层渲染层实测菜单 DOM 宽高回报（带菜单名），主进程据此收紧弹窗并按菜单缓存尺寸供下次打开预置。 */
+  resizeMenuPopup: (size: {
+    width: number;
+    height: number;
+    menuName: MenuName;
+  }) => Promise<void>;
+  onMenuPopupData: (
+    listener: (data: {
+      menuName: MenuName;
+      /** 打开会话号：仅新打开递增，穿梭切换不变；渲染层以此重放入场动画。 */
+      sessionId: number;
+      context: MenuStateContext;
+      /** null = 弹层已关闭：渲染层清空内容，保证隐藏窗口不留旧帧。 */
+    } | null) => void
+  ) => () => void;
   getTitle: () => Promise<string>;
   onTitleChanged: (listener: (title: string) => void) => () => void;
-  onMenuClosed: (listener: () => void) => () => void;
+  /** 菜单弹层关闭信号，reason 区分点击外部失焦（blur）与 Esc/执行动作等显式关闭（explicit）。 */
+  onMenuClosed: (listener: (reason: "blur" | "explicit") => void) => () => void;
   onFullscreenChanged: (listener: (isFullScreen: boolean) => void) => () => void;
+  /** 菜单动作「设置」：主进程通知青梧界面打开设置页。 */
+  onOpenSettings: (listener: () => void) => () => void;
 
   /** 调用引擎一元 RPC（POST /api/<endpoint>，如 'session/list'），主进程铸造 rpcId 并包信封。 */
   dshCall: (endpoint: string, payload: unknown) => Promise<DshRpcResult<unknown>>;
