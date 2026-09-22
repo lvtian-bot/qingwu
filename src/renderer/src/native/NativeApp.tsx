@@ -44,6 +44,7 @@ import {
 import { type FileReferenceCandidate } from "./file-mentions";
 import { ReasoningRow } from "./ReasoningRow";
 import { PanelIcon, RightPanel } from "./RightPanel";
+import { ChevronDownIcon } from "./native-icons";
 import { TodoPanel } from "./TodoPanel";
 import { usePanelWidth } from "./usePanelWidth";
 
@@ -215,6 +216,10 @@ export function NativeApp({
   const stickBottomRef = useRef(true);
   /** 切换会话标志：新会话快照上屏初次沉底前置为 true，屏蔽高度剧变引发的 onScroll 误关贴底。 */
   const initialScrollNeededRef = useRef(false);
+  /** 平滑滚动至底部进行中：忽略中间帧触发的 onScroll，避免平滑滚动途中误判定为脱离底部。 */
+  const scrollingToBottomRef = useRef(false);
+  /** 视口脱离底部指示：控制「回到底部」悬浮按钮的显隐。 */
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const currentIdRef = useRef<string | null>(null);
   /** follow 开场帧 cursor：session/page 的 throughSeq（含）日志切点，随每代快照更新。 */
   const historyThroughSeqRef = useRef(0);
@@ -406,10 +411,14 @@ export function NativeApp({
     }
   }, [workspaces, activeWorkspaceId]);
 
+  const activeWorkspace = useMemo(
+    () => workspaces.find((w) => w.workspaceId === activeWorkspaceId),
+    [workspaces, activeWorkspaceId],
+  );
+
   useEffect(() => {
-    const activeWs = workspaces.find((w) => w.workspaceId === activeWorkspaceId);
-    qingwu.setActiveWorkspacePath?.(activeWs?.path ?? null);
-  }, [workspaces, activeWorkspaceId, qingwu]);
+    qingwu.setActiveWorkspacePath?.(activeWorkspace?.path ?? null);
+  }, [activeWorkspace, qingwu]);
 
   // 监听引擎断连与重连状态
   useEffect(() => {
@@ -612,6 +621,8 @@ export function NativeApp({
     setToolCalling(false);
     stickBottomRef.current = true;
     initialScrollNeededRef.current = true;
+    scrollingToBottomRef.current = false;
+    setShowScrollToBottom(false);
     setQueue([]);
     setEchoes([]);
     // 运行态从会话列表播种：进入一个正在跑的会话时必须立刻显示「停止」，
@@ -809,12 +820,43 @@ export function NativeApp({
     };
   }, [currentId, appendEvent, refreshFromEvents]);
 
-  // 自动滚动：仅当用户位于底部附近时贴底跟随；会话切换初次沉底期间忽略原生滚动事件，避免高度剧变误判关闭贴底
+  /** 滚动到底部：重置贴底锁定状态并隐藏悬浮按钮，支持平滑或瞬间沉底。 */
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
+    stickBottomRef.current = true;
+    setShowScrollToBottom(false);
+    scrollingToBottomRef.current = behavior === "smooth";
+    const el = scrollRef.current;
+    if (el) {
+      if (behavior === "smooth") {
+        el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+      } else {
+        el.scrollTop = el.scrollHeight;
+      }
+    }
+    bottomRef.current?.scrollIntoView({ behavior, block: "end" });
+  }, []);
+
+  // 滚轮事件：用户手动滑动滚轮时，立即解除程序化平滑滚动锁定，恢复用户自主控制
+  const handleWheel = useCallback(() => {
+    scrollingToBottomRef.current = false;
+  }, []);
+
+  // 自动滚动：仅当用户位于底部附近时贴底跟随；会话切换初次沉底与程序化滚动期间忽略，避免误判关闭贴底
   const handleScroll = useCallback(() => {
     const el = scrollRef.current;
     if (!el || initialScrollNeededRef.current) return;
-    stickBottomRef.current =
-      el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    const distanceToBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    const atBottom = distanceToBottom < 80;
+
+    if (scrollingToBottomRef.current) {
+      if (atBottom) {
+        scrollingToBottomRef.current = false;
+      }
+      return;
+    }
+
+    stickBottomRef.current = atBottom;
+    setShowScrollToBottom(!atBottom && el.scrollHeight > el.clientHeight + 100);
   }, []);
 
   // 「加载更早」前插旧内容后按高度差复位视口：用户看到的那条消息保持原地，不跳屏
@@ -844,11 +886,46 @@ export function NativeApp({
     return () => cancelAnimationFrame(rafId);
   }, [items, loadingHistory]);
 
-  useEffect(() => {
-    if (stickBottomRef.current) {
+  // 贴底模式下的自动跟随：当会话内容（流式正文/思考/工具/回显等）变化时，持续保持视口贴底
+  useLayoutEffect(() => {
+    if (
+      stickBottomRef.current &&
+      !initialScrollNeededRef.current &&
+      !restoreScrollRef.current
+    ) {
+      const el = scrollRef.current;
+      if (el) {
+        el.scrollTop = el.scrollHeight;
+      }
       bottomRef.current?.scrollIntoView({ block: "end" });
     }
-  }, [items, draft, liveReasoning, toolCalling, approvals, questions]);
+  }, [
+    items,
+    echoes,
+    queue,
+    draft,
+    liveReasoning,
+    toolCalling,
+    approvals,
+    questions,
+  ]);
+
+  // 当新消息落库或回显上屏后，下一帧复核校准高度（防止 Markdown、代码高亮、折叠区高度异步撑开造成视口上移）
+  useEffect(() => {
+    if (
+      stickBottomRef.current &&
+      !initialScrollNeededRef.current &&
+      !restoreScrollRef.current
+    ) {
+      const rafId = requestAnimationFrame(() => {
+        if (stickBottomRef.current && scrollRef.current) {
+          scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+          bottomRef.current?.scrollIntoView({ block: "end" });
+        }
+      });
+      return () => cancelAnimationFrame(rafId);
+    }
+  }, [items, echoes]);
 
   const archivedSet = useMemo(
     () => new Set(archivedSessionIds),
@@ -1030,10 +1107,13 @@ export function NativeApp({
     }
   };
 
-  /** 调整推理强度：在当前选择基础上覆盖 reasoningEffort。 */
-  const handleEffortPick = (effortId: string) => {
+  /** 调整推理强度：在当前选择基础上覆盖 reasoningEffort（传 undefined 清除覆盖）。 */
+  const handleEffortPick = (effortId: string | undefined) => {
     if (!currentModelSelection) return;
-    const selection = { ...currentModelSelection, reasoningEffort: effortId };
+    const { reasoningEffort: _prev, ...rest } = currentModelSelection;
+    const selection: ModelSelection = effortId
+      ? { ...rest, reasoningEffort: effortId }
+      : { ...rest };
     if (currentId) {
       void applyModelSelection(selection, currentId).catch((err) =>
         setError(err instanceof Error ? err.message : String(err)),
@@ -1131,6 +1211,7 @@ export function NativeApp({
           composerImagesRef.current.delete(currentId);
         }
       }
+      scrollToBottom("auto");
       const canonicalLine = `/${parsed.name}${parsed.args ? ` ${parsed.args}` : ""}`;
       const res = await rpc<CommandExecution>(Endpoints.commandsExecute, {
         agentId: targetSessionId,
@@ -1315,6 +1396,32 @@ export function NativeApp({
       }
     },
     [currentId],
+  );
+
+  /** 取消归档会话（workspace/unarchiveSession，恢复到主列表）。 */
+  const handleSessionUnarchive = useCallback(
+    async (sessionId: string) => {
+      try {
+        await rpc(Endpoints.workspaceUnarchiveSession, {
+          request: { sessionId },
+        });
+        setArchivedSessionIds((prev) => prev.filter((id) => id !== sessionId));
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+        throw err;
+      }
+    },
+    [],
+  );
+
+  /** 恢复并直接打开会话（取消归档 + 选中会话 + 关闭设置）。 */
+  const handleRestoreAndOpenSession = useCallback(
+    async (sessionId: string) => {
+      await handleSessionUnarchive(sessionId);
+      setCurrentId(sessionId);
+      setSettingsOpen(false);
+    },
+    [handleSessionUnarchive],
   );
 
   /**
@@ -1538,6 +1645,8 @@ export function NativeApp({
     // 发出即清空该会话的草稿桶；失败时再写回（输入框高度由 Composer 按 value 重算）
     composerDraftsRef.current.delete(sessionId);
     composerImagesRef.current.delete(sessionId);
+    // 发送新提示词：强制沉底并重置贴底锁定，无论发送前是否处于历史翻看位置
+    scrollToBottom("auto");
     // 乐观更新会话 updatedAt：会话立即浮顶，无需等待引擎事件轮询
     setSessions((prev) =>
       prev.map((s) =>
@@ -1607,6 +1716,7 @@ export function NativeApp({
   /** 批量插话发送全部排队消息（对齐官方 Cmd/Ctrl+Enter 在空草稿时的快捷手势）。 */
   const handleSteerQueue = async () => {
     if (!currentId || !running || queue.length === 0) return;
+    scrollToBottom("auto");
     for (const item of queue) {
       if (item.pending) continue;
       try {
@@ -1661,6 +1771,7 @@ export function NativeApp({
     approval: PendingApproval,
     outcome: "allowed-once" | "rejected",
   ) => {
+    scrollToBottom("auto");
     const clientId = approval.clientId || eventsClientIdRef.current || "";
     if (!clientId) {
       setError("与引擎的事件流尚未就绪，请稍后重试");
@@ -1685,6 +1796,7 @@ export function NativeApp({
     question: PendingQuestion,
     answers: UserQuestionAnswer[],
   ): Promise<boolean> => {
+    scrollToBottom("auto");
     const clientId = question.clientId || eventsClientIdRef.current || "";
     if (!clientId) {
       setError("与引擎的事件流尚未就绪，请稍后重试");
@@ -1984,63 +2096,89 @@ export function NativeApp({
                 )}
               </div>
             </div>
-            <div
-              className="native-messages"
-              ref={scrollRef}
-              onScroll={handleScroll}
-            >
-              <div className="native-messages-inner">
-                {loadingHistory && (
-                  <div className="native-hint">正在加载会话历史…</div>
-                )}
-                {historyHasMore && !loadingHistory && (
-                  <button
-                    type="button"
-                    className="native-load-older"
-                    disabled={loadingOlderHistory}
-                    onClick={() => void loadOlderHistory()}
-                  >
-                    {loadingOlderHistory ? "加载中…" : "加载更早"}
-                  </button>
-                )}
-                {items.map((view) => (
-                  <TurnItems
-                    key={view.turn}
-                    view={view}
-                    cwd={currentCwd}
-                    sessionId={currentId}
-                    collapseProcess={collapseProcess}
-                    onPreviewImage={(url) => setLightboxUrl(url)}
-                  />
-                ))}
-                {(liveReasoning || draft || toolCalling) && (
-                  // 本轮在飞内容合成一条助手消息：思考折叠行在上、正文在下，
-                  // 与回合结束后的落库布局一致，收束时不会整块跳位。
-                  // 在仅有思考/工具调用提示、尚未输出正文答复时，采用紧凑过程间距。
-                  <div
-                    className={`native-msg assistant${!draft ? " process-only" : ""}`}
-                  >
-                    {liveReasoning && (
-                      <ReasoningRow
-                        text={liveReasoning}
-                        running={reasoningActive}
-                      />
-                    )}
-                    {draft ? (
-                      <div className="native-msg-body">
-                        <Markdown text={draft} />
-                        <span className="native-cursor" />
-                      </div>
-                    ) : (
-                      toolCalling &&
-                      !liveReasoning && (
-                        <div className="native-tool-hint">正在调用工具…</div>
-                      )
-                    )}
-                  </div>
-                )}
-                <div ref={bottomRef} />
+            <div className="native-messages-wrap">
+              <div
+                className="native-messages"
+                ref={scrollRef}
+                onScroll={handleScroll}
+                onWheel={handleWheel}
+              >
+                <div className="native-messages-inner">
+                  {loadingHistory && (
+                    <div className="native-hint">正在加载会话历史…</div>
+                  )}
+                  {historyHasMore && !loadingHistory && (
+                    <button
+                      type="button"
+                      className="native-load-older"
+                      disabled={loadingOlderHistory}
+                      onClick={() => void loadOlderHistory()}
+                    >
+                      {loadingOlderHistory ? "加载中…" : "加载更早"}
+                    </button>
+                  )}
+                  {items.map((view) => (
+                    <TurnItems
+                      key={view.turn}
+                      view={view}
+                      cwd={currentCwd}
+                      sessionId={currentId}
+                      collapseProcess={collapseProcess}
+                      onPreviewImage={(url) => setLightboxUrl(url)}
+                    />
+                  ))}
+                  {(liveReasoning || draft || toolCalling) && (
+                    // 本轮在飞内容合成一条助手消息：思考折叠行在上、正文在下，
+                    // 与回合结束后的落库布局一致，收束时不会整块跳位。
+                    // 在仅有思考/工具调用提示、尚未输出正文答复时，采用紧凑过程间距。
+                    <div
+                      className={`native-msg assistant${!draft ? " process-only" : ""}`}
+                    >
+                      {liveReasoning && (
+                        <ReasoningRow
+                          text={liveReasoning}
+                          running={reasoningActive}
+                        />
+                      )}
+                      {draft ? (
+                        <div className="native-msg-body">
+                          <Markdown text={draft} />
+                          <span className="native-cursor" />
+                        </div>
+                      ) : (
+                        toolCalling &&
+                        !liveReasoning && (
+                          <div className="native-tool-hint">正在调用工具…</div>
+                        )
+                      )}
+                    </div>
+                  )}
+                  <div ref={bottomRef} />
+                </div>
               </div>
+
+              {showScrollToBottom && (
+                <button
+                  type="button"
+                  className={`native-scroll-to-bottom${
+                    running || liveReasoning || draft || toolCalling
+                      ? " is-generating"
+                      : ""
+                  }`}
+                  onClick={() => scrollToBottom("smooth")}
+                  title={
+                    running || liveReasoning || draft || toolCalling
+                      ? "回到底部（正在生成…）"
+                      : "回到底部"
+                  }
+                  aria-label="回到底部"
+                >
+                  <ChevronDownIcon />
+                  {(running || liveReasoning || draft || toolCalling) && (
+                    <span className="native-scroll-to-bottom-dot" />
+                  )}
+                </button>
+              )}
             </div>
 
             {/* 授权/问答等待期间顶替输入框（对齐各 harness 客户端：决策弹层占输入框的槽位） */}
@@ -2128,6 +2266,8 @@ export function NativeApp({
         collapsed={panelCollapsed}
         width={rightPanel.width}
         fileChanges={panelData.fileChanges}
+        deliverables={panelData.deliverables}
+        workspacePath={activeWorkspace?.path}
         onToggle={() => setPanelCollapsed((v) => !v)}
       />
 
@@ -2140,6 +2280,11 @@ export function NativeApp({
           dshConnected={dshConnected}
           reconnecting={reconnecting}
           onReconnect={() => void handleManualReconnect()}
+          sessions={sessions}
+          workspaces={workspaces}
+          archivedSessionIds={archivedSessionIds}
+          onUnarchiveSession={handleSessionUnarchive}
+          onOpenSession={handleRestoreAndOpenSession}
         />
       )}
     </div>

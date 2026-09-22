@@ -15,12 +15,15 @@ import {
   type ModelCatalog,
   type ModelCatalogModel,
   type RegisteredProvider,
+  type SessionSummary,
   type SettingsDescribeValue,
   type SettingsNamespaceView,
   type SettingsPathOp,
+  type WorkspaceView,
 } from "./protocol";
 import { rpc } from "./rpc";
 import { providerDisplayName } from "./provider-brand";
+import { sessionTitle } from "./sidebar-data";
 import type { PanelWidth } from "./usePanelWidth";
 
 export interface SettingsPageProps {
@@ -33,9 +36,19 @@ export interface SettingsPageProps {
   dshConnected?: boolean;
   reconnecting?: boolean;
   onReconnect?: () => void;
+  /** 会话列表快照：用于展示已归档会话标题与时间 */
+  sessions?: SessionSummary[];
+  /** 工作区列表快照：用于解析已归档会话所属项目 */
+  workspaces?: WorkspaceView[];
+  /** 全局已归档会话 ID 列表 */
+  archivedSessionIds?: string[];
+  /** 取消归档回调 */
+  onUnarchiveSession?: (sessionId: string) => Promise<void>;
+  /** 恢复并打开会话回调 */
+  onOpenSession?: (sessionId: string) => void | Promise<void>;
 }
 
-type TabKey = "models" | "general" | "permissions";
+type TabKey = "models" | "general" | "archivedSessions" | "permissions";
 
 /** 供应商目录行：官方 settings-models 的 joinProviderDirectory 语义移植。 */
 interface ProviderRow {
@@ -67,7 +80,7 @@ function joinProviderDirectory(
   const declared = new Set(directory.map((e) => e.provider));
   const rows: ProviderRow[] = directory.map((entry) => ({
     provider: entry.provider,
-    displayName: entry.displayName,
+    displayName: providerDisplayName(entry.provider, entry.displayName),
     settingsNs: entry.settingsNs,
     settingsPath: [...entry.settingsPath],
     active: active.has(entry.provider),
@@ -78,7 +91,7 @@ function joinProviderDirectory(
     if (declared.has(provider.id)) continue;
     rows.push({
       provider: provider.id,
-      displayName: provider.name,
+      displayName: providerDisplayName(provider.id, provider.name),
       settingsNs: "",
       settingsPath: [],
       active: true,
@@ -203,6 +216,20 @@ function schemaUnionChoices(schema: unknown, path: string[]): string[] {
     .map((entry) => entry.value as string);
 }
 
+function formatRelativeTime(at: number, now = Date.now()): string {
+  if (!at || isNaN(at)) return "刚刚";
+  const MIN = 60 * 1000;
+  const HOUR = 60 * MIN;
+  const DAY = 24 * HOUR;
+  const diff = Math.max(0, now - at);
+  if (diff < MIN) return "刚刚";
+  if (diff < HOUR) return `${Math.floor(diff / MIN)} 分钟前`;
+  if (diff < DAY) return `${Math.floor(diff / HOUR)} 小时前`;
+  if (diff < 30 * DAY) return `${Math.floor(diff / DAY)} 天前`;
+  if (diff < 365 * DAY) return `${Math.floor(diff / (30 * DAY))} 个月前`;
+  return `${Math.floor(diff / (365 * DAY))} 年前`;
+}
+
 const NAV_GROUPS: {
   title: string;
   items: { key: TabKey; label: string; icon: ReactNode }[];
@@ -238,8 +265,33 @@ const NAV_GROUPS: {
         key: "permissions",
         label: "权限",
         icon: (
+          <svg
+            viewBox="0 0 16 16"
+            width="16"
+            height="16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <rect x="3" y="7" width="10" height="7.5" rx="1.5" />
+            <path d="M5.5 7V4.5a2.5 2.5 0 0 1 5 0V7" />
+            <circle cx="8" cy="10.5" r="0.75" fill="currentColor" stroke="none" />
+          </svg>
+        ),
+      },
+    ],
+  },
+  {
+    title: "已归档",
+    items: [
+      {
+        key: "archivedSessions",
+        label: "已归档会话",
+        icon: (
           <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
-            <path d="M8 1l5.5 2v4.2c0 3.4-2.3 6.3-5.5 7.3-3.2-1-5.5-3.9-5.5-7.3V3L8 1z" />
+            <path d="M0 2a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1v7.5a2.5 2.5 0 0 1-2.5 2.5h-9A2.5 2.5 0 0 1 1 12.5V5a1 1 0 0 1-1-1V2zm2 3v7.5A1.5 1.5 0 0 0 3.5 14h9a1.5 1.5 0 0 0 1.5-1.5V5H2zm13-3H1v2h14V2zM5 7.5a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 0 1h-5a.5.5 0 0 1-.5-.5z" />
           </svg>
         ),
       },
@@ -1259,8 +1311,80 @@ export function SettingsPage({
   dshConnected,
   reconnecting,
   onReconnect,
+  sessions = [],
+  workspaces = [],
+  archivedSessionIds = [],
+  onUnarchiveSession,
+  onOpenSession,
 }: SettingsPageProps) {
   const [activeTab, setActiveTab] = useState<TabKey>("models");
+
+  // 已归档会话搜索与操作状态
+  const [archivedSearchQuery, setArchivedSearchQuery] = useState("");
+  const [unarchivingIds, setUnarchivingIds] = useState<Set<string>>(new Set());
+
+  const archivedRows = useMemo(() => {
+    if (!archivedSessionIds || archivedSessionIds.length === 0) return [];
+    const sessionMap = new Map<string, SessionSummary>();
+    if (sessions) {
+      for (const s of sessions) {
+        sessionMap.set(s.sessionId, s);
+      }
+    }
+    const wsMap = new Map<string, string>();
+    if (workspaces) {
+      for (const ws of workspaces) {
+        for (const sid of ws.sessionIds) {
+          wsMap.set(sid, ws.title || "未命名项目");
+        }
+      }
+    }
+    return [...archivedSessionIds].reverse().map((id) => {
+      const summary = sessionMap.get(id);
+      const title = summary ? sessionTitle(summary) : "未命名会话";
+      const workspaceName = wsMap.get(id) ?? "未分组";
+      const updatedAt = summary?.updatedAt ?? 0;
+      return { id, title, workspaceName, updatedAt };
+    });
+  }, [archivedSessionIds, sessions, workspaces]);
+
+  const filteredArchivedRows = useMemo(() => {
+    const q = archivedSearchQuery.trim().toLowerCase();
+    if (!q) return archivedRows;
+    return archivedRows.filter(
+      (row) =>
+        row.title.toLowerCase().includes(q) ||
+        row.workspaceName.toLowerCase().includes(q),
+    );
+  }, [archivedRows, archivedSearchQuery]);
+
+  const handleUnarchive = async (sessionId: string) => {
+    if (unarchivingIds.has(sessionId)) return;
+    setUnarchivingIds((prev) => new Set(prev).add(sessionId));
+    try {
+      if (onUnarchiveSession) {
+        await onUnarchiveSession(sessionId);
+      }
+    } catch (e) {
+      setSettingsMessage(
+        `取消归档失败: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    } finally {
+      setUnarchivingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(sessionId);
+        return next;
+      });
+    }
+  };
+
+  const handleOpenArchived = async (sessionId: string) => {
+    if (onOpenSession) {
+      await onOpenSession(sessionId);
+    } else {
+      await handleUnarchive(sessionId);
+    }
+  };
 
   // 1. 青梧应用级设置
   const [appSettings, setAppSettings] = useState<AppSettings>({
@@ -1536,8 +1660,8 @@ export function SettingsPage({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onBack]);
 
-  // 模型与权限整页写入引擎配置目录，展示存储横幅；常规页混合两端设置，不展示
-  const showDshBanner = activeTab !== "general";
+  // 模型与权限整页写入引擎配置目录，展示存储横幅；常规与已归档会话页不展示
+  const showDshBanner = activeTab === "models" || activeTab === "permissions";
   // 已添加 = 引擎已注册路由，与聊天框模型选择器同一数据源
   const addedRows = providerRows.filter((row) => row.active);
   // 可选供应商：已检测到密钥的排前面，其余按展示名排序
@@ -1560,6 +1684,18 @@ export function SettingsPage({
   const selectedView = selectedRow
     ? llmViews[selectedRow.settingsNs]
     : undefined;
+
+  /**
+   * 是否允许删除：除核心 DeepSeek 提供商外，用户已添加配置（或自声明）的提供商均可删除移除，
+   * 删除后将清理凭据并从引擎路由注销，预设服务商将返回待选库。
+   */
+  const isSelectedRemovable = Boolean(
+    selectedRow &&
+      selectedRow.provider !== "deepseek" &&
+      selectedRow.provider !== "deepseek-official" &&
+      (selectedRow.settingsPath.length > 0 || selectedRow.declared) &&
+      (selectedIsAdded || selectedRow.declared),
+  );
 
   // 草稿重建：供应商切换或写入落盘（修订号递增）时，以引擎用户段为基线重新开稿
   const draftKey = `${selectedProvider ?? ""}|${selectedView?.revision ?? ""}`;
@@ -1665,10 +1801,11 @@ export function SettingsPage({
     }
   };
 
-  // 删除自定义服务商
+  // 删除服务商（包括自定义服务商与用户添加的预设服务商）
   const handleDeleteProvider = async (row: ProviderRow) => {
+    const name = row.displayName || row.provider;
     const confirmed = window.confirm(
-      `确定要删除服务商「${row.displayName}」吗？相关配置与凭据将被移除。`,
+      `确定要删除服务商「${name}」吗？相关配置与凭据将被移除。`,
     );
     if (!confirmed) return;
     try {
@@ -1682,6 +1819,11 @@ export function SettingsPage({
           // 忽略凭据未配置错误
         }
       }
+      setKeyInputs((prev) => {
+        const next = { ...prev };
+        delete next[ref];
+        return next;
+      });
       const view = row.settingsNs ? llmViews[row.settingsNs] : undefined;
       await rpc(Endpoints.settingsMutate, {
         ns: row.settingsNs || "llm-pi-ai",
@@ -1696,10 +1838,10 @@ export function SettingsPage({
         ],
         expectedRevision: view?.revision,
       });
-      setCredMessage(`服务商 ${row.displayName} 已删除`);
+      setCredMessage(`服务商 ${name} 已删除`);
+      setSelectedProvider((prev) => (prev === row.provider ? null : prev));
       await loadProviders();
       onRefreshCatalog?.();
-      setSelectedProvider(null);
     } catch (err) {
       setCredMessage(
         `删除失败: ${err instanceof Error ? err.message : String(err)}`,
@@ -1753,6 +1895,19 @@ export function SettingsPage({
     }
   };
 
+  // 添加供应商流程：进入与退出（退出时回落到第一个已添加供应商）
+  const isAddingFlow = addingProvider || isAddingCustom;
+  const startAddingFlow = () => {
+    setAddingProvider(true);
+    setIsAddingCustom(false);
+    setSelectedProvider(null);
+  };
+  const exitAddingFlow = () => {
+    setAddingProvider(false);
+    setIsAddingCustom(false);
+    setSelectedProvider(addedRows[0]?.provider ?? null);
+  };
+
   return (
     <div className="native-settings-page" aria-label="设置">
       {/* 左侧：返回应用 + 分类导航（复用主界面侧栏框架与同一宽度状态） */}
@@ -1766,9 +1921,20 @@ export function SettingsPage({
           onClick={onBack}
           title="返回应用 (Esc)"
         >
-          <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
-            <path d="M13 8a1 1 0 0 1-1 1H5.414l2.293 2.293a1 1 0 1 1-1.414 1.414l-4-4a1 1 0 0 1 0-1.414l4-4a1 1 0 0 1 1.414 1.414L5.414 7H12a1 1 0 0 1 1 1z" />
-          </svg>
+          <span className="native-settings-nav-icon">
+            <svg
+              viewBox="0 0 16 16"
+              width="16"
+              height="16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.4"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M14 8H2M6.5 3.5L2 8l4.5 4.5" />
+            </svg>
+          </span>
           <span>返回应用</span>
         </button>
 
@@ -1783,7 +1949,7 @@ export function SettingsPage({
               <button
                 key={item.key}
                 type="button"
-                className={`native-session-row native-settings-nav-item ${
+                className={`native-settings-nav-item ${
                   activeTab === item.key ? "active" : ""
                 }`}
                 onClick={() => setActiveTab(item.key)}
@@ -1867,14 +2033,43 @@ export function SettingsPage({
         {activeTab === "models" && (
           <div className="native-settings-panel">
             <div className="native-settings-panel-header native-models-header">
-              <div>
-                <h2>模型设置</h2>
-                <p>
-                  管理各供应商的 API
-                  地址、协议与密钥，配置后即可在对话中选择使用；配置与 DeepSeek
-                  界面共享。
-                </p>
-              </div>
+              {isAddingFlow ? (
+                <div className="native-models-title-group">
+                  <button
+                    type="button"
+                    className="native-models-back"
+                    onClick={exitAddingFlow}
+                    title="返回模型设置"
+                    aria-label="返回模型设置"
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      width="18"
+                      height="18"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M19 12H5M12 19l-7-7 7-7" />
+                    </svg>
+                  </button>
+                  <div>
+                    <h2>添加供应商</h2>
+                    <p>从内置服务商选择或添加自定义服务商，保存后加入左侧列表。</p>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <h2>模型设置</h2>
+                  <p>
+                    管理各供应商的 API
+                    地址、协议与密钥，配置后即可在对话中选择使用；配置与 DeepSeek
+                    界面共享。
+                  </p>
+                </div>
+              )}
               <div className="native-models-actions">
                 <button
                   type="button"
@@ -1894,38 +2089,23 @@ export function SettingsPage({
                     <path d="M13.65 2.35a8 8 0 1 0 2.28 6.42c.04-.34-.25-.62-.59-.62-.31 0-.56.25-.6.56a6.8 6.8 0 1 1-1.79-5.06L10.5 5.1a.5.5 0 0 0 .36.86h4.1a.5.5 0 0 0 .5-.5v-4.1a.5.5 0 0 0-.86-.36l-.95.95z" />
                   </svg>
                 </button>
-                <button
-                  type="button"
-                  className="native-btn native-btn-primary"
-                  onClick={() => {
-                    if (addingProvider || isAddingCustom) {
-                      setAddingProvider(false);
-                      setIsAddingCustom(false);
-                      const firstAdded = addedRows[0]?.provider ?? null;
-                      setSelectedProvider(firstAdded);
-                    } else {
-                      setAddingProvider(true);
-                      setIsAddingCustom(false);
-                      setSelectedProvider(null);
-                    }
-                  }}
-                >
-                  {addingProvider || isAddingCustom ? (
-                    "取消添加"
-                  ) : (
-                    <>
-                      <svg
-                        viewBox="0 0 16 16"
-                        width="14"
-                        height="14"
-                        fill="currentColor"
-                      >
-                        <path d="M8 2a.75.75 0 0 1 .75.75v4.5h4.5a.75.75 0 0 1 0 1.5h-4.5v4.5a.75.75 0 0 1-1.5 0v-4.5h-4.5a.75.75 0 0 1 0-1.5h4.5v-4.5A.75.75 0 0 1 8 2z" />
-                      </svg>
-                      添加供应商
-                    </>
-                  )}
-                </button>
+                {!isAddingFlow && (
+                  <button
+                    type="button"
+                    className="native-btn native-btn-primary"
+                    onClick={startAddingFlow}
+                  >
+                    <svg
+                      viewBox="0 0 16 16"
+                      width="14"
+                      height="14"
+                      fill="currentColor"
+                    >
+                      <path d="M8 2a.75.75 0 0 1 .75.75v4.5h4.5a.75.75 0 0 1 0 1.5h-4.5v4.5a.75.75 0 0 1-1.5 0v-4.5h-4.5a.75.75 0 0 1 0-1.5h4.5v-4.5A.75.75 0 0 1 8 2z" />
+                    </svg>
+                    添加供应商
+                  </button>
+                )}
               </div>
             </div>
 
@@ -2037,7 +2217,7 @@ export function SettingsPage({
                   onSave={() => void handleSaveProvider(selectedRow)}
                   onUnset={(ref) => void handleUnsetCredential(ref)}
                   onDelete={
-                    selectedRow.declared
+                    isSelectedRemovable
                       ? () => void handleDeleteProvider(selectedRow)
                       : undefined
                   }
@@ -2215,6 +2395,137 @@ export function SettingsPage({
                 </button>
               </SettingsRow>
             </div>
+          </div>
+        )}
+
+        {/* 已归档会话 */}
+        {activeTab === "archivedSessions" && (
+          <div className="native-settings-panel">
+            <div className="native-settings-panel-header">
+              <h2>已归档会话</h2>
+              <p>管理已从主列表中归档的会话，可随时恢复到对应项目或未分组列表中。</p>
+            </div>
+
+            {archivedRows.length > 0 && (
+              <div className="native-archived-toolbar">
+                <div className="native-archived-search">
+                  <svg
+                    className="native-archived-search-icon"
+                    viewBox="0 0 16 16"
+                    width="14"
+                    height="14"
+                    fill="currentColor"
+                  >
+                    <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z" />
+                  </svg>
+                  <input
+                    type="search"
+                    className="native-settings-input native-archived-search-input"
+                    placeholder="搜索已归档会话（按标题或项目）..."
+                    value={archivedSearchQuery}
+                    onChange={(e) => setArchivedSearchQuery(e.target.value)}
+                  />
+                  {archivedSearchQuery && (
+                    <button
+                      type="button"
+                      className="native-archived-search-clear"
+                      onClick={() => setArchivedSearchQuery("")}
+                      title="清空搜索"
+                    >
+                      <svg
+                        viewBox="0 0 16 16"
+                        width="12"
+                        height="12"
+                        fill="currentColor"
+                      >
+                        <path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+                <span className="native-archived-count">
+                  {archivedSearchQuery
+                    ? `匹配 ${filteredArchivedRows.length} / 共 ${archivedRows.length} 个会话`
+                    : `共 ${archivedRows.length} 个已归档会话`}
+                </span>
+              </div>
+            )}
+
+            {archivedRows.length === 0 ? (
+              <div className="native-archived-empty">
+                <div className="native-archived-empty-icon">
+                  <svg
+                    viewBox="0 0 16 16"
+                    width="36"
+                    height="36"
+                    fill="currentColor"
+                  >
+                    <path d="M0 2a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1v7.5a2.5 2.5 0 0 1-2.5 2.5h-9A2.5 2.5 0 0 1 1 12.5V5a1 1 0 0 1-1-1V2zm2 3v7.5A1.5 1.5 0 0 0 3.5 14h9a1.5 1.5 0 0 0 1.5-1.5V5H2zm13-3H1v2h14V2zM5 7.5a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 0 1h-5a.5.5 0 0 1-.5-.5z" />
+                  </svg>
+                </div>
+                <div className="native-archived-empty-title">暂无已归档会话</div>
+                <div className="native-archived-empty-desc">
+                  在侧边栏会话菜单中选择「归档会话」，即可将暂不使用的会话收纳至此处，主界面更整齐清爽。
+                </div>
+              </div>
+            ) : filteredArchivedRows.length === 0 ? (
+              <div className="native-archived-empty">
+                <div className="native-archived-empty-title">未找到匹配的已归档会话</div>
+                <div className="native-archived-empty-desc">
+                  没有会话匹配关键字 “{archivedSearchQuery}”，请尝试更换搜索词。
+                </div>
+                <button
+                  type="button"
+                  className="native-btn native-btn-secondary"
+                  style={{ marginTop: 12 }}
+                  onClick={() => setArchivedSearchQuery("")}
+                >
+                  清空搜索词
+                </button>
+              </div>
+            ) : (
+              <div className="native-settings-card native-archived-list-card">
+                {filteredArchivedRows.map((row) => (
+                  <div key={row.id} className="native-archived-row">
+                    <div className="native-archived-row-main">
+                      <div className="native-archived-row-title" title={row.title}>
+                        {row.title}
+                      </div>
+                      <div className="native-archived-row-meta">
+                        <span className="native-archived-tag" title={`所属项目: ${row.workspaceName}`}>
+                          {row.workspaceName}
+                        </span>
+                        <span className="native-archived-dot">·</span>
+                        <span className="native-archived-time">
+                          {formatRelativeTime(row.updatedAt)}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="native-archived-row-actions">
+                      {onOpenSession && (
+                        <button
+                          type="button"
+                          className="native-btn native-btn-secondary native-archived-btn"
+                          onClick={() => void handleOpenArchived(row.id)}
+                          title="恢复此会话并立即打开"
+                        >
+                          恢复并打开
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className="native-btn native-btn-secondary native-archived-btn"
+                        disabled={unarchivingIds.has(row.id)}
+                        onClick={() => void handleUnarchive(row.id)}
+                        title="取消归档，放回原项目或会话列表"
+                      >
+                        {unarchivingIds.has(row.id) ? "正在恢复…" : "取消归档"}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 

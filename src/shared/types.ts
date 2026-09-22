@@ -115,8 +115,10 @@ export interface QingwuApi {
 
   /** 在外部终端中打开指定路径（若未传则打开当前活跃工作区）。 */
   openTerminal: (targetPath?: string) => Promise<{ success: boolean; error?: string }>;
-  /** 在系统文件管理器中打开指定路径。 */
+  /** 在系统文件管理器中打开指定路径（若为文件则用系统默认程序打开）。 */
   openPath: (targetPath: string) => Promise<string>;
+  /** 在文件管理器中高亮定位指定文件或目录。 */
+  showItemInFolder: (targetPath: string) => Promise<void>;
   /** 通知主进程当前活跃的工作区路径，以便全局菜单与快捷键呼出。 */
   setActiveWorkspacePath: (targetPath: string | null) => void;
 }

@@ -13,30 +13,35 @@ export function getActiveWorkspacePath(): string | null {
   return activeWorkspacePath;
 }
 
-export function resolveTargetPath(inputPath?: string | null): string {
+export function resolveFileOrDirectory(inputPath?: string | null): string {
   if (inputPath && typeof inputPath === 'string') {
-    try {
-      if (fs.existsSync(inputPath)) {
-        const stat = fs.statSync(inputPath);
-        return stat.isDirectory() ? inputPath : path.dirname(inputPath);
-      }
-    } catch {
-      // 忽略无法 stat 的异常，退回到 fallback
+    let resolved = inputPath;
+    if (!path.isAbsolute(resolved) && activeWorkspacePath) {
+      resolved = path.resolve(activeWorkspacePath, resolved);
     }
+    return resolved;
   }
-
   if (activeWorkspacePath && typeof activeWorkspacePath === 'string') {
-    try {
-      if (fs.existsSync(activeWorkspacePath)) {
-        const stat = fs.statSync(activeWorkspacePath);
-        return stat.isDirectory() ? activeWorkspacePath : path.dirname(activeWorkspacePath);
-      }
-    } catch {
-      // 忽略
+    return activeWorkspacePath;
+  }
+  return app.getPath('home');
+}
+
+export function resolveTargetPath(inputPath?: string | null): string {
+  const target = resolveFileOrDirectory(inputPath);
+  try {
+    if (fs.existsSync(target)) {
+      const stat = fs.statSync(target);
+      return stat.isDirectory() ? target : path.dirname(target);
     }
+  } catch {
+    // 忽略无法 stat 的异常，退回到 fallback
   }
 
-  return app.getPath('home');
+  if (inputPath && typeof inputPath === 'string') {
+    return path.dirname(target);
+  }
+  return target;
 }
 
 function launchPowershell(cwd: string): { success: boolean; error?: string } {
@@ -148,6 +153,11 @@ export async function openTerminal(
 }
 
 export async function openPath(targetPath?: string | null): Promise<string> {
-  const dir = resolveTargetPath(targetPath);
-  return shell.openPath(dir);
+  const target = resolveFileOrDirectory(targetPath);
+  return shell.openPath(target);
+}
+
+export async function showItemInFolder(targetPath: string): Promise<void> {
+  const target = resolveFileOrDirectory(targetPath);
+  shell.showItemInFolder(target);
 }

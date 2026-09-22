@@ -207,9 +207,43 @@ test('面板保留最新任务与同文件修改计数，并排除失败及非�
   const before = structuredClone(history);
   assert.deepEqual(foldPanelData(history), {
     todos,
-    fileChanges: [{ path: 'a.md', edits: 1, writes: 1, lastEdit: { oldStr: '', newStr: '全文' } }],
+    fileChanges: [{ path: 'a.md', edits: 1, writes: 1, addedLines: 2, removedLines: 1, lastEdit: { oldStr: '', newStr: '全文' } }],
+    deliverables: [],
   });
   assert.deepEqual(history, before);
+});
+
+test('面板正确折算显式 deliverables/presented 事件与新写入产物', () => {
+  const call = (callId, name, args) => event('tool/call', { callId, name, arguments: JSON.stringify(args) });
+  const history = [
+    // 1. 新建文件写入 -> 自动并入交付物
+    call('write-new', 'write', { file_path: 'reports/summary.docx', content: '第1行\n第2行' }),
+    // 2. 显式 present 工具调用声明
+    call('present-1', 'present', { files: [{ path: 'calc/bonus.xlsx', description: '奖金测算表' }] }),
+    // 3. DSH 官方 deliverables/presented 规范事件（可覆盖或追加）
+    event('deliverables/presented', {
+      turn: 1,
+      callId: 'present-1',
+      files: [{ path: 'calc/bonus.xlsx', description: '最终奖金测算底稿' }],
+    }, 100),
+  ];
+
+  const data = foldPanelData(history);
+  assert.equal(data.fileChanges.length, 1);
+  assert.equal(data.fileChanges[0].path, 'reports/summary.docx');
+  assert.equal(data.fileChanges[0].addedLines, 2);
+
+  assert.equal(data.deliverables.length, 2);
+  const docx = data.deliverables.find((d) => d.path === 'reports/summary.docx');
+  const xlsx = data.deliverables.find((d) => d.path === 'calc/bonus.xlsx');
+
+  assert.ok(docx);
+  assert.equal(docx.source, 'write');
+
+  assert.ok(xlsx);
+  assert.equal(xlsx.source, 'presented');
+  assert.equal(xlsx.description, '最终奖金测算底稿');
+  assert.equal(xlsx.time, 100000);
 });
 
 test('任务进度文案对齐官方格式，按完成、进行中、待处理汇总并省略零项', () => {

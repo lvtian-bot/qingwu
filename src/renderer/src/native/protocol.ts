@@ -40,6 +40,7 @@ export const Endpoints = {
   workspaceDelete: 'workspace/delete',
   workspaceInsertBefore: 'workspace/insertBefore',
   workspaceArchiveSession: 'workspace/archiveSession',
+  workspaceUnarchiveSession: 'workspace/unarchiveSession',
   directoryPickerPick: 'directoryPicker/pick',
   fileReferencesList: 'fileReferences/list',
   eventsResult: '$events/result',
@@ -391,6 +392,15 @@ export interface WriteArgs {
 
 export interface TodoWriteArgs {
   todos: { content: string; status: string }[];
+}
+
+export interface PresentFileItem {
+  path: string;
+  description?: string;
+}
+
+export interface PresentArgs {
+  files: PresentFileItem[];
 }
 
 // ---------- session/follow 日志流 ----------

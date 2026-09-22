@@ -138,27 +138,50 @@ function CodeBlock({ code, lang }: { code: string; lang: string }) {
     try {
       await navigator.clipboard.writeText(code);
       setCopied(true);
-      window.setTimeout(() => setCopied(false), 1200);
+      window.setTimeout(() => setCopied(false), 1500);
     } catch {
       // 剪贴板不可用时静默忽略
     }
   };
 
+  const displayLang = lang && lang !== 'text' ? lang : 'text';
+
   return (
     <div className="native-codeblock">
       <div className="native-codeblock-banner">
-        <span className="native-codeblock-lang">{lang === 'text' ? '' : lang}</span>
-        <button className="native-codeblock-copy" onClick={() => void handleCopy()}>
-          {copied ? '已复制' : '复制'}
+        <span className="native-codeblock-lang">{displayLang}</span>
+        <button
+          className={`native-codeblock-copy ${copied ? 'copied' : ''}`}
+          onClick={() => void handleCopy()}
+          title={copied ? '已复制' : '复制代码'}
+        >
+          {copied ? (
+            <>
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+              <span>已复制</span>
+            </>
+          ) : (
+            <>
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <rect x="9" y="9" width="13" height="13" rx="2" />
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+              </svg>
+              <span>复制</span>
+            </>
+          )}
         </button>
       </div>
-      {html !== null ? (
-        <div className="native-codeblock-body shiki-host" dangerouslySetInnerHTML={{ __html: html }} />
-      ) : (
-        <pre className="native-codeblock-body plain">
-          <code>{code}</code>
-        </pre>
-      )}
+      <div className="native-codeblock-body">
+        {html !== null ? (
+          <div className="shiki-host" dangerouslySetInnerHTML={{ __html: html }} />
+        ) : (
+          <pre className="plain">
+            <code>{code}</code>
+          </pre>
+        )}
+      </div>
     </div>
   );
 }

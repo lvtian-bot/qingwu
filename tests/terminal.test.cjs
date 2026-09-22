@@ -37,3 +37,35 @@ test("resolveTargetPath 能够正确解析目录、文件父目录和 fallback",
   const packageJson = path.join(process.cwd(), "package.json");
   assert.equal(resolveTargetPath(packageJson), process.cwd());
 });
+
+test("resolveFileOrDirectory 能够保留原文件路径并正确结合 activeWorkspace", () => {
+  let shownPath = null;
+  const homeFixture = "C:\\fixture\\home";
+  const {
+    resolveFileOrDirectory,
+    showItemInFolder,
+    setActiveWorkspacePath,
+  } = loadTs("src/main/terminal.ts", {
+    electron: {
+      app: {
+        getPath: (name) => (name === "home" ? homeFixture : "C:\\fixture"),
+      },
+      shell: {
+        showItemInFolder: (p) => {
+          shownPath = p;
+        },
+      },
+    },
+  });
+
+  setActiveWorkspacePath(process.cwd());
+
+  // 相对路径解析为基于工作区的绝对路径，且保留文件本身
+  const relativeFile = "package.json";
+  const expectedFull = path.resolve(process.cwd(), relativeFile);
+  assert.equal(resolveFileOrDirectory(relativeFile), expectedFull);
+
+  // showItemInFolder 会将目标路径定位到文件管理器
+  showItemInFolder(relativeFile);
+  assert.equal(shownPath, expectedFull);
+});

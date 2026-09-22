@@ -139,6 +139,7 @@ const api: QingwuApi = {
 
   openTerminal: (targetPath) => ipcRenderer.invoke('workspace:openTerminal', targetPath),
   openPath: (targetPath) => ipcRenderer.invoke('workspace:openPath', targetPath),
+  showItemInFolder: (targetPath) => ipcRenderer.invoke('workspace:showItemInFolder', targetPath),
   setActiveWorkspacePath: (targetPath) => {
     void ipcRenderer.invoke('workspace:setActivePath', targetPath);
   },

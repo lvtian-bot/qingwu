@@ -75,7 +75,7 @@ interface ComposerControlsProps {
   /** 控件标题补充（空态标明"新会话默认权限"）。 */
   permissionHint?: string;
   onModelPick: (selection: ModelSelection) => void;
-  onEffortPick: (effortId: string) => void;
+  onEffortPick: (effortId: string | undefined) => void;
   onPermissionPick: (value: string) => void;
 }
 
@@ -104,11 +104,12 @@ export function ComposerControls({
         ?.models.find((m) => m.id === selection.model) ?? null
     );
   }, [catalog, selection]);
-  const efforts = model?.reasoning?.efforts?.length
-    ? model.reasoning.efforts
+  const reasoning = model?.reasoning;
+  const efforts = reasoning?.efforts?.length
+    ? reasoning.efforts
     : null;
   const effortId =
-    selection?.reasoningEffort ?? model?.reasoning?.defaultEffort;
+    selection?.reasoningEffort ?? reasoning?.defaultEffort;
 
   useEffect(() => {
     if (!open) return;
@@ -342,6 +343,19 @@ export function ComposerControls({
           </button>
           {open === "effort" && (
             <div className="native-popover">
+              {reasoning?.defaultEffort === undefined && (
+                <button
+                  key="provider-default"
+                  className={`native-popover-item${effortId === undefined ? " active" : ""}`}
+                  onClick={() => {
+                    onEffortPick(undefined);
+                    setOpen(null);
+                  }}
+                  title="使用模型服务商默认思考行为"
+                >
+                  <span className="native-popover-item-name">默认</span>
+                </button>
+              )}
               {efforts.map((effort) => (
                 <button
                   key={effort.id}

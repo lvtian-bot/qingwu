@@ -15,7 +15,7 @@ import { settings } from "./settings";
 import { CONFIG } from "./config";
 import { AppLifecycle } from "./app-lifecycle";
 import { setupFileLogging, redactSecrets } from "./logging";
-import { openTerminal, openPath, setActiveWorkspacePath } from "./terminal";
+import { openTerminal, openPath, showItemInFolder, setActiveWorkspacePath } from "./terminal";
 import { setupApplicationDiagnostics } from "./diagnostics";
 import type { RendererErrorReport, UiMode } from "../shared/types";
 
@@ -202,6 +202,9 @@ if (!gotTheLock) {
   );
   ipcMain.handle("workspace:openPath", (_event, targetPath?: string) =>
     openPath(targetPath),
+  );
+  ipcMain.handle("workspace:showItemInFolder", (_event, targetPath: string) =>
+    showItemInFolder(targetPath),
   );
   ipcMain.handle("workspace:setActivePath", (_event, targetPath: string | null) => {
     setActiveWorkspacePath(targetPath);
