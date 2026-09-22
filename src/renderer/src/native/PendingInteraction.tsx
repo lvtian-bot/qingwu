@@ -426,6 +426,60 @@ export function ownerSessionOf(
   return current;
 }
 
+/** 待处理项按归属会话归拢的结果：按会话分组 + 无归属兜底项。 */
+export interface PendingGroups {
+  pendingBySession: Map<string, PendingEntry[]>;
+  /**
+   * 归属会话已不在列表里的项（例如会话被删除、帧缺 agentId）——
+   * 这类项在界面上没有任何入口可答，兜底显示在当前会话里，至少还能提交或放弃。
+   */
+  orphanPending: PendingEntry[];
+}
+
+/**
+ * 待处理项按归属会话归拢：审批/问答只属于发起它的那个会话（子代理项归到根会话），
+ * 同一会话内多条并存时按优先级降序排序，展示时只取最高的一条（对齐官方的 composer 位）。
+ */
+export function groupPendingEntries(
+  approvals: PendingApproval[],
+  questions: PendingQuestion[],
+  sessionById: Map<string, SessionSummary>,
+): PendingGroups {
+  const bySession = new Map<string, PendingEntry[]>();
+  const orphans: PendingEntry[] = [];
+  const push = (entry: PendingEntry) => {
+    if (!entry.owner || !sessionById.has(entry.owner)) {
+      orphans.push(entry);
+      return;
+    }
+    const list = bySession.get(entry.owner);
+    if (list) list.push(entry);
+    else bySession.set(entry.owner, [entry]);
+  };
+  for (const approval of approvals) {
+    push({
+      kind: "approval",
+      approval,
+      owner: ownerSessionOf(approval.sessionId, sessionById),
+    });
+  }
+  for (const question of questions) {
+    push({
+      kind: planReviewOf(question.questions ?? [])
+        ? "plan-review"
+        : "question",
+      question,
+      owner: ownerSessionOf(question.sessionId, sessionById),
+    });
+  }
+  for (const list of bySession.values()) {
+    list.sort(
+      (a, b) => PENDING_PRECEDENCE[b.kind] - PENDING_PRECEDENCE[a.kind],
+    );
+  }
+  return { pendingBySession: bySession, orphanPending: orphans };
+}
+
 /** 决策请求统一占用输入框位置，处理完成后再显示下一项。 */
 export function PendingInteraction({
   entry,

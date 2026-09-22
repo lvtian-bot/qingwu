@@ -575,13 +575,13 @@ export function Composer({
         {running && !canSend ? (
           <button className="native-send stop" onClick={onStop} title="停止 (连按两次 Esc)">
             <svg
-              viewBox="0 0 24 24"
-              width="14"
-              height="14"
+              viewBox="0 0 16 16"
+              width="16"
+              height="16"
               fill="currentColor"
               aria-hidden="true"
             >
-              <rect x="6" y="6" width="12" height="12" rx="2" />
+              <rect x="3" y="3" width="10" height="10" rx="2" />
             </svg>
           </button>
         ) : (

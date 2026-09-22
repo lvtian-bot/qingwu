@@ -94,7 +94,7 @@ textarea {
   --native-warn: #d97706;
   --native-user-bubble: #e8f3fe;
   --native-user-bubble-fg: #0c274a;
-  --native-send: #2563eb;
+  --native-send: #3A83F7;
   --native-send-fg: #ffffff;
   --native-card-border: #dcdce0;
   --native-border-subtle: rgba(0, 0, 0, 0.055);
@@ -139,7 +139,7 @@ textarea {
     --native-warn: #fbbf24;
     --native-user-bubble: #26364a;
     --native-user-bubble-fg: #ececec;
-    --native-send: #3b82f6;
+    --native-send: #3A83F7;
     --native-send-fg: #ffffff;
     --native-card-border: #2e2e33;
     --native-border-subtle: rgba(255, 255, 255, 0.06);
@@ -992,7 +992,7 @@ textarea {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--native-send, #2563eb);
+  background: var(--native-send, #3A83F7);
   border: 1.5px solid var(--native-bg);
   animation: native-pulse-dot 1.4s ease-in-out infinite;
 }
@@ -2793,8 +2793,9 @@ body.native-ui-active .titlebar {
 }
 
 .native-send {
-  width: 32px;
-  height: 32px;
+  box-sizing: border-box;
+  width: 28px;
+  height: 28px;
   display: inline-flex;
   align-items: center;
   justify-content: center;

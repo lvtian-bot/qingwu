@@ -1,40 +1,15 @@
-/** 青梧界面编排：引擎订阅、当前会话与草稿生命周期、发送及决策回执。 */
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import type { ChatWidth, DshStreamItem, UiMode } from "../../../shared/types";
+/** 青梧界面编排：组合引擎流、草稿、滚动、模型选择与侧栏操作 hooks，负责任务发送与决策回执。 */
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ChatWidth, UiMode } from "../../../shared/types";
 import { Markdown } from "./markdown";
 import "./native.css";
 import { foldPanelData } from "./panel-data";
-import type {
-  ApprovalRequestPayload,
-  AssistantBlockDelta,
-  AssistantChunkEventData,
-  CommandDescriptor,
-  CommandExecution,
-  ModelCatalog,
-  ModelSelection,
-  PermissionSelect,
-  QueueAction,
-  RemoteEventFrame,
-  SessionEvent,
-  SessionFollowFrame,
-  SessionHistoryRecord,
-  SessionSummary,
-  SettingsDescribeValue,
-  SkillDescriptor,
-  SkillListResult,
-  UserQuestionAnswer,
-  UserQuestionsRequestPayload,
-  WorkspaceFollowFrame,
-  WorkspaceView,
+import {
+  Endpoints,
+  type CommandExecution,
+  type QueueAction,
+  type UserQuestionAnswer,
 } from "./protocol";
-import { Endpoints } from "./protocol";
 import {
   BASELINE_HOST_COMMANDS,
   CLIENT_COMMANDS,
@@ -47,49 +22,31 @@ import { PanelIcon, RightPanel } from "./RightPanel";
 import { ChevronDownIcon } from "./native-icons";
 import { TodoPanel } from "./TodoPanel";
 import { usePanelWidth } from "./usePanelWidth";
-
-import { Composer } from "./Composer";
+import { ChatComposer } from "./ChatComposer";
+import { ConnectionBanner } from "./ConnectionBanner";
+import { fileToBase64, LightboxModal } from "./images";
 import {
-  ComposerControls,
-  permissionPresetsFromSchema,
-} from "./ComposerControls";
-import { ContextMeter, movesContextMeter } from "./ContextMeter";
-import {
-  expandStreamRecords,
-  foldChatItems,
-  foldQueue,
-  foldUserRpcIds,
-  lastTurnStartTime,
-  type QueuedItem,
-  type TurnView,
-} from "./events";
-import {
-  fileToBase64,
-  getImageMediaType,
-  isSupportedImage,
-  LightboxModal,
-  MAX_IMAGE_BYTES,
-  MAX_IMAGES_PER_MESSAGE,
-  type DraftImage,
-} from "./images";
-import {
-  ownerSessionOf,
-  PENDING_PRECEDENCE,
-  planReviewOf,
+  groupPendingEntries,
   PendingInteraction,
   type PendingApproval,
-  type PendingEntry,
   type PendingKind,
   type PendingQuestion,
 } from "./PendingInteraction";
 import { QueueStrip } from "./QueueStrip";
-import { rpc } from "./rpc";
+import { rpc, toErrMsg } from "./rpc";
 import { RunningStrip } from "./RunningStrip";
 import { SessionSidebar, useSessionSidebar } from "./SessionSidebar";
-import { orderWorkspaces, sessionTitle, upsertWorkspace } from "./sidebar-data";
+import { sessionTitle } from "./sidebar-data";
 import { TurnItems } from "./TurnItems";
 import { WorkspaceChip } from "./WorkspaceChip";
 import { SettingsPage } from "./SettingsPage";
+import type { QueuedItem } from "./events";
+import { useChatScroll, useChatScrollFollow } from "./useChatScroll";
+import { useComposerDrafts } from "./useComposerDrafts";
+import { useEngineConnection } from "./useEngineConnection";
+import { useEngineStreams } from "./useEngineStreams";
+import { useModelSelection } from "./useModelSelection";
+import { useSessionActions } from "./useSessionActions";
 
 const qingwu = window.qingwu;
 
@@ -107,25 +64,26 @@ export function NativeApp({
   sidebarCollapsed: boolean;
 }) {
   const [visible, setVisible] = useState(false);
-  const [sessions, setSessions] = useState<SessionSummary[]>([]);
-  /** 会话列表最新快照：切换会话时据它播种运行态，避免把 sessions 纳入 effect 依赖。 */
-  const sessionsRef = useRef<SessionSummary[]>([]);
-  sessionsRef.current = sessions;
-  const [workspaces, setWorkspaces] = useState<WorkspaceView[]>([]);
-  /** 宿主全量已归档会话集合：列表与分组必须主动排除，解归档前不显示。 */
-  const [archivedSessionIds, setArchivedSessionIds] = useState<string[]>([]);
-  /** 后台执行完成但用户尚未查看的会话集合（左侧蓝点提醒）。 */
-  const [unreadFinishedSessionIds, setUnreadFinishedSessionIds] = useState<
-    Set<string>
-  >(new Set());
-
   /** 设置面板显隐状态 */
   const [settingsOpen, setSettingsOpen] = useState(false);
-
   /** 是否折叠回合执行过程与工具调用（应用设置项，默认 false 与 DSH 平铺一致） */
   const [collapseProcess, setCollapseProcess] = useState(false);
   /** 聊天区内容列宽档位（应用设置项，默认紧凑与 DSH 一致） */
   const [chatWidth, setChatWidth] = useState<ChatWidth>("narrow");
+  /** 最近活跃工作区（对齐官方 New Session 语义：新会话落在这里）。 */
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(
+    null,
+  );
+  const [currentId, setCurrentId] = useState<string | null>(null);
+  /** 当前会话 id 的最新值（异步回调与列表对账用）。 */
+  const currentIdRef = useRef<string | null>(currentId);
+  currentIdRef.current = currentId;
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  /** 右侧面板折叠态（默认收起，需要时再展开）。 */
+  const [panelCollapsed, setPanelCollapsed] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  /** 正在处理的队列操作条目 id（按钮禁用态）。 */
+  const [queueBusyId, setQueueBusyId] = useState<string | null>(null);
 
   useEffect(() => {
     if (window.qingwu?.getAppSettings) {
@@ -155,70 +113,6 @@ export function NativeApp({
     min: 180,
     max: 400,
   });
-
-
-  /** 最近活跃工作区（对齐官方 New Session 语义：新会话落在这里）。 */
-  const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(
-    null,
-  );
-  const [currentId, setCurrentId] = useState<string | null>(null);
-  const [items, setItems] = useState<TurnView[]>([]);
-  const [draft, setDraft] = useState("");
-  /** 流式思考文本（reasoning-delta 累积）。 */
-  const [liveReasoning, setLiveReasoning] = useState("");
-  /**
-   * 在飞块是否仍是思考块：思考增量置真，文本/工具调用块开始后置假。只决定
-   * 折叠行的摘取哪一行、要不要扫光（对齐官方「推理块是否仍是流式尾巴」的判据）。
-   */
-  const [reasoningActive, setReasoningActive] = useState(false);
-  /** block-start(tool-call) 已宣告但 tool/call 事件未落地的提示态。 */
-  const [toolCalling, setToolCalling] = useState(false);
-  const [input, setInput] = useState("");
-  /**
-   * 逐会话草稿（仅内存，重启不保留）：键为会话 id，无会话时用空串。
-   * 切换会话时切走保留、切回恢复，避免把 A 里没写完的半句话发到 B。
-   */
-  const composerDraftsRef = useRef<Map<string, string>>(new Map());
-  const [draftImages, setDraftImages] = useState<DraftImage[]>([]);
-  const composerImagesRef = useRef<Map<string, DraftImage[]>>(new Map());
-  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
-  const [running, setRunning] = useState(false);
-  /** 当前轮开始时间（最近一次 turn/start），驱动底部「工作中 X 秒」状态条。 */
-  const [turnStartedAt, setTurnStartedAt] = useState<number | null>(null);
-  /** 引擎 inbox 里的待发送队列（排队中／插话中），由 agent/inbox/spliced 折出。 */
-  const [queue, setQueue] = useState<QueuedItem[]>([]);
-  /** 本地乐观回显：提交当帧即显示，宿主落库或入队后退休。 */
-  const [echoes, setEchoes] = useState<QueuedItem[]>([]);
-  /** 正在处理的队列操作条目 id（按钮禁用态）。 */
-  const [queueBusyId, setQueueBusyId] = useState<string | null>(null);
-  const [approvals, setApprovals] = useState<PendingApproval[]>([]);
-  const [questions, setQuestions] = useState<PendingQuestion[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [loadingHistory, setLoadingHistory] = useState(false);
-  /** 开场窗口之外还有更早历史（对齐官方 follow snapshot 的 hasMore）。 */
-  const [historyHasMore, setHistoryHasMore] = useState(false);
-  /** 「加载更早」一页在途（按钮禁用并显示加载中，对齐官方 loadingOlder）。 */
-  const [loadingOlderHistory, setLoadingOlderHistory] = useState(false);
-  /** 右侧面板折叠态（默认收起，需要时再展开）。 */
-  const [panelCollapsed, setPanelCollapsed] = useState(true);
-  /** 模型目录（provider 分组 + 默认选择），拉取失败仅降级选择器。 */
-  const [modelCatalog, setModelCatalog] = useState<ModelCatalog | null>(null);
-  /** 空态（尚未建会话）待应用的模型选择，发送时随会话创建写入。 */
-  const [emptySelection, setEmptySelection] = useState<ModelSelection | null>(
-    null,
-  );
-  /** 新会话默认权限（settings permission 命名空间 defaultPreset），空态选择器读写的对象。 */
-  const [defaultPermission, setDefaultPermission] = useState<
-    (PermissionSelect & { writable: boolean; revision: number }) | null
-  >(null);
-  /** 当前会话可用的宿主斜杠命令列表。 */
-  const [hostCommands, setHostCommands] = useState<CommandDescriptor[]>([]);
-  /** 当前会话可用的技能列表。 */
-  const [skills, setSkills] = useState<SkillDescriptor[]>([]);
-  /** 引擎连接状态（由主进程通信桥维护）。 */
-  const [dshConnected, setDshConnected] = useState(true);
-  /** 用户手动触发重连中。 */
-  const [reconnecting, setReconnecting] = useState(false);
   /** 右侧面板宽度（拖拽调节，localStorage 记忆，双击复位）。 */
   const rightPanel = usePanelWidth({
     storageKey: "qingwu.native.panelWidth",
@@ -226,131 +120,160 @@ export function NativeApp({
     min: 220,
     max: 480,
   });
-  const eventsRef = useRef<SessionEvent[]>([]);
-  const bottomRef = useRef<HTMLDivElement | null>(null);
-  const scrollRef = useRef<HTMLDivElement | null>(null);
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const stickBottomRef = useRef(true);
-  /** 切换会话标志：新会话快照上屏初次沉底前置为 true，屏蔽高度剧变引发的 onScroll 误关贴底。 */
-  const initialScrollNeededRef = useRef(false);
-  /** 平滑滚动至底部进行中：忽略中间帧触发的 onScroll，避免平滑滚动途中误判定为脱离底部。 */
-  const scrollingToBottomRef = useRef(false);
-  /** 视口脱离底部指示：控制「回到底部」悬浮按钮的显隐。 */
-  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
-  const currentIdRef = useRef<string | null>(null);
-  /** follow 开场帧 cursor：session/page 的 throughSeq（含）日志切点，随每代快照更新。 */
-  const historyThroughSeqRef = useRef(0);
-  /** 「加载更早」前插后的视口锚定：记下前插前的滚动几何，DOM 提交后按高度差复位。 */
-  const restoreScrollRef = useRef<{ height: number; top: number } | null>(null);
-  const sessionStreamRef = useRef<string | null>(null);
-  const eventsClientIdRef = useRef<string | null>(null);
-  const refreshTimerRef = useRef<number | undefined>(undefined);
 
-  const refreshSessions = useCallback(async () => {
-    try {
-      const listValue = await rpc<{ items: SessionSummary[] }>(
-        Endpoints.sessionList,
-        {
-          _request: {},
-        },
-      );
-      setSessions(listValue.items);
-      // 运行态以列表兜底对账：引擎的 api-session/status 只在 running↔idle
-      // 跳变时发出，切换会话与断线重连都不会重放，光靠事件会长期停在旧值。
-      const current = listValue.items.find(
-        (entry) => entry.sessionId === currentIdRef.current,
-      );
-      if (current) setRunning(current.running);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    }
-  }, []);
+  const { dshConnected, reconnecting, handleManualReconnect } =
+    useEngineConnection();
 
-  const scheduleRefresh = useCallback(() => {
-    if (refreshTimerRef.current !== undefined)
-      window.clearTimeout(refreshTimerRef.current);
-    refreshTimerRef.current = window.setTimeout(
-      () => void refreshSessions(),
-      300,
-    );
-  }, [refreshSessions]);
+  const drafts = useComposerDrafts({ currentIdRef, setError });
+  const {
+    input,
+    draftImages,
+    textareaRef,
+    handleInputChange,
+    handleAddImages,
+    handleRemoveDraftImage,
+    handleChatDragOver,
+    handleChatDrop,
+    clearForSubmit,
+    captureForSubmit,
+    clearTextDraft,
+    restoreAfterFailure,
+    loadForSession,
+    discardFor,
+  } = drafts;
 
-  /** 用当前事件窗口重算对话、队列与回显退休（快照与增量共用一条路径）。 */
-  const refreshFromEvents = useCallback(() => {
-    setItems(foldChatItems(eventsRef.current));
-    const folded = foldQueue(eventsRef.current);
-    setQueue(folded.queue);
-    setTurnStartedAt(lastTurnStartTime(eventsRef.current));
-    // 回显退休：宿主已把这条提交落成 durable user/message 或队列项
-    const settled = new Set([
-      ...folded.rpcIds,
-      ...foldUserRpcIds(eventsRef.current),
-    ]);
-    setEchoes((prev) => {
-      const kept = prev.filter(
-        (echo) => !echo.rpcId || !settled.has(echo.rpcId),
-      );
-      return kept.length === prev.length ? prev : kept;
-    });
-  }, []);
+  const scroll = useChatScroll();
+  const { resetForSessionSwitch, capturePrependAnchor, scrollToBottom } =
+    scroll;
 
-  const appendEvent = useCallback(
-    (event: SessionEvent) => {
-      eventsRef.current = [...eventsRef.current, event];
-      if (event.type === "tool/call") setToolCalling(false);
-      // 上下文占用/用量随这些事件变化。官方是客户端自己折投影，我们直接复用宿主
-      // 算好的投影列，所以要在这些事件到达时重取一次会话列表。
-      if (movesContextMeter(event.type)) scheduleRefresh();
-      refreshFromEvents();
+  /** 会话切换复位（给引擎流 hook 的稳定回调：滚动复位 + 载入该会话草稿）。 */
+  const handleSessionSwitched = useCallback(
+    (sessionId: string | null) => {
+      resetForSessionSwitch();
+      loadForSession(sessionId);
     },
-    [refreshFromEvents, scheduleRefresh],
+    [resetForSessionSwitch, loadForSession],
+  );
+  /** 会话在外部被删除时的草稿清理（给引擎流 hook 的稳定回调）。 */
+  const handleSessionRemoved = useCallback(
+    (sessionId: string) => discardFor(sessionId),
+    [discardFor],
   );
 
-  /**
-   * 「加载更早」：向 session/page 再取一页开场窗口之前的历史并前插。
-   * 对齐官方 session-controller loadOlder：beforeSeq 取当前窗口最早一条的 seq
-   * （host 按消息计数向前切满一页），每页 maxMessages 50；结果 records 仍是
-   * seq 升序事件，直接拼进窗口重算。throughSeq 用开场帧 cursor（含）切点，
-   * 越过它之前的日志不再属于本次 follow。切会话后晚到的旧结果按代际丢弃。
-   */
-  const loadOlderHistory = useCallback(async () => {
-    const sessionId = currentIdRef.current;
-    const oldest = eventsRef.current[0];
-    if (!sessionId || !oldest || loadingOlderHistory) return;
-    const el = scrollRef.current;
-    if (el) {
-      restoreScrollRef.current = { height: el.scrollHeight, top: el.scrollTop };
+  const streams = useEngineStreams({
+    currentId,
+    currentIdRef,
+    setCurrentId,
+    setError,
+    onSessionSwitched: handleSessionSwitched,
+    onSessionRemoved: handleSessionRemoved,
+    capturePrependAnchor,
+  });
+  const {
+    sessions,
+    setSessions,
+    workspaces,
+    setWorkspaces,
+    archivedSessionIds,
+    setArchivedSessionIds,
+    unreadFinishedSessionIds,
+    setUnreadFinishedSessionIds,
+    refreshSessions,
+    running,
+    items,
+    queue,
+    echoes,
+    turnStartedAt,
+    eventsRef,
+    loadOlderHistory,
+    loadingHistory,
+    historyHasMore,
+    loadingOlderHistory,
+    draft,
+    liveReasoning,
+    reasoningActive,
+    toolCalling,
+    approvals,
+    setApprovals,
+    questions,
+    setQuestions,
+    currentEventsClientId,
+    hostCommands,
+    skills,
+    pushEcho,
+    removeEchoByRpcId,
+  } = streams;
+
+  useChatScrollFollow(scroll, {
+    items,
+    echoes,
+    queue,
+    draft,
+    liveReasoning,
+    toolCalling,
+    approvals,
+    questions,
+    loadingHistory,
+  });
+
+  const archivedSet = useMemo(
+    () => new Set(archivedSessionIds),
+    [archivedSessionIds],
+  );
+
+  /** 会话 → 所属工作区映射（点击会话时更新活跃工作区）。 */
+  const workspaceOfSession = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const ws of workspaces) {
+      for (const id of ws.sessionIds) map.set(id, ws.workspaceId);
     }
-    setLoadingOlderHistory(true);
-    try {
-      const page = await rpc<{
-        records: SessionHistoryRecord[];
-        hasMore: boolean;
-      }>(Endpoints.sessionPage, {
-        request: {
-          address: { kind: "session", sessionId },
-          throughSeq: historyThroughSeqRef.current,
-          beforeSeq: oldest.seq,
-          maxMessages: 50,
-        },
-      });
-      if (currentIdRef.current !== sessionId) return;
-      const older = page.records
-        .filter((record) => record.type === "event")
-        .map((record) => record.event)
-        .filter((event) => event.seq < oldest.seq);
-      if (older.length > 0) {
-        eventsRef.current = [...older, ...eventsRef.current];
-        refreshFromEvents();
-      }
-      setHistoryHasMore(page.hasMore);
-    } catch (err) {
-      console.error("[qingwu] loadOlder failed:", err);
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      if (currentIdRef.current === sessionId) setLoadingOlderHistory(false);
-    }
-  }, [loadingOlderHistory, refreshFromEvents]);
+    return map;
+  }, [workspaces]);
+
+  const actions = useSessionActions({
+    sessions,
+    workspaces,
+    archivedSet,
+    currentId,
+    activeWorkspaceId,
+    workspaceOfSession,
+    refreshSessions,
+    setError,
+    drafts,
+    setSessions,
+    setWorkspaces,
+    setArchivedSessionIds,
+    setUnreadFinishedSessionIds,
+    setCurrentId,
+    setActiveWorkspaceId,
+    setSettingsOpen,
+  });
+  const {
+    openSession,
+    createSessionIn,
+    handleNewSession,
+    handleAddWorkspace,
+    handleWorkspaceRename,
+    handleWorkspaceDelete,
+    handleWorkspaceReorder,
+    handleSessionRename,
+    handleSessionArchive,
+    handleSessionUnarchive,
+    handleRestoreAndOpenSession,
+    handleWorkspaceChipPick,
+  } = actions;
+
+  const {
+    modelCatalog,
+    refreshModelCatalog,
+    emptySelection,
+    setEmptySelection,
+    currentModelSelection,
+    currentPermission,
+    handleModelPick,
+    handleEffortPick,
+    handlePermissionPick,
+  } = useModelSelection({ sessions, currentId, refreshSessions, setError });
 
   // 初始化：界面模式 + 会话列表；无活跃工作区时默认取第一个
   useEffect(() => {
@@ -374,55 +297,6 @@ export function NativeApp({
     };
   }, [visible]);
 
-  // 模型目录与界面生命周期解耦，失败静默降级（选择器显示目录不可用）
-  const refreshModelCatalog = useCallback(async () => {
-    try {
-      setModelCatalog(await rpc<ModelCatalog>(Endpoints.sessionModelCatalog, {}));
-    } catch {
-      // 刷新失败保留现有目录；首次加载失败时维持空目录兜底
-    }
-  }, []);
-
-  useEffect(() => {
-    void refreshModelCatalog();
-  }, [refreshModelCatalog]);
-
-  /** 读取新会话默认权限（settings/describe 的 permission 命名空间）。 */
-  const refreshDefaultPermission = useCallback(async () => {
-    try {
-      const described = await rpc<SettingsDescribeValue>(
-        Endpoints.settingsDescribe,
-        {},
-      );
-      const view = described.namespaces.find(
-        (entry) => entry.ns === "permission",
-      );
-      const value = view?.value;
-      const current =
-        typeof value === "object" && value !== null && "defaultPreset" in value
-          ? value.defaultPreset
-          : undefined;
-      if (!view || typeof current !== "string") {
-        setDefaultPermission(null);
-        return;
-      }
-      const options = permissionPresetsFromSchema(view.schema);
-      setDefaultPermission({
-        options:
-          options.length > 0 ? options : [{ value: current, name: current }],
-        currentValue: current,
-        writable: described.writable,
-        revision: view.revision,
-      });
-    } catch {
-      setDefaultPermission(null);
-    }
-  }, []);
-
-  useEffect(() => {
-    void refreshDefaultPermission();
-  }, [refreshDefaultPermission]);
-
   useEffect(() => {
     if (workspaces.length > 0 && !activeWorkspaceId) {
       setActiveWorkspaceId(workspaces[0].workspaceId);
@@ -438,525 +312,12 @@ export function NativeApp({
     qingwu.setActiveWorkspacePath?.(activeWorkspace?.path ?? null);
   }, [activeWorkspace, qingwu]);
 
-  // 监听引擎断连与重连状态
-  useEffect(() => {
-    qingwu.getDshConnectionStatus?.()
-      .then((status) => {
-        if (typeof status === "boolean") setDshConnected(status);
-      })
-      .catch(() => {});
-    const cleanup = qingwu.onDshConnectionChanged?.((connected) => {
-      setDshConnected(connected);
-      if (connected) setReconnecting(false);
-    });
-    return () => cleanup?.();
-  }, [qingwu]);
-
-  const handleManualReconnect = useCallback(async () => {
-    if (reconnecting) return;
-    setReconnecting(true);
-    try {
-      await qingwu.reconnectDsh?.();
-    } catch (err) {
-      console.error("[qingwu] 重连引擎失败:", err);
-    }
-    window.setTimeout(() => {
-      setReconnecting(false);
-    }, 3000);
-  }, [qingwu, reconnecting]);
-
-  // 全局流：$events（会话增删/状态/审批/问答）+ workspace/follow（项目注册表）
-  useEffect(() => {
-    const openStream = (endpoint: string, payload: unknown) => {
-      void qingwu.dshStreamOpen(endpoint, payload).catch((err) => {
-        setError(
-          `打开 ${endpoint} 流失败: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      });
-    };
-    openStream("$events", {});
-    openStream(Endpoints.workspaceFollow, {});
-
-    const handleRemoteEvent = (frame: RemoteEventFrame) => {
-      if (frame.type === "ready") {
-        eventsClientIdRef.current = frame.clientId;
-        return;
-      }
-      if (frame.type === "emit") {
-        const [firstArg, secondArg] = Array.isArray(frame.args)
-          ? frame.args
-          : [];
-        if (frame.event === "api-session/added" && firstArg) {
-          const summary = firstArg as SessionSummary;
-          setSessions((prev) => {
-            const rest = prev.filter((s) => s.sessionId !== summary.sessionId);
-            return [summary, ...rest];
-          });
-        } else if (
-          frame.event === "api-session/removed" &&
-          typeof firstArg === "string"
-        ) {
-          const removedId = firstArg;
-          setSessions((prev) => prev.filter((s) => s.sessionId !== removedId));
-          // 会话已删除，草稿桶与图片一并清理（内存态，避免残留）
-          composerDraftsRef.current.delete(removedId);
-          composerImagesRef.current.delete(removedId);
-          if (currentIdRef.current === removedId) {
-            setCurrentId(null);
-          }
-        } else if (frame.event === "api-session/status") {
-          const sessionId = firstArg as string;
-          const isRunning = Boolean(secondArg);
-          if (currentIdRef.current === sessionId) setRunning(isRunning);
-          setSessions((prev) =>
-            prev.map((s) => {
-              if (s.sessionId === sessionId) {
-                if (
-                  s.running &&
-                  !isRunning &&
-                  currentIdRef.current !== sessionId
-                ) {
-                  setUnreadFinishedSessionIds((u) => new Set(u).add(sessionId));
-                }
-                return { ...s, running: isRunning };
-              }
-              return s;
-            }),
-          );
-        } else if (frame.event === "api-session/error") {
-          const sessionId = firstArg as string;
-          const message = secondArg as string;
-          if (currentIdRef.current === sessionId) setError(message);
-        } else if (frame.event === "api-session/activity") {
-          scheduleRefresh();
-        }
-        return;
-      }
-      if (frame.type === "waterfall") {
-        // agentId 就是归属会话 id（引擎里 Agent id 恒等于 Session id）：待处理项
-        // 必须带着它入库，渲染时才能只落在发起请求的那个会话里。
-        const sessionId = frame.agentId ?? "";
-        if (frame.event === "approval/request") {
-          const request = (frame.request ?? {}) as ApprovalRequestPayload;
-          setApprovals((prev) =>
-            prev.some((a) => a.eventId === frame.eventId)
-              ? prev
-              : [
-                  ...prev,
-                  {
-                    ...request,
-                    eventId: frame.eventId,
-                    clientId: eventsClientIdRef.current ?? "",
-                    sessionId,
-                  },
-                ],
-          );
-        } else if (frame.event === "user-questions/request") {
-          const request = (frame.request ?? {}) as UserQuestionsRequestPayload;
-          setQuestions((prev) =>
-            prev.some((q) => q.eventId === frame.eventId)
-              ? prev
-              : [
-                  ...prev,
-                  {
-                    ...request,
-                    eventId: frame.eventId,
-                    clientId: eventsClientIdRef.current ?? "",
-                    sessionId,
-                  },
-                ],
-          );
-        }
-        return;
-      }
-      if (frame.type === "cancel") {
-        setApprovals((prev) => prev.filter((a) => a.eventId !== frame.eventId));
-        setQuestions((prev) => prev.filter((q) => q.eventId !== frame.eventId));
-      }
-    };
-
-    const handleWorkspaceFollow = (frame: WorkspaceFollowFrame) => {
-      if (frame.type === "baseline") {
-        setWorkspaces(frame.value?.items ?? []);
-        setArchivedSessionIds(frame.value?.archivedSessionIds ?? []);
-        return;
-      }
-      if (frame.type === "upsert" && frame.workspace) {
-        setWorkspaces((prev) => upsertWorkspace(prev, frame.workspace!));
-      } else if (frame.type === "remove" && frame.workspaceId) {
-        setWorkspaces((prev) =>
-          prev.filter((w) => w.workspaceId !== frame.workspaceId),
-        );
-      } else if (frame.type === "order" && Array.isArray(frame.workspaceIds)) {
-        setWorkspaces((prev) => orderWorkspaces(prev, frame.workspaceIds!));
-      } else if (
-        frame.type === "archived" &&
-        Array.isArray(frame.archivedSessionIds)
-      ) {
-        setArchivedSessionIds(frame.archivedSessionIds);
-      }
-    };
-
-    const handleStreamItem = ({
-      streamId: _streamId,
-      endpoint,
-      value,
-    }: DshStreamItem) => {
-      if (!isRecord(value)) return;
-      if (value.type === "stream/error") {
-        const err = value.error as { message?: string } | undefined;
-        if (err?.message) setError(err.message);
-        return;
-      }
-      if (endpoint === "$events") {
-        handleRemoteEvent(value as unknown as RemoteEventFrame);
-      } else if (endpoint === Endpoints.workspaceFollow) {
-        handleWorkspaceFollow(value as unknown as WorkspaceFollowFrame);
-      }
-    };
-
-    const unsubscribe = qingwu.onDshStreamItem(handleStreamItem);
-    return () => {
-      unsubscribe();
-    };
-  }, [scheduleRefresh]);
-
-  // 选中会话：打开 session/follow 日志流（开场快照 + 实时事件）
-  useEffect(() => {
-    currentIdRef.current = currentId;
-    if (sessionStreamRef.current) {
-      qingwu.dshStreamCancel(sessionStreamRef.current);
-      sessionStreamRef.current = null;
-    }
-    eventsRef.current = [];
-    setItems([]);
-    setHistoryHasMore(false);
-    setLoadingOlderHistory(false);
-    historyThroughSeqRef.current = 0;
-    setDraft("");
-    setLiveReasoning("");
-    setReasoningActive(false);
-    setToolCalling(false);
-    stickBottomRef.current = true;
-    initialScrollNeededRef.current = true;
-    scrollingToBottomRef.current = false;
-    setShowScrollToBottom(false);
-    setQueue([]);
-    setEchoes([]);
-    setTurnStartedAt(null);
-    // 运行态从会话列表播种：进入一个正在跑的会话时必须立刻显示「停止」，
-    // 不能等 status 事件（它只在跳变时发出，切换会话不会重放）。
-    setRunning(
-      sessionsRef.current.find((entry) => entry.sessionId === currentId)
-        ?.running ?? false,
-    );
-    // 载入目标会话自己的草稿（上一个会话的草稿已在输入时写进各自的桶）
-    setInput(composerDraftsRef.current.get(currentId ?? "") ?? "");
-    setDraftImages(composerImagesRef.current.get(currentId ?? "") ?? []);
-    if (!currentId) {
-      setHostCommands([]);
-      setSkills([]);
-      return;
-    }
-
-    // 会话可用斜杠命令目录
-    void rpc<CommandDescriptor[]>(Endpoints.commandsList, {
-      agentId: currentId,
-    })
-      .then((cmds) => {
-        if (!cancelled) setHostCommands(cmds);
-      })
-      .catch(() => {
-        if (!cancelled) setHostCommands([]);
-      });
-
-    // 会话可用技能目录
-    void rpc<SkillListResult>(Endpoints.skillsList, {
-      request: { sessionId: currentId },
-    })
-      .then((res) => {
-        if (!cancelled && res?.skills) setSkills(res.skills);
-      })
-      .catch(() => {
-        if (!cancelled) setSkills([]);
-      });
-
-    setLoadingHistory(true);
-    let cancelled = false;
-    /** 本代连接的 live 帧 revision；null 表示开场基线未声明，此时不做跳号检查。 */
-    let assistantRevision: number | null = null;
-
-    /** 清空流式展示态（切换会话／重连／开场基线／开始与放弃 attempt 共用）。 */
-    const resetStreamingDisplay = () => {
-      setDraft("");
-      setLiveReasoning("");
-      setReasoningActive(false);
-      setToolCalling(false);
-    };
-
-    /**
-     * 打开 follow 流。必须声明 assistantStream：0.1.5 起「正在输出的文本」与
-     * 「正在思考的推理」只走 opted-in 的 live 帧，不声明就只能等 settlement，
-     * 界面上表现为整段回复一次性出现、思考过程全程不可见。
-     */
-    const openFollow = () => {
-      void qingwu
-        .dshStreamOpen(Endpoints.sessionFollow, {
-          request: {
-            address: { kind: "session", sessionId: currentId },
-            maxMessages: 100,
-            assistantStream: true,
-          },
-        })
-        .then((streamId) => {
-          if (cancelled) {
-            qingwu.dshStreamCancel(streamId);
-            return;
-          }
-          sessionStreamRef.current = streamId;
-        });
-    };
-
-    /** revision 跳号（漏帧/重连）后本代流已不可信：重开一次，由新开场帧重建界面状态。 */
-    const resyncFollow = () => {
-      if (sessionStreamRef.current) {
-        qingwu.dshStreamCancel(sessionStreamRef.current);
-        sessionStreamRef.current = null;
-      }
-      assistantRevision = null;
-      resetStreamingDisplay();
-      openFollow();
-    };
-
-    /**
-     * 一条 live 增量折进流式展示态。
-     *
-     * 在飞块是不是思考块，首选 block-start 的声明：推理块开始的当口先按思考态
-     * 渲染，一旦文本块或工具调用块开始，思考就已经是过去完成的过程，折叠行随之
-     * 从「跟着最后一行」切回静态摘要。旧引擎（0.1.4 及以前）的 durable
-     * assistant/chunk 只发增量、没有 block-start，那就按增量类型兜底。
-     */
-    const applyAssistantChunk = (chunk: AssistantBlockDelta) => {
-      if (chunk.type === "block-start") {
-        setReasoningActive(chunk.blockType === "reasoning");
-        if (chunk.blockType === "tool-call") setToolCalling(true);
-        return;
-      }
-      if (chunk.type === "text-delta" && typeof chunk.text === "string") {
-        setReasoningActive(false);
-        setDraft((prev) => prev + chunk.text);
-      } else if (
-        chunk.type === "reasoning-delta" &&
-        typeof chunk.text === "string"
-      ) {
-        setReasoningActive(true);
-        setLiveReasoning((prev) => prev + chunk.text);
-      }
-    };
-
-    openFollow();
-
-    const handleFollowItem = ({ streamId, endpoint, value }: DshStreamItem) => {
-      if (
-        cancelled ||
-        endpoint !== Endpoints.sessionFollow ||
-        streamId !== sessionStreamRef.current
-      ) {
-        return;
-      }
-      if (!isRecord(value)) return;
-      if (value.type === "stream/error" || value.type === "stream/end") return;
-      const frame = value as unknown as SessionFollowFrame;
-      if (frame.type === "snapshot") {
-        const events = frame.records
-          .filter((record) => record.type === "event")
-          .map((record) => record.event);
-        eventsRef.current = events;
-        historyThroughSeqRef.current = frame.cursor;
-        setHistoryHasMore(frame.hasMore);
-        refreshFromEvents();
-        setLoadingHistory(false);
-        // 开场基线：把在飞 attempt 已经产出的增量补回流式展示，
-        // 否则切回正在输出的会话会空白到下一次 settlement 才出现整段回复。
-        assistantRevision = frame.assistantStream?.revision ?? null;
-        resetStreamingDisplay();
-        const pending = frame.assistantStream?.activeAttempt?.stream;
-        if (Array.isArray(pending)) {
-          for (const chunk of expandStreamRecords(pending)) {
-            applyAssistantChunk(chunk);
-          }
-        }
-        return;
-      }
-      if (frame.type === "assistant-stream") {
-        const live = frame.frame;
-        if (
-          assistantRevision !== null &&
-          live.revision !== assistantRevision + 1
-        ) {
-          resyncFollow();
-          return;
-        }
-        assistantRevision = live.revision;
-        if (live.type === "start") {
-          resetStreamingDisplay();
-          return;
-        }
-        if (live.type === "chunk") {
-          applyAssistantChunk(live.chunk);
-          return;
-        }
-        // end：committed 时紧随其后的 durable settlement 会清空流式态，此处不动避免闪空；
-        // 被放弃的 attempt 不会再有 settlement，必须就地清掉，否则残留半截文本。
-        if (live.outcome.kind === "abandoned") {
-          resetStreamingDisplay();
-        }
-        return;
-      }
-      if (frame.type === "event") {
-        const event = frame.event;
-        if (event.type === "assistant/chunk") {
-          // 旧引擎（0.1.4 及以前）的过程内增量走 durable 事件，保留兼容。
-          const chunk = (event.data as AssistantChunkEventData | null)?.chunk;
-          if (!chunk) return;
-          applyAssistantChunk(chunk);
-          return;
-        }
-        if (event.type === "assistant/message") {
-          resetStreamingDisplay();
-        }
-        appendEvent(event);
-      }
-    };
-    const unsubscribe = qingwu.onDshStreamItem(handleFollowItem);
-    return () => {
-      cancelled = true;
-      unsubscribe();
-      if (sessionStreamRef.current) {
-        qingwu.dshStreamCancel(sessionStreamRef.current);
-        sessionStreamRef.current = null;
-      }
-    };
-  }, [currentId, appendEvent, refreshFromEvents]);
-
-  /** 滚动到底部：重置贴底锁定状态并隐藏悬浮按钮，支持平滑或瞬间沉底。 */
-  const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
-    stickBottomRef.current = true;
-    setShowScrollToBottom(false);
-    scrollingToBottomRef.current = behavior === "smooth";
-    const el = scrollRef.current;
-    if (el) {
-      if (behavior === "smooth") {
-        el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-      } else {
-        el.scrollTop = el.scrollHeight;
-      }
-    }
-    bottomRef.current?.scrollIntoView({ behavior, block: "end" });
-  }, []);
-
-  // 滚轮事件：用户手动滑动滚轮时，立即解除程序化平滑滚动锁定，恢复用户自主控制
-  const handleWheel = useCallback(() => {
-    scrollingToBottomRef.current = false;
-  }, []);
-
-  // 自动滚动：仅当用户位于底部附近时贴底跟随；会话切换初次沉底与程序化滚动期间忽略，避免误判关闭贴底
-  const handleScroll = useCallback(() => {
-    const el = scrollRef.current;
-    if (!el || initialScrollNeededRef.current) return;
-    const distanceToBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    const atBottom = distanceToBottom < 80;
-
-    if (scrollingToBottomRef.current) {
-      if (atBottom) {
-        scrollingToBottomRef.current = false;
-      }
-      return;
-    }
-
-    stickBottomRef.current = atBottom;
-    setShowScrollToBottom(!atBottom && el.scrollHeight > el.clientHeight + 100);
-  }, []);
-
-  // 「加载更早」前插旧内容后按高度差复位视口：用户看到的那条消息保持原地，不跳屏
-  useLayoutEffect(() => {
-    const el = scrollRef.current;
-    const anchor = restoreScrollRef.current;
-    if (!el || !anchor) return;
-    restoreScrollRef.current = null;
-    el.scrollTop = anchor.top + (el.scrollHeight - anchor.height);
-  }, [items]);
-
-  // 切换会话快照载入后初次沉底：无条件拉至最新消息，并在下一帧复核校准，避开图片/代码块首次渲染撑高时停在顶部
-  useLayoutEffect(() => {
-    if (!initialScrollNeededRef.current || loadingHistory) return;
-    const el = scrollRef.current;
-    if (el) {
-      el.scrollTop = el.scrollHeight;
-    }
-    bottomRef.current?.scrollIntoView({ block: "end" });
-    const rafId = requestAnimationFrame(() => {
-      if (scrollRef.current) {
-        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-      }
-      bottomRef.current?.scrollIntoView({ block: "end" });
-      initialScrollNeededRef.current = false;
-    });
-    return () => cancelAnimationFrame(rafId);
-  }, [items, loadingHistory]);
-
-  // 贴底模式下的自动跟随：当会话内容（流式正文/思考/工具/回显等）变化时，持续保持视口贴底
-  useLayoutEffect(() => {
-    if (
-      stickBottomRef.current &&
-      !initialScrollNeededRef.current &&
-      !restoreScrollRef.current
-    ) {
-      const el = scrollRef.current;
-      if (el) {
-        el.scrollTop = el.scrollHeight;
-      }
-      bottomRef.current?.scrollIntoView({ block: "end" });
-    }
-  }, [
-    items,
-    echoes,
-    queue,
-    draft,
-    liveReasoning,
-    toolCalling,
-    approvals,
-    questions,
-  ]);
-
-  // 当新消息落库或回显上屏后，下一帧复核校准高度（防止 Markdown、代码高亮、折叠区高度异步撑开造成视口上移）
-  useEffect(() => {
-    if (
-      stickBottomRef.current &&
-      !initialScrollNeededRef.current &&
-      !restoreScrollRef.current
-    ) {
-      const rafId = requestAnimationFrame(() => {
-        if (stickBottomRef.current && scrollRef.current) {
-          scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-          bottomRef.current?.scrollIntoView({ block: "end" });
-        }
-      });
-      return () => cancelAnimationFrame(rafId);
-    }
-  }, [items, echoes]);
-
-  const archivedSet = useMemo(
-    () => new Set(archivedSessionIds),
-    [archivedSessionIds],
-  );
-
   // 若当前打开的会话在外部被归档，清空选中态回退引导页
   useEffect(() => {
     if (currentId && archivedSet.has(currentId)) {
       setCurrentId(null);
     }
-  }, [currentId, archivedSet]);
+  }, [currentId, archivedSet, setCurrentId]);
 
   const sidebar = useSessionSidebar(sessions, workspaces, archivedSet);
 
@@ -967,46 +328,13 @@ export function NativeApp({
   );
 
   /**
-   * 待处理项按归属会话归拢：审批/问答只属于发起它的那个会话。
-   * `orphanPending` 是归属会话已不在列表里的项（例如会话被删除、帧缺 agentId）——
-   * 这类项在界面上没有任何入口可答，兜底显示在当前会话里，至少还能提交或放弃。
+   * 待处理项按归属会话归拢：审批/问答只属于发起它的那个会话，
+   * 无归属项兜底显示在当前会话（见 PendingInteraction.groupPendingEntries）。
    */
-  const { pendingBySession, orphanPending } = useMemo(() => {
-    const bySession = new Map<string, PendingEntry[]>();
-    const orphans: PendingEntry[] = [];
-    const push = (entry: PendingEntry) => {
-      if (!entry.owner || !sessionById.has(entry.owner)) {
-        orphans.push(entry);
-        return;
-      }
-      const list = bySession.get(entry.owner);
-      if (list) list.push(entry);
-      else bySession.set(entry.owner, [entry]);
-    };
-    for (const approval of approvals) {
-      push({
-        kind: "approval",
-        approval,
-        owner: ownerSessionOf(approval.sessionId, sessionById),
-      });
-    }
-    for (const question of questions) {
-      push({
-        kind: planReviewOf(question.questions ?? [])
-          ? "plan-review"
-          : "question",
-        question,
-        owner: ownerSessionOf(question.sessionId, sessionById),
-      });
-    }
-    // 同一会话内多条并存时只展示优先级最高的一条（对齐官方的 composer 位）
-    for (const list of bySession.values()) {
-      list.sort(
-        (a, b) => PENDING_PRECEDENCE[b.kind] - PENDING_PRECEDENCE[a.kind],
-      );
-    }
-    return { pendingBySession: bySession, orphanPending: orphans };
-  }, [approvals, questions, sessionById]);
+  const { pendingBySession, orphanPending } = useMemo(
+    () => groupPendingEntries(approvals, questions, sessionById),
+    [approvals, questions, sessionById],
+  );
 
   /** 侧栏会话行的等待提示：该会话在等什么。 */
   const pendingKindBySession = useMemo(() => {
@@ -1027,15 +355,6 @@ export function NativeApp({
   const shownList = currentPending.length > 0 ? currentPending : orphanPending;
   const shownPending = shownList[0] ?? null;
   const morePending = shownList.length - 1;
-
-  /** 会话 → 所属工作区映射（点击会话时更新活跃工作区）。 */
-  const workspaceOfSession = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const ws of workspaces) {
-      for (const id of ws.sessionIds) map.set(id, ws.workspaceId);
-    }
-    return map;
-  }, [workspaces]);
 
   /** 当前会话工作目录（工具卡片相对路径基准）。 */
   const currentCwd = useMemo(
@@ -1078,104 +397,11 @@ export function NativeApp({
     [currentId, currentSession, items, running],
   );
 
-  /** 当前生效的模型选择：会话投影优先（next 含待生效），空态用待应用选择或目录默认。 */
-  const currentModelSelection = useMemo<ModelSelection | null>(() => {
-    if (currentId) {
-      const projection = sessions.find((s) => s.sessionId === currentId)
-        ?.projections?.values?.modelSelection;
-      return (
-        projection?.next ??
-        projection?.lastUsed ??
-        modelCatalog?.default ??
-        null
-      );
-    }
-    return emptySelection ?? modelCatalog?.default ?? null;
-  }, [currentId, sessions, emptySelection, modelCatalog]);
-
-  /** 权限选择器数据：会话内取该会话投影，空态取新会话默认（settings permission.defaultPreset）。 */
-  const currentPermission = useMemo<PermissionSelect | null>(() => {
-    if (currentId) {
-      return (
-        sessions.find((s) => s.sessionId === currentId)?.projections?.values
-          ?.permissions ?? null
-      );
-    }
-    return defaultPermission;
-  }, [currentId, sessions, defaultPermission]);
-
-  /** 应用模型选择到会话并刷新投影（reasoningEffort 缺省用模型默认档）。 */
-  const applyModelSelection = useCallback(
-    async (selection: ModelSelection, sessionId: string) => {
-      await rpc(Endpoints.sessionSelectModel, {
-        request: { sessionId, ...selection },
-      });
-      await refreshSessions();
-    },
-    [refreshSessions],
-  );
-
-  /** 选择模型：会话内立即生效（下一轮起），空态暂存随建会话写入；强度回落新模型默认档。 */
-  const handleModelPick = (selection: ModelSelection) => {
-    if (currentId) {
-      void applyModelSelection(selection, currentId).catch((err) =>
-        setError(err instanceof Error ? err.message : String(err)),
-      );
-    } else {
-      setEmptySelection(selection);
-    }
-  };
-
-  /** 调整推理强度：在当前选择基础上覆盖 reasoningEffort（传 undefined 清除覆盖）。 */
-  const handleEffortPick = (effortId: string | undefined) => {
-    if (!currentModelSelection) return;
-    const { reasoningEffort: _prev, ...rest } = currentModelSelection;
-    const selection: ModelSelection = effortId
-      ? { ...rest, reasoningEffort: effortId }
-      : { ...rest };
-    if (currentId) {
-      void applyModelSelection(selection, currentId).catch((err) =>
-        setError(err instanceof Error ? err.message : String(err)),
-      );
-    } else {
-      setEmptySelection(selection);
-    }
-  };
-
-  /**
-   * 切换权限模式：会话内走宿主 /permission 命令（改该会话权限），
-   * 空态写 settings permission.defaultPreset（改后续新建会话的默认权限）。
-   */
-  const handlePermissionPick = (value: string) => {
-    if (currentId) {
-      void (async () => {
-        await rpc(Endpoints.commandsExecute, {
-          agentId: currentId,
-          line: `/permission ${value}`,
-          submittedAttachments: [],
-        });
-        await refreshSessions();
-      })().catch((err) =>
-        setError(err instanceof Error ? err.message : String(err)),
-      );
-      return;
-    }
-    if (!defaultPermission?.writable) return;
-    void (async () => {
-      await rpc(Endpoints.settingsMutate, {
-        ns: "permission",
-        ops: [{ op: "set", path: ["defaultPreset"], value }],
-        expectedRevision: defaultPermission.revision,
-      });
-      await refreshDefaultPermission();
-    })().catch((err) =>
-      setError(err instanceof Error ? err.message : String(err)),
-    );
-  };
-
   const availableCommands = useMemo(() => {
     return mergeCommands(hostCommands, CLIENT_COMMANDS, skills);
   }, [hostCommands, skills]);
+
+  const panelData = useMemo(() => foldPanelData(eventsRef.current), [items]);
 
   const handleExecuteCommand = async (
     line: string,
@@ -1184,6 +410,7 @@ export function NativeApp({
     const text = line.trim();
     const parsed = parseSlashLine(text);
     if (!parsed) return;
+    const submittedDraft = captureForSubmit(currentId);
 
     if (!dshConnected) {
       setError("与引擎连接中断，无法执行命令，请等待重连或点击重试");
@@ -1192,8 +419,7 @@ export function NativeApp({
 
     if (parsed.name === "model") {
       if (!options?.preserveInput) {
-        setInput("");
-        composerDraftsRef.current.delete(currentId ?? "");
+        clearTextDraft(currentId);
       }
       return;
     }
@@ -1208,13 +434,13 @@ export function NativeApp({
       try {
         targetSessionId = await createSessionIn(wsId);
       } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
+        setError(toErrMsg(err));
         return;
       }
     }
 
     const cmdDesc = hostCommands.find(
-      (c: CommandDescriptor) => c.name.toLowerCase() === parsed.name,
+      (c) => c.name.toLowerCase() === parsed.name,
     );
     if (draftImages.length > 0 && !cmdDesc?.input?.attachments) {
       setError(`/${parsed.name} 不接受附件，请先移除附件`);
@@ -1223,12 +449,7 @@ export function NativeApp({
 
     try {
       if (!options?.preserveInput) {
-        setInput("");
-        setDraftImages([]);
-        if (currentId) {
-          composerDraftsRef.current.delete(currentId);
-          composerImagesRef.current.delete(currentId);
-        }
+        clearForSubmit(currentId, submittedDraft);
       }
       scrollToBottom("auto");
       const canonicalLine = `/${parsed.name}${parsed.args ? ` ${parsed.args}` : ""}`;
@@ -1242,375 +463,14 @@ export function NativeApp({
       }
       await refreshSessions();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    }
-  };
-
-  const panelData = useMemo(() => foldPanelData(eventsRef.current), [items]);
-
-  const openSession = (sessionId: string) => {
-    setCurrentId(sessionId);
-    setUnreadFinishedSessionIds((prev) => {
-      if (!prev.has(sessionId)) return prev;
-      const next = new Set(prev);
-      next.delete(sessionId);
-      return next;
-    });
-    const wsId = workspaceOfSession.get(sessionId);
-    if (wsId) setActiveWorkspaceId(wsId);
-  };
-
-  /** 在指定项目下落一个新会话：优先复用其空白会话（官方 connectWorkspace 语义）。返回会话 id。 */
-  const createSessionIn = async (wsId: string): Promise<string> => {
-    const ws = workspaces.find((w) => w.workspaceId === wsId);
-    const reusable = ws?.sessionIds
-      .map((id) => sessions.find((s) => s.sessionId === id))
-      .find(
-        (s) =>
-          s?.blank && s.origin !== "subagent" && !archivedSet.has(s.sessionId),
-      );
-    if (reusable) {
-      setCurrentId(reusable.sessionId);
-      return reusable.sessionId;
-    }
-    const value = await rpc<{ sessionId: string }>(Endpoints.sessionCreate, {
-      request: { workspaceId: wsId },
-    });
-    await refreshSessions();
-    setCurrentId(value.sessionId);
-    return value.sessionId;
-  };
-
-  /**
-   * 新会话：对齐官方 startSession 语义——落在当前/最近活跃项目并复用空白会话；
-   * 零项目时先添加第一个项目（添加工作区统一收口到聊天框 chip，这里是兜底）。
-   */
-  const handleNewSession = async () => {
-    let wsId = activeWorkspaceId;
-    if (!wsId) {
-      wsId = await handleAddWorkspace();
-      if (!wsId) return;
-    }
-    try {
-      await createSessionIn(wsId);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    }
-  };
-
-  /** 选目录并注册工作区；用户取消返回 null。 */
-  const addWorkspace = async (): Promise<string | null> => {
-    const picked = await rpc<string | null>(Endpoints.directoryPickerPick, {});
-    if (!picked) return null;
-    const created = await rpc<{ workspace: WorkspaceView; created: boolean }>(
-      Endpoints.workspaceCreate,
-      { request: { path: picked } },
-    );
-    setActiveWorkspaceId(created.workspace.workspaceId);
-    await refreshSessions();
-    return created.workspace.workspaceId;
-  };
-
-  /** 添加工作区入口（chip 菜单/零工作区兜底）：添加后不建会话，新会话落点已指向它。 */
-  const handleAddWorkspace = async (): Promise<string | null> => {
-    try {
-      return await addWorkspace();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-      return null;
-    }
-  };
-
-  /** 重命名工作区（workspace/rename，follow 流推送 upsert 自动回填列表）。 */
-  const handleWorkspaceRename = (workspaceId: string, title: string) => {
-    void rpc(Endpoints.workspaceRename, {
-      request: { workspaceId, title },
-    }).catch((err) =>
-      setError(err instanceof Error ? err.message : String(err)),
-    );
-  };
-
-  /** 删除工作区注册：会话归入「未分组」，活跃落点回退到剩余首个工作区。 */
-  const handleWorkspaceDelete = (workspaceId: string) => {
-    void (async () => {
-      await rpc(Endpoints.workspaceDelete, { request: { workspaceId } });
-      if (activeWorkspaceId === workspaceId) {
-        const rest = workspaces.find((w) => w.workspaceId !== workspaceId);
-        setActiveWorkspaceId(rest?.workspaceId ?? null);
-      }
-    })().catch((err) =>
-      setError(err instanceof Error ? err.message : String(err)),
-    );
-  };
-
-  /** 调整工作区顺序（workspace/insertBefore，follow 流推送 order 帧自动更新列表）。 */
-  const handleWorkspaceReorder = useCallback(
-    async (workspaceId: string, beforeWorkspaceId?: string) => {
-      try {
-        const result = await rpc<{ workspaceIds: string[] }>(
-          Endpoints.workspaceInsertBefore,
-          {
-            request: {
-              workspaceId,
-              ...(beforeWorkspaceId ? { beforeWorkspaceId } : {}),
-            },
-          },
-        );
-        if (result?.workspaceIds) {
-          setWorkspaces((prev) => orderWorkspaces(prev, result.workspaceIds));
-        }
-      } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
-      }
-    },
-    [],
-  );
-
-  /** 重命名会话（session/rename，更新本地会话投影标题）。 */
-  const handleSessionRename = useCallback(
-    async (sessionId: string, title: string) => {
-      try {
-        await rpc(Endpoints.sessionRename, {
-          request: { sessionId, title },
-        });
-        setSessions((prev) =>
-          prev.map((s) =>
-            s.sessionId === sessionId
-              ? {
-                  ...s,
-                  projections: s.projections
-                    ? {
-                        ...s.projections,
-                        values: { ...s.projections.values, title },
-                      }
-                    : {
-                        asOfSeq: 0,
-                        values: { title },
-                      },
-                }
-              : s,
-          ),
-        );
-        await refreshSessions();
-      } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
-      }
-    },
-    [],
-  );
-
-  /** 归档会话（workspace/archiveSession，从主列表排除）。 */
-  const handleSessionArchive = useCallback(
-    async (sessionId: string) => {
-      try {
-        await rpc(Endpoints.workspaceArchiveSession, {
-          request: { sessionId },
-        });
-        setArchivedSessionIds((prev) => [...prev, sessionId]);
-        if (currentId === sessionId) {
-          setCurrentId(null);
-        }
-      } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
-      }
-    },
-    [currentId],
-  );
-
-  /** 取消归档会话（workspace/unarchiveSession，恢复到主列表）。 */
-  const handleSessionUnarchive = useCallback(
-    async (sessionId: string) => {
-      try {
-        await rpc(Endpoints.workspaceUnarchiveSession, {
-          request: { sessionId },
-        });
-        setArchivedSessionIds((prev) => prev.filter((id) => id !== sessionId));
-      } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
-        throw err;
-      }
-    },
-    [],
-  );
-
-  /** 恢复并直接打开会话（取消归档 + 选中会话 + 关闭设置）。 */
-  const handleRestoreAndOpenSession = useCallback(
-    async (sessionId: string) => {
-      await handleSessionUnarchive(sessionId);
-      setCurrentId(sessionId);
-      setSettingsOpen(false);
-    },
-    [handleSessionUnarchive],
-  );
-
-  /**
-   * 引导页工作区 chip 选择：切换新会话落点——在目标工作区建/复用一个空白会话再切过去。
-   * 引擎不支持给已有会话改工作区归属：工作区归属在会话创建时按 cwd 写死，而
-   * workspace/insertSessionBefore 只受理该项目已登记的会话，跨项目一律 workspace/move-invalid。
-   * 因此这里对齐官方 openWorkspace 语义——换的是落点而不是会话本身：未发送的草稿随人迁移，
-   * 原来那个空白会话留在原工作区，下次进入该工作区时被复用。
-   */
-  const handleWorkspaceChipPick = (workspaceId: string) => {
-    if (!currentId) {
-      setActiveWorkspaceId(workspaceId);
-      return;
-    }
-    if (workspaceOfSession.get(currentId) === workspaceId) return;
-    void (async () => {
-      const previousId = currentId;
-      const nextId = await createSessionIn(workspaceId);
-      setActiveWorkspaceId(workspaceId);
-      if (nextId === previousId) return;
-      // 草稿随人走：旧会话的草稿落到目标会话，旧桶清空，避免回头再进它时又冒出来
-      const pending = composerDraftsRef.current.get(previousId);
-      if (pending !== undefined) {
-        composerDraftsRef.current.set(nextId, pending);
-        composerDraftsRef.current.delete(previousId);
-      }
-      const pendingImgs = composerImagesRef.current.get(previousId);
-      if (pendingImgs !== undefined) {
-        composerImagesRef.current.set(nextId, pendingImgs);
-        composerImagesRef.current.delete(previousId);
-      }
-    })().catch((err) =>
-      setError(err instanceof Error ? err.message : String(err)),
-    );
-  };
-
-  const handleAddImages = useCallback((files: File[]) => {
-    const valid: File[] = [];
-    for (const f of files) {
-      if (!isSupportedImage(f)) {
-        setError(`不支持的图片格式: ${f.name}。仅支持 PNG、JPEG、WebP、GIF`);
-        continue;
-      }
-      if (f.size > MAX_IMAGE_BYTES) {
-        setError(`图片 ${f.name} 超过 20MB 上限`);
-        continue;
-      }
-      valid.push(f);
-    }
-    if (valid.length === 0) return;
-
-    setDraftImages((prev) => {
-      if (prev.length + valid.length > MAX_IMAGES_PER_MESSAGE) {
-        setError(`单条消息最多添加 ${MAX_IMAGES_PER_MESSAGE} 张图片`);
-        return prev;
-      }
-      const newItems: DraftImage[] = valid.map((file) => {
-        const id = crypto.randomUUID();
-        const previewUrl = URL.createObjectURL(file);
-        const mediaType = getImageMediaType(file);
-        const name = file.name || `image-${Date.now()}.png`;
-        const item: DraftImage = {
-          id,
-          file,
-          previewUrl,
-          mediaType,
-          name,
-        };
-        fileToBase64(file)
-          .then((b64) => {
-            item.base64 = b64;
-            const dataUrl = `data:${mediaType};base64,${b64}`;
-            item.previewUrl = dataUrl;
-            setDraftImages((cur) =>
-              cur.map((d) =>
-                d.id === id ? { ...d, base64: b64, previewUrl: dataUrl } : d,
-              ),
-            );
-          })
-          .catch(() => {});
-        return item;
-      });
-      const next = [...prev, ...newItems];
-      const key = currentIdRef.current ?? "";
-      composerImagesRef.current.set(key, next);
-      return next;
-    });
-  }, []);
-
-  const handleRemoveDraftImage = useCallback((id: string) => {
-    setDraftImages((prev) => {
-      const target = prev.find((img) => img.id === id);
-      if (target?.previewUrl?.startsWith("blob:")) {
-        URL.revokeObjectURL(target.previewUrl);
-      }
-      const next = prev.filter((img) => img.id !== id);
-      const key = currentIdRef.current ?? "";
-      if (next.length > 0) composerImagesRef.current.set(key, next);
-      else composerImagesRef.current.delete(key);
-      return next;
-    });
-  }, []);
-
-  // 全局剪贴板粘贴监听：未聚焦输入框时粘贴图片也自动加入当前草稿并聚焦
-  useEffect(() => {
-    const onGlobalPaste = (e: ClipboardEvent) => {
-      // 只要光标在任何输入元素（包括主输入框），都由该元素自身的 onPaste 独立处理，此处直接跳过
-      const target = e.target as HTMLElement | null;
-      if (
-        target &&
-        (target.tagName === "INPUT" ||
-          target.tagName === "TEXTAREA" ||
-          target.isContentEditable)
-      ) {
-        return;
-      }
-      const clipboardData = e.clipboardData;
-      if (!clipboardData) return;
-      const imageFiles: File[] = [];
-      if (clipboardData.files && clipboardData.files.length > 0) {
-        for (let i = 0; i < clipboardData.files.length; i++) {
-          const file = clipboardData.files[i];
-          if (isSupportedImage(file)) imageFiles.push(file);
-        }
-      } else if (clipboardData.items) {
-        for (let i = 0; i < clipboardData.items.length; i++) {
-          const item = clipboardData.items[i];
-          if (item.kind === "file") {
-            const file = item.getAsFile();
-            if (file && isSupportedImage(file)) imageFiles.push(file);
-          }
-        }
-      }
-      if (imageFiles.length > 0) {
-        e.preventDefault();
-        handleAddImages(imageFiles);
-        textareaRef.current?.focus();
-      }
-    };
-    window.addEventListener("paste", onGlobalPaste);
-    return () => window.removeEventListener("paste", onGlobalPaste);
-  }, [handleAddImages]);
-
-  const handleChatDragOver = (e: React.DragEvent) => {
-    if (e.dataTransfer.types.includes("Files")) {
-      e.preventDefault();
-      e.dataTransfer.dropEffect = "copy";
-    }
-  };
-
-  const handleChatDrop = (e: React.DragEvent) => {
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      const imageFiles: File[] = [];
-      for (let i = 0; i < e.dataTransfer.files.length; i++) {
-        const file = e.dataTransfer.files[i];
-        if (isSupportedImage(file)) {
-          imageFiles.push(file);
-        }
-      }
-      if (imageFiles.length > 0) {
-        e.preventDefault();
-        handleAddImages(imageFiles);
-        textareaRef.current?.focus();
-      }
+      setError(toErrMsg(err));
     }
   };
 
   const handleSend = async (options?: { mode?: "queue" | "steer" }) => {
     const text = input.trim();
     const images = [...draftImages];
+    const submittedDraft = captureForSubmit(currentId);
     if (!text && images.length === 0) return;
 
     if (!dshConnected) {
@@ -1644,7 +504,7 @@ export function NativeApp({
       try {
         sessionId = await createSessionIn(wsId);
       } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
+        setError(toErrMsg(err));
         return;
       }
       // 空态选定的模型随会话创建写入；失败不阻断发送，回落默认模型
@@ -1659,11 +519,8 @@ export function NativeApp({
         setEmptySelection(null);
       }
     }
-    setInput("");
-    setDraftImages([]);
-    // 发出即清空该会话的草稿桶；失败时再写回（输入框高度由 Composer 按 value 重算）
-    composerDraftsRef.current.delete(sessionId);
-    composerImagesRef.current.delete(sessionId);
+    // 发出即清空输入与该会话的草稿桶；失败时再写回（输入框高度由 Composer 按 value 重算）
+    const clearedDraft = clearForSubmit(sessionId, submittedDraft);
     // 发送新提示词：强制沉底并重置贴底锁定，无论发送前是否处于历史翻看位置
     scrollToBottom("auto");
     // 乐观更新会话 updatedAt：会话立即浮顶，无需等待引擎事件轮询
@@ -1673,23 +530,20 @@ export function NativeApp({
       ),
     );
     const submitMode = options?.mode ?? "queue";
-    // 乐观回显：提交当帧就显示，宿主落库或入队后由 refreshFromEvents 退休
+    // 乐观回显：提交当帧就显示，宿主落库或入队后由事件投影退休
     const requestId = crypto.randomUUID();
-    setEchoes((prev) => [
-      ...prev,
-      {
-        id: `echo-${requestId}`,
-        rpcId: requestId,
-        placement: submitMode === "steer" ? "next-step" : "next-turn",
-        text,
-        images: images.map((img) => ({
-          id: img.id,
-          url: img.previewUrl,
-          name: img.name,
-        })),
-        pending: true,
-      },
-    ]);
+    pushEcho({
+      id: `echo-${requestId}`,
+      rpcId: requestId,
+      placement: submitMode === "steer" ? "next-step" : "next-turn",
+      text,
+      images: images.map((img) => ({
+        id: img.id,
+        url: img.previewUrl,
+        name: img.name,
+      })),
+      pending: true,
+    });
     try {
       const content: Array<
         | { type: "text"; text: string }
@@ -1723,12 +577,9 @@ export function NativeApp({
         },
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-      setInput(text);
-      setDraftImages(images);
-      composerDraftsRef.current.set(sessionId, text);
-      composerImagesRef.current.set(sessionId, images);
-      setEchoes((prev) => prev.filter((echo) => echo.rpcId !== requestId));
+      setError(toErrMsg(err));
+      restoreAfterFailure(clearedDraft, text, images);
+      removeEchoByRpcId(requestId);
     }
   };
 
@@ -1747,7 +598,7 @@ export function NativeApp({
           },
         });
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
+        const msg = toErrMsg(err);
         if (
           msg.includes("steer-unavailable") ||
           msg.includes("queue-item-not-found")
@@ -1769,29 +620,18 @@ export function NativeApp({
         request: { sessionId: currentId, itemId: item.id, action },
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(toErrMsg(err));
     } finally {
       setQueueBusyId(null);
     }
   };
-
-  /**
-   * 输入变化：立即把内容写进当前会话的草稿桶（无会话时用空串键），
-   * 这样切换会话时无需在 effect 里回头保存上一个会话的内容。
-   */
-  const handleInputChange = useCallback((value: string) => {
-    setInput(value);
-    const key = currentIdRef.current ?? "";
-    if (value) composerDraftsRef.current.set(key, value);
-    else composerDraftsRef.current.delete(key);
-  }, []);
 
   const handleApproval = async (
     approval: PendingApproval,
     outcome: "allowed-once" | "rejected",
   ) => {
     scrollToBottom("auto");
-    const clientId = approval.clientId || eventsClientIdRef.current || "";
+    const clientId = approval.clientId || currentEventsClientId() || "";
     if (!clientId) {
       setError("与引擎的事件流尚未就绪，请稍后重试");
       return;
@@ -1816,7 +656,7 @@ export function NativeApp({
     answers: UserQuestionAnswer[],
   ): Promise<boolean> => {
     scrollToBottom("auto");
-    const clientId = question.clientId || eventsClientIdRef.current || "";
+    const clientId = question.clientId || currentEventsClientId() || "";
     if (!clientId) {
       setError("与引擎的事件流尚未就绪，请稍后重试");
       return false;
@@ -1835,7 +675,7 @@ export function NativeApp({
       );
       return true;
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(toErrMsg(err));
       return false;
     }
   };
@@ -1847,7 +687,7 @@ export function NativeApp({
   const handleQuestionDismiss = async (
     question: PendingQuestion,
   ): Promise<boolean> => {
-    const clientId = question.clientId || eventsClientIdRef.current || "";
+    const clientId = question.clientId || currentEventsClientId() || "";
     if (!clientId) {
       setError("与引擎的事件流尚未就绪，请稍后重试");
       return false;
@@ -1870,7 +710,7 @@ export function NativeApp({
       );
       return true;
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(toErrMsg(err));
       return false;
     }
   };
@@ -1880,7 +720,7 @@ export function NativeApp({
     try {
       await rpc(Endpoints.sessionCancel, { request: { sessionId: currentId } });
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(toErrMsg(err));
     }
   };
 
@@ -1933,7 +773,10 @@ export function NativeApp({
 
   /** 查询当前会话或活跃工作区关联的文件/目录引用候选。 */
   const handleQueryFileReferences = useCallback(
-    async (query: string, signal: AbortSignal): Promise<FileReferenceCandidate[]> => {
+    async (
+      query: string,
+      signal: AbortSignal,
+    ): Promise<FileReferenceCandidate[]> => {
       let agentSessionId = currentId;
       if (!agentSessionId) {
         // 空白页：如果已有会话列表，借用一个有效会话查候选；若无会话，先建一个轻量会话
@@ -1953,7 +796,7 @@ export function NativeApp({
         if (signal.aborted) return [];
         return Array.isArray(result) ? result : [];
       } catch (err) {
-        console.warn('拉取文件引用失败:', err);
+        console.warn("拉取文件引用失败:", err);
         return [];
       }
     },
@@ -1965,6 +808,18 @@ export function NativeApp({
   const chipWorkspaceId = currentId
     ? (workspaceOfSession.get(currentId) ?? null)
     : activeWorkspaceId;
+
+  // 面板展开后按钮由面板顶栏右缘接管，按钮始终贴窗口右缘
+  const panelToggleButton = panelCollapsed ? (
+    <button
+      className="native-icon-btn"
+      onClick={() => setPanelCollapsed((v) => !v)}
+      title="打开面板"
+      aria-label="打开面板"
+    >
+      <PanelIcon />
+    </button>
+  ) : null;
 
   return (
     <div className={`native-app${!sidebarCollapsed ? " has-sidebar" : ""}`}>
@@ -1994,35 +849,10 @@ export function NativeApp({
         onDrop={handleChatDrop}
       >
         {!dshConnected && (
-          <div className="native-connection-banner" role="alert">
-            <span className="native-connection-icon">
-              <svg
-                width="15"
-                height="15"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-                <line x1="12" y1="9" x2="12" y2="13" />
-                <line x1="12" y1="17" x2="12.01" y2="17" />
-              </svg>
-            </span>
-            <span className="native-connection-text">
-              与 DeepSeek Harness 引擎连接中断，正在尝试重新连接…
-            </span>
-            <button
-              type="button"
-              className="native-connection-retry-btn"
-              disabled={reconnecting}
-              onClick={() => void handleManualReconnect()}
-            >
-              {reconnecting ? "正在重连…" : "立即重试"}
-            </button>
-          </div>
+          <ConnectionBanner
+            reconnecting={reconnecting}
+            onReconnect={() => void handleManualReconnect()}
+          />
         )}
         {showGreeting ? (
           <>
@@ -2030,23 +860,13 @@ export function NativeApp({
               {/* 侧栏开关已上移标题栏菜单栏；左端留空占位，右端面板按钮才有落点 */}
               <div className="native-chat-header-left" />
               <div className="native-chat-header-right">
-                {/* 面板展开后按钮由面板顶栏右缘接管，按钮始终贴窗口右缘 */}
-                {panelCollapsed && (
-                  <button
-                    className="native-icon-btn"
-                    onClick={() => setPanelCollapsed((v) => !v)}
-                    title="打开面板"
-                    aria-label="打开面板"
-                  >
-                    <PanelIcon />
-                  </button>
-                )}
+                {panelToggleButton}
               </div>
             </div>
             <div className="native-empty">
               <div className="native-empty-title">我们要做什么？</div>
               <div className="native-composer-stack">
-                <Composer
+                <ChatComposer
                   menuPlacement="bottom"
                   input={input}
                   onInputChange={handleInputChange}
@@ -2061,23 +881,15 @@ export function NativeApp({
                   commands={availableCommands}
                   onExecuteCommand={(line) => void handleExecuteCommand(line)}
                   onQueryFileReferences={handleQueryFileReferences}
-                  meter={
-                    <ContextMeter
-                      pressure={currentProjections?.contextPressure}
-                      breakdown={currentProjections?.contextBreakdown}
-                    />
-                  }
-                  controls={
-                    <ComposerControls
-                      catalog={modelCatalog}
-                      selection={currentModelSelection}
-                      permission={currentPermission}
-                      permissionHint={currentId ? undefined : "新会话默认权限"}
-                      onModelPick={handleModelPick}
-                      onEffortPick={handleEffortPick}
-                      onPermissionPick={handlePermissionPick}
-                    />
-                  }
+                  contextPressure={currentProjections?.contextPressure}
+                  contextBreakdown={currentProjections?.contextBreakdown}
+                  catalog={modelCatalog}
+                  selection={currentModelSelection}
+                  permission={currentPermission}
+                  permissionHint={currentId ? undefined : "新会话默认权限"}
+                  onModelPick={handleModelPick}
+                  onEffortPick={handleEffortPick}
+                  onPermissionPick={handlePermissionPick}
                 />
                 <WorkspaceChip
                   workspaces={workspaces}
@@ -2109,25 +921,15 @@ export function NativeApp({
                 <span className="native-chat-header-title">{currentTitle}</span>
               </div>
               <div className="native-chat-header-right">
-                {/* 面板展开后按钮由面板顶栏右缘接管，按钮始终贴窗口右缘 */}
-                {panelCollapsed && (
-                  <button
-                    className="native-icon-btn"
-                    onClick={() => setPanelCollapsed((v) => !v)}
-                    title="打开面板"
-                    aria-label="打开面板"
-                  >
-                    <PanelIcon />
-                  </button>
-                )}
+                {panelToggleButton}
               </div>
             </div>
             <div className="native-messages-wrap">
               <div
                 className="native-messages"
-                ref={scrollRef}
-                onScroll={handleScroll}
-                onWheel={handleWheel}
+                ref={scroll.scrollRef}
+                onScroll={scroll.handleScroll}
+                onWheel={scroll.handleWheel}
               >
                 <div className="native-messages-inner">
                   {loadingHistory && (
@@ -2184,11 +986,11 @@ export function NativeApp({
                     // 随内容一起滚动（对齐官方 webui：不钉在输入框上方）
                     <RunningStrip startedAt={turnStartedAt} />
                   )}
-                  <div ref={bottomRef} />
+                  <div ref={scroll.bottomRef} />
                 </div>
               </div>
 
-              {showScrollToBottom && (
+              {scroll.showScrollToBottom && (
                 <button
                   type="button"
                   className={`native-scroll-to-bottom${
@@ -2234,7 +1036,7 @@ export function NativeApp({
                     onQuestionDismiss={handleQuestionDismiss}
                   />
                 ) : (
-                  <Composer
+                  <ChatComposer
                     menuPlacement="top"
                     input={input}
                     onInputChange={handleInputChange}
@@ -2251,22 +1053,14 @@ export function NativeApp({
                     commands={availableCommands}
                     onExecuteCommand={(line) => void handleExecuteCommand(line)}
                     onQueryFileReferences={handleQueryFileReferences}
-                    meter={
-                      <ContextMeter
-                        pressure={currentProjections?.contextPressure}
-                        breakdown={currentProjections?.contextBreakdown}
-                      />
-                    }
-                    controls={
-                      <ComposerControls
-                        catalog={modelCatalog}
-                        selection={currentModelSelection}
-                        permission={currentPermission}
-                        onModelPick={handleModelPick}
-                        onEffortPick={handleEffortPick}
-                        onPermissionPick={handlePermissionPick}
-                      />
-                    }
+                    contextPressure={currentProjections?.contextPressure}
+                    contextBreakdown={currentProjections?.contextBreakdown}
+                    catalog={modelCatalog}
+                    selection={currentModelSelection}
+                    permission={currentPermission}
+                    onModelPick={handleModelPick}
+                    onEffortPick={handleEffortPick}
+                    onPermissionPick={handlePermissionPick}
                   />
                 )}
               </div>
@@ -2321,8 +1115,4 @@ export function NativeApp({
       )}
     </div>
   );
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
 }

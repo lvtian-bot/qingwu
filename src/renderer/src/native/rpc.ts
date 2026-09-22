@@ -14,3 +14,8 @@ export async function rpc<T>(endpoint: string, payload: unknown): Promise<T> {
   }
   return result.value;
 }
+
+/** 任意抛出值转用户可读文案（RPC 异常与其他错误兜底共用同一呈现）。 */
+export function toErrMsg(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
