@@ -112,6 +112,26 @@ export function NativeApp({
   /** 设置面板显隐状态 */
   const [settingsOpen, setSettingsOpen] = useState(false);
 
+  /** 是否折叠回合执行过程与工具调用（应用设置项，默认 false 与 DSH 平铺一致） */
+  const [collapseProcess, setCollapseProcess] = useState(false);
+
+  useEffect(() => {
+    if (window.qingwu?.getAppSettings) {
+      window.qingwu
+        .getAppSettings()
+        .then((s) => {
+          if (s) setCollapseProcess(Boolean(s.collapseProcess));
+        })
+        .catch(() => {});
+    }
+    if (window.qingwu?.onAppSettingsChanged) {
+      return window.qingwu.onAppSettingsChanged((s) => {
+        setCollapseProcess(Boolean(s.collapseProcess));
+      });
+    }
+    return undefined;
+  }, []);
+
   /** 侧栏宽度控制器：主侧栏与设置页侧栏共用同一实例，任一边拖拽两边同步。 */
   const sidebarPanel = usePanelWidth({
     storageKey: "qingwu.native.sidebarWidth",
@@ -1938,6 +1958,7 @@ export function NativeApp({
                     view={view}
                     cwd={currentCwd}
                     sessionId={currentId}
+                    collapseProcess={collapseProcess}
                     onPreviewImage={(url) => setLightboxUrl(url)}
                   />
                 ))}

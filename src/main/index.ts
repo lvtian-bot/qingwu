@@ -186,9 +186,13 @@ if (!gotTheLock) {
       if (patch.uiMode && (patch.uiMode === "official" || patch.uiMode === "native")) {
         windowManager.applyUiMode(patch.uiMode);
       }
+      windowManager.mainWindow?.webContents.send("appSettings:changed", updated);
       return updated;
     },
   );
+  settings.onChange((_key, _value, all) => {
+    windowManager.mainWindow?.webContents.send("appSettings:changed", all);
+  });
   ipcMain.handle("appSettings:openUserData", () =>
     shell.openPath(app.getPath("userData")),
   );

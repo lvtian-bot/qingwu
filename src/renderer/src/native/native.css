@@ -193,7 +193,6 @@ textarea {
 .native-messages::-webkit-scrollbar,
 .native-session-list::-webkit-scrollbar,
 .native-panel-body::-webkit-scrollbar,
-.native-turn-process-items::-webkit-scrollbar,
 .native-reasoning-body::-webkit-scrollbar,
 .native-tool-input-pre::-webkit-scrollbar,
 .native-tool-output-pre::-webkit-scrollbar,
@@ -1214,11 +1213,9 @@ textarea {
   transform: rotate(0);
 }
 
-/* 展开的过程内容整体缩进，与折叠行左边缘区分开 */
+/* 展开的过程内容整体缩进，与折叠行左边缘区分开；完全平铺展示，不设限高与内部滚动 */
 .native-turn-process-items {
   padding-left: 8px;
-  max-height: 320px;
-  overflow-y: auto;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1969,17 +1966,17 @@ textarea {
 }
 
 /*
- * 工作区 chip 条：贴在输入框正下方的窄灰条（对齐 Codex 的底部工作区栏），
- * 两侧各收窄 16px，上沿向上收进输入卡背后 14px——接缝处看不到灰条的方角，
- * 只看到圆角白卡压在灰条上；可见高度 36px。
+ * 工作区 chip 条：贴在输入框正下方的灰条底板，
+ * 宽度与输入框 100% 对齐，上沿向上收进输入卡背后 14px，
+ * 左右与输入框边框平齐；可见高度 36px。
  */
 .native-ws-chip-wrap {
   position: relative;
   display: flex;
-  width: calc(100% - 32px);
+  width: 100%;
   margin: -14px auto 0;
   padding: 18px 10px 4px;
-  border-radius: 0 0 12px 12px;
+  border-radius: 0 0 16px 16px;
   background: var(--native-surface);
 }
 
@@ -4008,20 +4005,28 @@ body.native-resizing {
   position: absolute;
   left: 0;
   right: 0;
-  max-height: 290px;
+  max-height: 320px;
   display: flex;
   flex-direction: column;
   background: var(--native-surface);
   border: 1px solid var(--native-border);
-  border-radius: 14px;
+  border-radius: 12px;
   box-shadow:
-    0 10px 30px rgba(0, 0, 0, 0.12),
-    0 2px 8px rgba(0, 0, 0, 0.04);
+    0 12px 32px -4px rgba(0, 0, 0, 0.12),
+    0 4px 12px -2px rgba(0, 0, 0, 0.04);
   padding: 5px;
   overflow: hidden;
   z-index: 35;
   user-select: none;
   box-sizing: border-box;
+}
+
+@media (prefers-color-scheme: dark) {
+  .native-file-mention-menu {
+    box-shadow:
+      0 16px 36px -4px rgba(0, 0, 0, 0.5),
+      0 4px 12px -2px rgba(0, 0, 0, 0.3);
+  }
 }
 
 /* 顶部浮层形态（对话区底部输入框使用，向上浮出） */
@@ -4035,18 +4040,28 @@ body.native-resizing {
 }
 
 .native-file-mention-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px 4px 10px;
   font-size: 11px;
   font-weight: 600;
   color: var(--native-muted);
-  padding: 6px 10px 2px 10px;
   letter-spacing: 0.3px;
   user-select: none;
+}
+
+.native-file-mention-header-count {
+  font-size: 11px;
+  color: var(--native-muted);
+  opacity: 0.75;
+  font-variant-numeric: tabular-nums;
 }
 
 .native-file-mention-list {
   padding: 0;
   overflow-y: auto;
-  max-height: 250px;
+  max-height: 240px;
   display: flex;
   flex-direction: column;
   gap: 1px;
@@ -4071,7 +4086,7 @@ body.native-resizing {
 }
 
 .native-file-mention-empty {
-  padding: 14px 10px;
+  padding: 18px 12px;
   text-align: center;
   font-size: 13px;
   color: var(--native-muted);
@@ -4082,11 +4097,11 @@ body.native-resizing {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 5px 8px;
-  border-radius: 8px;
+  padding: 6px 10px;
+  border-radius: 7px;
   cursor: pointer;
   transition: background-color 0.1s ease;
-  min-height: 32px;
+  min-height: 33px;
   box-sizing: border-box;
 }
 
@@ -4098,7 +4113,7 @@ body.native-resizing {
 .native-file-mention-item-left {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 9px;
   min-width: 0;
   flex: 1;
 }
@@ -4124,7 +4139,7 @@ body.native-resizing {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-family: var(--native-font-mono, monospace);
+  line-height: 1.4;
 }
 
 .native-file-mention-item-right {
@@ -4137,19 +4152,18 @@ body.native-resizing {
 .native-file-mention-parent {
   font-size: 11px;
   color: var(--native-muted);
-  max-width: 180px;
+  max-width: 170px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-family: var(--native-font-mono, monospace);
 }
 
 .native-file-mention-drill-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   padding: 0;
   background: transparent;
   border: none;
@@ -4162,6 +4176,54 @@ body.native-resizing {
 .native-file-mention-drill-btn:hover {
   background: var(--native-bg-subtle, rgba(0, 0, 0, 0.05));
   color: var(--native-fg);
+}
+
+.native-file-mention-item.active .native-file-mention-drill-btn {
+  color: var(--native-fg);
+}
+
+/* 底部极简快捷键提示条 */
+.native-file-mention-footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 10px 3px 10px;
+  margin-top: 3px;
+  border-top: 1px solid var(--native-border);
+  font-size: 11px;
+  color: var(--native-muted);
+  user-select: none;
+}
+
+.native-file-mention-footer-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.native-file-mention-footer-hint .native-kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--native-fg);
+  background: var(--native-surface, #ffffff);
+  border: 1px solid var(--native-border);
+  border-bottom-width: 1.5px;
+  border-radius: 3px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .native-file-mention-footer-hint .native-kbd {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.15);
+  }
 }
 
 /* 自定义服务商卡片与标记 */

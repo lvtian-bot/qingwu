@@ -1266,6 +1266,7 @@ export function SettingsPage({
   const [appSettings, setAppSettings] = useState<AppSettings>({
     closeToTray: true,
     uiMode: "native",
+    collapseProcess: false,
   });
 
   // 2. 引擎供应商目录、选中路由与凭据输入暂存
@@ -2172,6 +2173,19 @@ export function SettingsPage({
                     void handleUpdateAppSetting({ closeToTray: next })
                   }
                   label="最小化到系统托盘"
+                />
+              </SettingsRow>
+
+              <SettingsRow
+                label="折叠执行过程与工具调用"
+                desc="对话回合完成后，将思考过程与工具调用收起为单行摘要；默认关闭，平铺展开与 DeepSeek 界面保持一致。"
+              >
+                <SettingsSwitch
+                  checked={Boolean(appSettings.collapseProcess)}
+                  onChange={(next) =>
+                    void handleUpdateAppSetting({ collapseProcess: next })
+                  }
+                  label="折叠执行过程与工具调用"
                 />
               </SettingsRow>
 

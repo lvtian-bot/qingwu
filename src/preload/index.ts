@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { IpcRendererEvent } from 'electron';
 import type {
+  AppSettings,
   DshStreamItem,
   QingwuApi,
   RendererErrorReport,
@@ -129,6 +130,11 @@ const api: QingwuApi = {
 
   getAppSettings: () => ipcRenderer.invoke('appSettings:get'),
   setAppSettings: (patch) => ipcRenderer.invoke('appSettings:set', patch),
+  onAppSettingsChanged: (listener) => {
+    const handler = (_event: IpcRendererEvent, updated: AppSettings) => listener(updated);
+    ipcRenderer.on('appSettings:changed', handler);
+    return () => ipcRenderer.removeListener('appSettings:changed', handler);
+  },
   openUserDataFolder: () => ipcRenderer.invoke('appSettings:openUserData'),
 
   openTerminal: (targetPath) => ipcRenderer.invoke('workspace:openTerminal', targetPath),

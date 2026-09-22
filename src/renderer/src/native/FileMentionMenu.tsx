@@ -10,6 +10,46 @@ interface FileMentionMenuProps {
   placement?: 'top' | 'bottom';
 }
 
+/**
+ * 极简中性单色图标（对齐 Codex 近单色设计系统）
+ */
+function renderItemIcon(isDir: boolean) {
+  if (isDir) {
+    return (
+      <svg
+        viewBox="0 0 16 16"
+        width="15"
+        height="15"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M1.75 3.5A1.25 1.25 0 0 1 3 2.25h3.2c.33 0 .65.13.88.37l1.3 1.38h4.87A1.25 1.25 0 0 1 14.5 5.25v7A1.25 1.25 0 0 1 13.25 13.5H3A1.25 1.25 0 0 1 1.75 12.25v-8.75Z" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="15"
+      height="15"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.3"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M3.75 1.75h5.5l3.5 3.5v8.5a1.25 1.25 0 0 1-1.25 1.25h-7.75a1.25 1.25 0 0 1-1.25-1.25v-10.5a1.25 1.25 0 0 1 1.25-1.25Z" />
+      <path d="M9.25 1.75v3.5h3.5" />
+    </svg>
+  );
+}
+
 export function FileMentionMenu({
   items,
   selectedIndex,
@@ -48,7 +88,11 @@ export function FileMentionMenu({
       role="listbox"
       aria-label="文件与文件夹引用"
     >
-      <div className="native-file-mention-header">文件与文件夹</div>
+      <div className="native-file-mention-header">
+        <span>文件与文件夹</span>
+        <span className="native-file-mention-header-count">{items.length}</span>
+      </div>
+
       <div className="native-file-mention-list" ref={listRef}>
         {items.map((item, idx) => {
           const isActive = idx === selectedIndex;
@@ -71,16 +115,7 @@ export function FileMentionMenu({
             >
               <div className="native-file-mention-item-left">
                 <span className="native-file-mention-icon">
-                  {isDir ? (
-                    <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                      <path d="M1.5 3.5a1 1 0 0 1 1-1h3.5l1.5 2h6a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1v-9z" />
-                    </svg>
-                  ) : (
-                    <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                      <path d="M3.5 1.5h6l3.5 3.5v9a1 1 0 0 1-1 1h-8.5a1 1 0 0 1-1-1v-12a1 1 0 0 1 1-1z" />
-                      <path d="M9.5 1.5v3.5h3.5" />
-                    </svg>
-                  )}
+                  {renderItemIcon(isDir)}
                 </span>
                 <span className="native-file-mention-name">
                   {name}{isDir ? '/' : ''}
@@ -96,14 +131,24 @@ export function FileMentionMenu({
                   <button
                     type="button"
                     className="native-file-mention-drill-btn"
-                    title="按 Tab 或点击进入下一层"
+                    title="按 Tab 进入该目录"
                     onClick={(e) => {
                       e.stopPropagation();
                       onSelect(item, 'drill');
                     }}
                   >
-                    <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                      <path d="m6 3 5 5-5 5" />
+                    <svg
+                      viewBox="0 0 16 16"
+                      width="12"
+                      height="12"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="m6 3.5 4.5 4.5-4.5 4.5" />
                     </svg>
                   </button>
                 )}
@@ -111,6 +156,21 @@ export function FileMentionMenu({
             </div>
           );
         })}
+      </div>
+
+      <div className="native-file-mention-footer">
+        <span className="native-file-mention-footer-hint">
+          <kbd className="native-kbd">↑↓</kbd> 移动
+        </span>
+        <span className="native-file-mention-footer-hint">
+          <kbd className="native-kbd">↵</kbd> 引用
+        </span>
+        <span className="native-file-mention-footer-hint">
+          <kbd className="native-kbd">Tab</kbd> 下钻
+        </span>
+        <span className="native-file-mention-footer-hint">
+          <kbd className="native-kbd">Esc</kbd> 关闭
+        </span>
       </div>
     </div>
   );

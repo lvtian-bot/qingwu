@@ -27,6 +27,8 @@ export interface AppSettings {
   closeToTray: boolean;
   /** 默认启动界面。 */
   uiMode: UiMode;
+  /** 是否折叠回合执行过程与工具调用（默认 false：不折叠与 DeepSeek 保持一致；开启时折叠为单行摘要）。 */
+  collapseProcess?: boolean;
 }
 
 /** dsh RPC 业务错误（对齐 typert RemoteError 的线上形态）。 */
@@ -106,6 +108,8 @@ export interface QingwuApi {
   getAppSettings: () => Promise<AppSettings>;
   /** 更新青梧本地应用设置。 */
   setAppSettings: (patch: Partial<AppSettings>) => Promise<AppSettings>;
+  /** 订阅青梧本地应用设置变更。 */
+  onAppSettingsChanged: (listener: (settings: AppSettings) => void) => () => void;
   /** 在文件管理器中打开青梧本地应用数据目录。 */
   openUserDataFolder: () => Promise<string>;
 

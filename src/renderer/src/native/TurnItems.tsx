@@ -118,11 +118,13 @@ export function TurnItems({
   view,
   cwd,
   sessionId,
+  collapseProcess = false,
   onPreviewImage,
 }: {
   view: TurnView;
   cwd?: string;
   sessionId?: string | null;
+  collapseProcess?: boolean;
   onPreviewImage?: (url: string) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -177,8 +179,8 @@ export function TurnItems({
     );
   };
 
-  // 没收束完整一轮（运行中、或整轮没有答复）时照旧逐条显示，不折叠
-  if (!view.foldable || !view.answer) {
+  // 未开启折叠设置、或没收束完整一轮（运行中、或整轮没有答复）时照旧逐条显示，不折叠
+  if (!collapseProcess || !view.foldable || !view.answer) {
     return <>{view.items.map((item) => renderItem(item))}</>;
   }
 

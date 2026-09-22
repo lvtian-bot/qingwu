@@ -1,13 +1,9 @@
 import { app } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
-import type { UiMode } from '../shared/types';
+import type { AppSettings } from '../shared/types';
 
-export interface AppSettings {
-  closeToTray: boolean;
-  /** 界面模式：official = 官方 dsh web UI，native = 青梧界面（默认）。 */
-  uiMode: UiMode;
-}
+export type { AppSettings };
 
 type SettingsListener = (
   key: keyof AppSettings,
@@ -25,6 +21,7 @@ class SettingsManager {
     this.settings = {
       closeToTray: true,
       uiMode: 'native',
+      collapseProcess: false,
     };
     this.listeners = new Set();
     this.loaded = false;
