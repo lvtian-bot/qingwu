@@ -8,10 +8,10 @@ const { loadTs } = require("./helpers/load-ts.cjs");
 
 const { AppLifecycle } = loadTs("src/main/app-lifecycle.ts");
 const { createLineReader, redactSecrets } = loadTs("src/main/logging.ts");
-const { sanitizeDiagnosticUrl, formatProcessMetrics } = loadTs(
-  "src/main/diagnostics.ts",
-  { electron: { app: {} } },
-);
+const {
+  sanitizeDiagnosticUrl,
+  formatProcessMetrics,
+} = loadTs("src/main/diagnostics.ts", { electron: { app: {} } });
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 
 test("黑屏诊断会移除页面凭据并按进程汇总内存", () => {
@@ -108,6 +108,14 @@ test("分块启动地址和中文不丢失，完整行和无换行尾部均脱�
   assert.equal(
     redactSecrets(new Error("failed ?token=fixture-value&x=1")),
     "failed ?token=[REDACTED]&x=1",
+  );
+  assert.equal(
+    redactSecrets('Authorization: Bearer fixture-value, {"apiKey":"fixture-key"}'),
+    'Authorization: Bearer [REDACTED], {"apiKey":"[REDACTED]"}',
+  );
+  assert.equal(
+    redactSecrets("password=fixture-password"),
+    "password=[REDACTED]",
   );
 });
 
@@ -415,7 +423,7 @@ test("主入口先提供托盘退出入口，启动期间退出后不创建窗�
         }
       },
     },
-    "./settings": { settings: {} },
+    "./settings": { settings: { onChange() {} } },
     "./config": { CONFIG: {} },
   });
   await tick();

@@ -5,10 +5,20 @@ import path from "node:path";
 /** 日志和错误提示仅保留定位信息，鉴权地址中的凭据不进入输出。 */
 export function redactSecrets(value: unknown): string {
   const text = value instanceof Error ? value.message : String(value);
-  return text.replace(
-    /([?&](?:token|access_token|api_key|key|secret)=)[^\s&#"'<>]*/gi,
-    "$1[REDACTED]",
-  );
+  return text
+    .replace(
+      /([?&](?:token|access_token|api_key|key|secret)=)[^\s&#"'<>]*/gi,
+      "$1[REDACTED]",
+    )
+    .replace(/(\bbearer\s+)[A-Za-z0-9._~+/=-]+/gi, "$1[REDACTED]")
+    .replace(
+      /((?:"|')?(?:authorization|token|access_token|api[_-]?key|secret|password|passwd)(?:"|')?\s*:\s*(?:"|'))[^"'\r\n]*((?:"|'))/gi,
+      "$1[REDACTED]$2",
+    )
+    .replace(
+      /(\b(?:authorization|token|access_token|api[_-]?key|secret|password|passwd)\b\s*=\s*)[^\s,;&]+/gi,
+      "$1[REDACTED]",
+    );
 }
 
 /** 单个日志文件上限 2MB，超出后滚动为 app.old.log。 */

@@ -12,10 +12,7 @@ import { CONFIG } from "./config";
 import { settings } from "./settings";
 import { WindowStateManager } from "./window-state";
 import { redactSecrets } from "./logging";
-import {
-  observeWebContents,
-  startUiHealthMonitor,
-} from "./diagnostics";
+import { observeWebContents } from "./diagnostics";
 import type { UiMode } from "../shared/types";
 
 const TITLE_BAR_HEIGHT = 35;
@@ -43,7 +40,6 @@ export class WindowManager {
   private serviceOrigin: string | null = null;
   private uiMode: UiMode = settings.get("uiMode");
   private windowState = new WindowStateManager();
-  private stopHealthMonitor: (() => void) | null = null;
 
   constructor() {
     nativeTheme.on("updated", () => this.applyTitleBarOverlay());
@@ -254,19 +250,12 @@ export class WindowManager {
     });
 
     win.on("closed", () => {
-      this.stopHealthMonitor?.();
-      this.stopHealthMonitor = null;
       this.mainWindow = null;
       this.dshView = null;
     });
 
     this.applyUiMode(settings.get("uiMode"));
     this.loadUrl(url);
-    this.stopHealthMonitor?.();
-    this.stopHealthMonitor = startUiHealthMonitor(() => [
-      { label: "青梧界面", webContents: win.webContents },
-      { label: "DeepSeek 界面", webContents: dshView.webContents },
-    ]);
     return win;
   }
 

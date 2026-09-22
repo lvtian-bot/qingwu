@@ -2,24 +2,6 @@ import { app, powerMonitor } from "electron";
 import type { WebContents } from "electron";
 import { redactSecrets } from "./logging";
 
-const HEALTH_INTERVAL_MS = 60_000;
-const PROBE_TIMEOUT_MS = 5_000;
-
-export interface DiagnosticSurface {
-  label: string;
-  webContents: WebContents;
-}
-
-interface SurfaceProbe {
-  readyState: string;
-  hidden: boolean;
-  bodyChildren: number;
-  rootChildren: number;
-  width: number;
-  height: number;
-  background: string;
-}
-
 /** 诊断日志只保留页面位置，不记录可能承载鉴权信息的查询参数或片段。 */
 export function sanitizeDiagnosticUrl(rawUrl: string): string {
   if (!rawUrl) return "(empty)";
@@ -166,81 +148,4 @@ export function observeWebContents(
       `[Diagnostics] ${label} 页面恢复响应: pid=${safeRendererPid(contents) ?? "-"}`,
     );
   });
-}
-
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
-  return Promise.race([
-    promise,
-    new Promise<T>((_resolve, reject) => {
-      const timer = setTimeout(
-        () => reject(new Error(`timeout after ${timeoutMs}ms`)),
-        timeoutMs,
-      );
-      timer.unref();
-    }),
-  ]);
-}
-
-async function probeSurface(surface: DiagnosticSurface): Promise<string> {
-  const { label, webContents: contents } = surface;
-  if (contents.isDestroyed()) return `${label}{destroyed=true}`;
-
-  const script = `(() => {
-    const body = document.body;
-    const root = document.getElementById("root");
-    const style = body ? getComputedStyle(body) : null;
-    return {
-      readyState: document.readyState,
-      hidden: document.hidden,
-      bodyChildren: body ? body.childElementCount : -1,
-      rootChildren: root ? root.childElementCount : -1,
-      width: document.documentElement.clientWidth,
-      height: document.documentElement.clientHeight,
-      background: style ? style.backgroundColor : ""
-    };
-  })()`;
-
-  try {
-    const probe = await withTimeout(
-      contents.executeJavaScript(script, true) as Promise<SurfaceProbe>,
-      PROBE_TIMEOUT_MS,
-    );
-    return `${label}{pid=${safeRendererPid(contents) ?? "-"},ready=${probe.readyState},hidden=${probe.hidden},body=${probe.bodyChildren},root=${probe.rootChildren},size=${probe.width}x${probe.height},bg=${probe.background || "-"}}`;
-  } catch (error) {
-    return `${label}{pid=${safeRendererPid(contents) ?? "-"},probeError=${redactSecrets(error)}}`;
-  }
-}
-
-/**
- * 每分钟记录一次无内容界面心跳和进程内存。
- * 黑屏后可据此区分 DOM 消失、JS 卡死、渲染进程退出和合成/GPU 异常。
- */
-export function startUiHealthMonitor(
-  getSurfaces: () => readonly DiagnosticSurface[],
-): () => void {
-  let running = false;
-  let stopped = false;
-
-  const inspect = async () => {
-    if (running || stopped || !app.isReady()) return;
-    running = true;
-    try {
-      const states = await Promise.all(getSurfaces().map(probeSurface));
-      console.log(`[Diagnostics] 界面心跳: ${states.join("; ")}`);
-      logProcessSnapshot("ui-heartbeat");
-    } finally {
-      running = false;
-    }
-  };
-
-  const initialTimer = setTimeout(() => void inspect(), 10_000);
-  initialTimer.unref();
-  const interval = setInterval(() => void inspect(), HEALTH_INTERVAL_MS);
-  interval.unref();
-
-  return () => {
-    stopped = true;
-    clearTimeout(initialTimer);
-    clearInterval(interval);
-  };
 }
