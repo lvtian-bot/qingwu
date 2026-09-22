@@ -1905,6 +1905,26 @@ pre.native-codeblock-body.plain {
   color: var(--native-accent-fg);
 }
 
+/* 授权审批卡片：对齐官方 DSH 设计，操作按钮居右下角，主按钮使用青梧品牌蓝 */
+.native-card.approval .native-card-actions {
+  justify-content: flex-end;
+}
+
+.native-card.approval .native-card-actions button.primary {
+  background: var(--native-send, #3A83F7);
+  border-color: var(--native-send, #3A83F7);
+  color: var(--native-send-fg, #ffffff);
+}
+
+.native-card.approval .native-card-actions button.primary:hover:not(:disabled) {
+  background: var(--native-send, #3A83F7);
+  filter: brightness(1.08);
+}
+
+.native-card.approval .native-card-actions button.primary:disabled:hover {
+  background: var(--native-send, #3A83F7);
+}
+
 /* ---------- 提问卡片（一题一屏 / 多选 / 自由文本 / 计划审批） ---------- */
 
 /* 一次只显示一道题，高度自然就低；仍留限高兜底（长详情、计划正文），提交行吸底常驻 */
