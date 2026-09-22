@@ -16,9 +16,11 @@ import { CONFIG } from "./config";
 import { AppLifecycle } from "./app-lifecycle";
 import { setupFileLogging, redactSecrets } from "./logging";
 import { openTerminal, openPath, setActiveWorkspacePath } from "./terminal";
+import { setupApplicationDiagnostics } from "./diagnostics";
 import type { UiMode } from "../shared/types";
 
 setupFileLogging(path.join(app.getPath("userData"), "logs"));
+setupApplicationDiagnostics();
 
 const gotTheLock = app.requestSingleInstanceLock();
 

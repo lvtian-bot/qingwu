@@ -8,7 +8,40 @@ const { loadTs } = require("./helpers/load-ts.cjs");
 
 const { AppLifecycle } = loadTs("src/main/app-lifecycle.ts");
 const { createLineReader, redactSecrets } = loadTs("src/main/logging.ts");
+const { sanitizeDiagnosticUrl, formatProcessMetrics } = loadTs(
+  "src/main/diagnostics.ts",
+  { electron: { app: {} } },
+);
 const tick = () => new Promise((resolve) => setImmediate(resolve));
+
+test("黑屏诊断会移除页面凭据并按进程汇总内存", () => {
+  assert.equal(
+    sanitizeDiagnosticUrl(
+      "http://127.0.0.1:3080/session/a?token=fixture-secret#private",
+    ),
+    "http://127.0.0.1:3080/session/a",
+  );
+  assert.equal(
+    sanitizeDiagnosticUrl("data:text/html,fixture-secret"),
+    "data:[omitted]",
+  );
+  assert.equal(
+    formatProcessMetrics([
+      {
+        pid: 42,
+        type: "GPU",
+        name: "GPU Process",
+        serviceName: undefined,
+        memory: {
+          workingSetSize: 2048,
+          privateBytes: 1024,
+          peakWorkingSetSize: 4096,
+        },
+      },
+    ]),
+    "GPU:GPU Process:pid=42:ws=2.0MB:private=1.0MB",
+  );
+});
 
 test("退出会阻止默认退出、等待清理，重复请求只清理一次", async () => {
   let finishStop;
@@ -323,6 +356,7 @@ test("主入口先提供托盘退出入口，启动期间退出后不创建窗�
       app,
       dialog: { showMessageBox: async () => ({ response: 1 }) },
       ipcMain: { handle() {} },
+      powerMonitor: new EventEmitter(),
       shell: {},
     },
     "./console": { acquireHiddenConsole: () => true },

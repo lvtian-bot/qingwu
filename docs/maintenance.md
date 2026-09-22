@@ -8,7 +8,7 @@
 
 | 任务                           | 首先阅读                                                                                       | 关联边界                                                                                                 |
 | ------------------------------ | ---------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| 启动失败、退出残留、命令闪窗   | `src/main/index.ts`、`src/main/app-lifecycle.ts`、`src/main/harness.ts`、`src/main/console.ts` | `src/main/config.ts`、`src/main/logging.ts`、`scripts/fetch-node-runtime.cjs`、`scripts/before-pack.cjs` |
+| 启动失败、退出残留、命令闪窗、黑屏诊断 | `src/main/index.ts`、`src/main/app-lifecycle.ts`、`src/main/harness.ts`、`src/main/console.ts`、`src/main/diagnostics.ts` | `src/main/config.ts`、`src/main/logging.ts`、`src/main/window.ts`、`scripts/fetch-node-runtime.cjs`、`scripts/before-pack.cjs` |
 | 切换界面、菜单、托盘、窗口焦点 | `src/main/window.ts`、`src/main/menu.ts`、`src/main/tray.ts`                                   | `src/main/settings.ts`、`src/main/window-state.ts`、`src/renderer/src/TitleBar.tsx`                      |
 | 引擎请求、鉴权、审批回执、断线 | `src/main/dsh-bridge.ts`、`src/shared/dsh-wire.ts`                                             | `src/preload/index.ts`、`src/shared/types.ts`、`native/rpc.ts`、`native/protocol.ts`                     |
 | 会话实时输出、历史、队列       | `native/NativeApp.tsx`、`native/events.ts`                                                     | `native/TurnItems.tsx`、`native/QueueStrip.tsx`、`native/protocol.ts`                                    |

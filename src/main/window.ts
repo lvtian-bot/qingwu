@@ -12,6 +12,10 @@ import { CONFIG } from "./config";
 import { settings } from "./settings";
 import { WindowStateManager } from "./window-state";
 import { redactSecrets } from "./logging";
+import {
+  observeWebContents,
+  startUiHealthMonitor,
+} from "./diagnostics";
 import type { UiMode } from "../shared/types";
 
 const TITLE_BAR_HEIGHT = 35;
@@ -39,6 +43,7 @@ export class WindowManager {
   private serviceOrigin: string | null = null;
   private uiMode: UiMode = settings.get("uiMode");
   private windowState = new WindowStateManager();
+  private stopHealthMonitor: (() => void) | null = null;
 
   constructor() {
     nativeTheme.on("updated", () => this.applyTitleBarOverlay());
@@ -118,6 +123,8 @@ export class WindowManager {
     });
     this.dshView = dshView;
     win.contentView.addChildView(dshView);
+    observeWebContents("青梧界面", win.webContents);
+    observeWebContents("DeepSeek 界面", dshView.webContents);
 
     const DSH_SCROLLBAR_CSS = `
       * {
@@ -247,12 +254,19 @@ export class WindowManager {
     });
 
     win.on("closed", () => {
+      this.stopHealthMonitor?.();
+      this.stopHealthMonitor = null;
       this.mainWindow = null;
       this.dshView = null;
     });
 
     this.applyUiMode(settings.get("uiMode"));
     this.loadUrl(url);
+    this.stopHealthMonitor?.();
+    this.stopHealthMonitor = startUiHealthMonitor(() => [
+      { label: "青梧界面", webContents: win.webContents },
+      { label: "DeepSeek 界面", webContents: dshView.webContents },
+    ]);
     return win;
   }
 
@@ -268,6 +282,7 @@ export class WindowManager {
   /** 应用界面模式：official 显示官方视图层，native 隐藏之并显示自研界面层。 */
   applyUiMode(mode: UiMode): void {
     this.uiMode = mode;
+    console.log(`[Window] 界面模式: ${mode}`);
     if (this.dshView && !this.dshView.webContents.isDestroyed()) {
       this.dshView.setVisible(mode === "official");
     }
