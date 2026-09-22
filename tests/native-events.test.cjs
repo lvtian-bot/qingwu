@@ -272,3 +272,32 @@ test('任务进度文案对齐官方格式，按完成、进行中、待处理�
   assert.equal(progressLabel([]), '');
 });
 
+test('对齐 DSH 官方投影生命周期：新轮次开始时清空上一轮待办，支持原生 todo/write 事件', () => {
+  const call = (callId, name, args) => event('tool/call', { callId, name, arguments: JSON.stringify(args) });
+  const todosTurn1 = [{ content: '任务1', status: 'completed' }];
+  const todosTurn2 = [{ content: '新任务', status: 'in_progress' }];
+
+  // 1. 第1轮：进行中写入任务，当轮结束保持显示
+  const turn1History = [
+    event('turn/start', { turn: 1 }),
+    call('todo-1', 'todo_write', { todos: todosTurn1 }),
+    event('turn/end', { turn: 1 }),
+  ];
+  assert.deepEqual(foldPanelData(turn1History).todos, todosTurn1);
+
+  // 2. 第2轮开始：turn/start 触发，上一轮任务自动重置为 null（输入框上方不残留悬浮条）
+  const turn2StartHistory = [
+    ...turn1History,
+    event('turn/start', { turn: 2 }),
+  ];
+  assert.equal(foldPanelData(turn2StartHistory).todos, null);
+
+  // 3. 第2轮通过 DSH 原生 todo/write 事件写入新任务
+  const turn2WriteHistory = [
+    ...turn2StartHistory,
+    event('todo/write', { todos: todosTurn2 }),
+  ];
+  assert.deepEqual(foldPanelData(turn2WriteHistory).todos, todosTurn2);
+});
+
+
