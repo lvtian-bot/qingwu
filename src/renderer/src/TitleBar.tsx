@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import type { MouseEvent } from "react";
-import type { MenuName } from "../../shared/menu-data";
+import { MENU_NAMES, type MenuName } from "../../shared/menu-data";
 import "./titlebar.css";
 
-const MENU_ITEMS = ["文件", "编辑", "视图", "帮助"] as const;
+const MENU_ITEMS = MENU_NAMES;
 
 function QingwuIcon() {
   return (
@@ -85,6 +85,10 @@ export function TitleBar({
   };
 
   useEffect(() => {
+    const unsubSwitch = window.qingwu?.onMenuSwitch?.((name) => {
+      const button = menuButtonsRef.current[name];
+      if (button && activeMenuRef.current) openMenu(name, button, true);
+    });
     const unsubFs = window.qingwu?.onFullscreenChanged?.((fs) => {
       setIsFullScreen(Boolean(fs));
     });
@@ -101,6 +105,7 @@ export function TitleBar({
     });
 
     return () => {
+      unsubSwitch?.();
       unsubFs?.();
       unsubMenu?.();
     };
@@ -182,6 +187,15 @@ export function TitleBar({
               className={
                 "titlebar-menu-item" + (activeMenu === item ? " active" : "")
               }
+              onMouseDown={(e) => e.preventDefault()}
+              aria-haspopup="menu"
+              aria-expanded={activeMenu === item}
+              onKeyDown={(e) => {
+                if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                  e.preventDefault();
+                  openMenu(item, e.currentTarget);
+                }
+              }}
               onClick={(e) => handleMenuClick(item, e)}
               onMouseEnter={() => {
                 const el = menuButtonsRef.current[item];

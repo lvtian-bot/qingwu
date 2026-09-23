@@ -90,7 +90,7 @@ export interface QingwuApi {
     y: number;
     viaSwitch?: boolean;
   }) => Promise<void>;
-  /** 左右方向键在顶级菜单间穿梭（原位换内容）。 */
+  /** 左右方向键在顶级菜单间穿梭，由标题栏重测目标按钮位置。 */
   switchMenuPopup: (direction: "left" | "right") => Promise<void>;
   closeMenuPopup: () => Promise<void>;
   executeMenuAction: (actionId: string) => Promise<void>;
@@ -100,6 +100,7 @@ export interface QingwuApi {
     width: number;
     height: number;
     menuName: MenuName;
+    sessionId: number;
   }) => Promise<void>;
   onMenuPopupData: (
     listener: (data: {
@@ -107,12 +108,16 @@ export interface QingwuApi {
       /** 打开会话号：仅新打开递增，穿梭切换不变；渲染层以此重放入场动画。 */
       sessionId: number;
       context: MenuStateContext;
+      maxWidth: number;
+      maxHeight: number;
       /** null = 弹层已关闭：渲染层清空内容，保证隐藏窗口不留旧帧。 */
     } | null) => void
   ) => () => void;
   getTitle: () => Promise<string>;
   onTitleChanged: (listener: (title: string) => void) => () => void;
-  /** 菜单弹层关闭信号，reason 区分点击外部失焦（blur）与 Esc/执行动作等显式关闭（explicit）。 */
+  /** 请求标题栏同步目标菜单高亮并回报其坐标。 */
+  onMenuSwitch: (listener: (menuName: MenuName) => void) => () => void;
+  /** 菜单关闭：失焦关闭不抢焦点，显式关闭恢复当前界面焦点。 */
   onMenuClosed: (listener: (reason: "blur" | "explicit") => void) => () => void;
   onFullscreenChanged: (listener: (isFullScreen: boolean) => void) => () => void;
   /** 菜单动作「设置」：主进程通知青梧界面打开设置页。 */

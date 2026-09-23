@@ -30,12 +30,12 @@
     --titlebar-active-fg: #0d0d0d;
 
     /* 自绘菜单配色（浅色，对齐 Codex / ChatGPT 桌面质感） */
-    --titlebar-dropdown-bg: #ffffff;
+    --titlebar-dropdown-bg: #f7f7f8;
     --titlebar-dropdown-border: rgba(0, 0, 0, 0.06);
     --titlebar-dropdown-item-hover: rgba(0, 0, 0, 0.04);
     --titlebar-dropdown-item-active: rgba(0, 0, 0, 0.07);
     --titlebar-dropdown-text: #171717;
-    --titlebar-dropdown-text-dim: #9b9b9b;
+    --titlebar-dropdown-text-dim: #737373;
     --titlebar-dropdown-separator: rgba(0, 0, 0, 0.06);
   }
 }
@@ -47,7 +47,11 @@
   background-color: var(--titlebar-bg);
   color: var(--titlebar-fg);
   font-family:
-    "Microsoft YaHei", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    "Microsoft YaHei",
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
   font-size: 12px;
   box-sizing: border-box;
   border-bottom: 1px solid var(--titlebar-border);
@@ -156,17 +160,28 @@
   padding: 6px;
   background: var(--titlebar-dropdown-bg);
   border: 1px solid var(--titlebar-dropdown-border);
-  border-radius: 11px;
-  /* 不设 box-shadow：弹层窗口与面板同大，阴影沿四边被窗口裁掉，只在四角圆角凹槽露出灰色残影 */
+  border-radius: 8px;
+  overflow: auto;
+  outline: none;
+  /* 窗口四周预留 16 DIP，完整容纳投影。 */
+  box-shadow:
+    0 4px 12px rgba(0, 0, 0, 0.18),
+    0 1px 3px rgba(0, 0, 0, 0.1);
   color: var(--titlebar-dropdown-text);
   font-family:
-    "Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, "Microsoft YaHei", sans-serif;
+    "Segoe UI Variable Text",
+    "Segoe UI",
+    -apple-system,
+    BlinkMacSystemFont,
+    "Microsoft YaHei",
+    sans-serif;
   font-size: 12.5px;
   user-select: none;
 }
 
 /* 弹层动画只在打开会话包裹层（见 MenuPopupView 的 key 设计）：
-   打开 = 整体弹出（缩放 + 上浮）；穿梭切换 = 瞬时换内容，面板本体与阴影纹丝不动。 */
+   打开 = 整体微缩放淡入；穿梭切换 = 瞬时换内容，面板本体与阴影纹丝不动。
+   原点为 top left，顶部不向上位移以避免顶部裁切与标题栏遮挡。 */
 .menu-popup-enter {
   transform-origin: top left;
   animation: titlebarDropdownIn 0.14s cubic-bezier(0.16, 1, 0.3, 1);
@@ -175,24 +190,24 @@
 @keyframes titlebarDropdownIn {
   from {
     opacity: 0;
-    transform: translateY(-3px) scale(0.985);
+    transform: scale(0.985);
   }
   to {
     opacity: 1;
-    transform: translateY(0) scale(1);
+    transform: scale(1);
   }
 }
 
 .titlebar-dropdown-separator {
   height: 1px;
-  margin: 6px 10px;
+  margin: 5px 2px;
   background-color: var(--titlebar-dropdown-separator);
 }
 
 .titlebar-dropdown-item {
   display: flex;
   align-items: center;
-  height: 34px;
+  height: 29px;
   padding: 0 10px 0 0;
   border-radius: 6px;
   cursor: default;
@@ -247,4 +262,10 @@
   color: var(--titlebar-dropdown-text-dim);
   font-family: inherit;
   flex-shrink: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .menu-popup-enter {
+    animation: none;
+  }
 }

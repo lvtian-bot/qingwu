@@ -243,10 +243,6 @@ if (!gotTheLock) {
             windowManager.applyUiMode(next);
             break;
           }
-          case "toggleCloseToTray": {
-            settings.set("closeToTray", !settings.get("closeToTray"));
-            break;
-          }
           case "openTerminal": {
             void openTerminal();
             break;
@@ -327,26 +323,11 @@ if (!gotTheLock) {
       const menuPopupManager = new MenuPopupManager({
         getMainWindow: () => windowManager.mainWindow,
         onAction: handleMenuAction,
+        restoreFocus: () => windowManager.focus(),
       });
       windowManager.mainWindow?.on("closed", () => menuPopupManager.destroy());
 
-      createApplicationMenu({
-        onCheckForUpdates: () => updateWindowManager.open(),
-        getTargetWebContents: () => windowManager.getTargetWebContents(),
-        getMainWindow: () => windowManager.mainWindow,
-        onSwitchUiMode: () => {
-          const next: UiMode =
-            settings.get("uiMode") === "native" ? "official" : "native";
-          settings.set("uiMode", next);
-          windowManager.applyUiMode(next);
-        },
-        onOpenTerminal: () => {
-          void openTerminal();
-        },
-        onOpenFolder: () => {
-          void openPath();
-        },
-      });
+      createApplicationMenu({ onAction: handleMenuAction });
 
       harnessManager.onUnexpectedExit((code, signal) => {
         console.error(`[Main] 引擎异常退出: code=${code}, signal=${signal}`);

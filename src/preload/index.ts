@@ -94,6 +94,8 @@ const api: QingwuApi = {
         menuName: import('../shared/menu-data').MenuName;
         sessionId: number;
         context: import('../shared/menu-data').MenuStateContext;
+        maxWidth: number;
+        maxHeight: number;
       } | null,
     ) => listener(data);
     ipcRenderer.on('menu-popup:data', handler);
@@ -105,6 +107,14 @@ const api: QingwuApi = {
     const handler = (_event: IpcRendererEvent, title: string) => listener(title);
     ipcRenderer.on('titlebar:title-changed', handler);
     return () => ipcRenderer.removeListener('titlebar:title-changed', handler);
+  },
+  onMenuSwitch: (listener) => {
+    const handler = (
+      _event: IpcRendererEvent,
+      name: import('../shared/menu-data').MenuName,
+    ) => listener(name);
+    ipcRenderer.on('titlebar:menu-switch', handler);
+    return () => ipcRenderer.removeListener('titlebar:menu-switch', handler);
   },
   onMenuClosed: (listener) => {
     const handler = (_event: IpcRendererEvent, reason: 'blur' | 'explicit') =>

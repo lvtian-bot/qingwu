@@ -13,7 +13,6 @@ export interface MenuItemData {
 }
 
 export interface MenuStateContext {
-  closeToTray: boolean;
   uiMode: "native" | "official";
 }
 
@@ -38,13 +37,6 @@ export function getMenuItems(
         },
         { id: "openFolder", label: "在文件管理器中打开工作区" },
         { id: "sep-2", label: "", type: "separator" },
-        {
-          id: "toggleCloseToTray",
-          label: "关闭时最小化到系统托盘",
-          type: "checkbox",
-          checked: context.closeToTray,
-        },
-        { id: "sep-3", label: "", type: "separator" },
         { id: "quit", label: "退出", accelerator: "Alt+F4" },
       ];
 

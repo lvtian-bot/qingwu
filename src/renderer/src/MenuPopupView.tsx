@@ -4,6 +4,11 @@ import {
   type MenuName,
   type MenuStateContext,
 } from "../../shared/menu-data";
+import {
+  MENU_SHADOW_INSET_X,
+  MENU_SHADOW_INSET_TOP,
+  MENU_SHADOW_INSET_BOTTOM,
+} from "../../shared/menu-layout";
 import { MenuDropdown } from "./MenuDropdown";
 import "./titlebar.css";
 
@@ -11,6 +16,8 @@ interface MenuPopupPayload {
   menuName: MenuName;
   sessionId: number;
   context: MenuStateContext;
+  maxWidth: number;
+  maxHeight: number;
 }
 
 /**
@@ -44,7 +51,8 @@ export function MenuPopupView() {
   useEffect(() => {
     const el = containerRef.current;
     if (!data || !el) return;
-    const target = el.querySelector<HTMLElement>(".titlebar-dropdown-menu") ?? el;
+    const target =
+      el.querySelector<HTMLElement>(".titlebar-dropdown-menu") ?? el;
     let raf1 = 0;
     let raf2 = 0;
     const timers: number[] = [];
@@ -58,6 +66,7 @@ export function MenuPopupView() {
           width: w,
           height: h,
           menuName: data.menuName,
+          sessionId: data.sessionId,
         });
       }
     };
@@ -86,11 +95,14 @@ export function MenuPopupView() {
       ref={containerRef}
       style={{
         width: "100%",
-        height: "auto",
+        height: "100vh",
         background: "transparent",
         overflow: "hidden",
         boxSizing: "border-box",
-        padding: 0,
+        paddingTop: MENU_SHADOW_INSET_TOP,
+        paddingBottom: MENU_SHADOW_INSET_BOTTOM,
+        paddingLeft: MENU_SHADOW_INSET_X,
+        paddingRight: MENU_SHADOW_INSET_X,
         margin: 0,
       }}
     >
@@ -101,6 +113,7 @@ export function MenuPopupView() {
       <div key={data.sessionId} className="menu-popup-enter">
         <MenuDropdown
           items={items}
+          label={data.menuName}
           onAction={(actionId) => {
             void window.qingwu?.executeMenuAction?.(actionId);
           }}
@@ -113,6 +126,8 @@ export function MenuPopupView() {
           style={{
             position: "static",
             margin: 0,
+            maxWidth: data.maxWidth,
+            maxHeight: data.maxHeight,
           }}
         />
       </div>

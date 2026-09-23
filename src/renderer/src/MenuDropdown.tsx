@@ -5,6 +5,7 @@ import "./titlebar.css";
 
 interface MenuDropdownProps {
   items: MenuItemData[];
+  label: string;
   onAction: (id: string) => void;
   onClose: () => void;
   onSwitchMenu?: (direction: "left" | "right") => void;
@@ -13,6 +14,7 @@ interface MenuDropdownProps {
 
 export function MenuDropdown({
   items,
+  label,
   onAction,
   onClose,
   onSwitchMenu,
@@ -30,12 +32,20 @@ export function MenuDropdown({
   // 菜单项集合变化（穿梭切换 / 状态刷新）时重置键盘选中态，不依赖外层重挂载。
   useEffect(() => {
     setSelectedIndex(-1);
+    containerRef.current?.focus();
   }, [items]);
+
+  useEffect(() => {
+    if (selectedIndex >= 0)
+      containerRef.current
+        ?.querySelector(`#menu-item-${selectedIndex}`)
+        ?.scrollIntoView({ block: "nearest" });
+  }, [selectedIndex]);
 
   // 键盘快捷键导航支持（ArrowUp / ArrowDown / ArrowLeft / ArrowRight / Enter / Space / Escape）
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
+      if (e.key === "Escape" || e.key === "Tab") {
         e.preventDefault();
         e.stopPropagation();
         onClose();
@@ -46,6 +56,7 @@ export function MenuDropdown({
         e.preventDefault();
         e.stopPropagation();
         setSelectedIndex((prev) => {
+          if (!actionableIndices.length) return -1;
           const currentPos = actionableIndices.indexOf(prev);
           const nextPos = (currentPos + 1) % actionableIndices.length;
           return actionableIndices[nextPos];
@@ -57,11 +68,10 @@ export function MenuDropdown({
         e.preventDefault();
         e.stopPropagation();
         setSelectedIndex((prev) => {
+          if (!actionableIndices.length) return -1;
           const currentPos = actionableIndices.indexOf(prev);
           const nextPos =
-            currentPos <= 0
-              ? actionableIndices.length - 1
-              : currentPos - 1;
+            currentPos <= 0 ? actionableIndices.length - 1 : currentPos - 1;
           return actionableIndices[nextPos];
         });
         return;
@@ -98,7 +108,14 @@ export function MenuDropdown({
     return () => {
       window.removeEventListener("keydown", handleKeyDown, true);
     };
-  }, [actionableIndices, items, onAction, onClose, onSwitchMenu, selectedIndex]);
+  }, [
+    actionableIndices,
+    items,
+    onAction,
+    onClose,
+    onSwitchMenu,
+    selectedIndex,
+  ]);
 
   return (
     <div
@@ -106,6 +123,11 @@ export function MenuDropdown({
       className="titlebar-dropdown-menu"
       style={style}
       role="menu"
+      tabIndex={-1}
+      aria-label={label}
+      aria-activedescendant={
+        selectedIndex >= 0 ? `menu-item-${selectedIndex}` : undefined
+      }
       onPointerDown={(e) => e.stopPropagation()}
     >
       {items.map((item, index) => {
@@ -125,6 +147,7 @@ export function MenuDropdown({
         return (
           <div
             key={item.id}
+            id={`menu-item-${index}`}
             className={
               "titlebar-dropdown-item" +
               (isSelected ? " selected" : "") +
