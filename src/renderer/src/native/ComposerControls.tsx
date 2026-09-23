@@ -28,6 +28,25 @@ function permissionLabel(value: string): string {
   return PERMISSION_LABELS[value] ?? value;
 }
 
+/** 默认/保底权限选项（与 DSH 核心权限预设对齐）。 */
+export const DEFAULT_PERMISSION_OPTIONS: PresetOption[] = [
+  {
+    value: "workspace-write",
+    name: "workspace-write",
+    description: "仅允许在工作区内修改；超出工作区范围的操作需要审批。",
+  },
+  {
+    value: "read-only",
+    name: "read-only",
+    description: "安全只读模式，禁止任何文件修改和写操作。",
+  },
+  {
+    value: "danger-full-access",
+    name: "danger-full-access",
+    description: "完全放开读写与命令限制，不弹审批询问。",
+  },
+];
+
 /**
  * 从 permission 命名空间的 schemastery 序列化 schema 解析 defaultPreset 可选档位。
  * 官方设置行用 nodeAtPath(rehydrate(schema)) 取该 union 的 const 列表，这里直接走

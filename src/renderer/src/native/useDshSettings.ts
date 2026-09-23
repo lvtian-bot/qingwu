@@ -21,7 +21,7 @@ export interface DshSettingsController {
 export function useDshSettings(): DshSettingsController {
   const [settingsSnapshot, setSettingsSnapshot] =
     useState<SettingsDescribeValue | null>(null);
-  const [defaultPreset, setDefaultPreset] = useState<string>("standard");
+  const [defaultPreset, setDefaultPreset] = useState<string>("workspace-write");
   const [defaultModelKey, setDefaultModelKey] = useState<string>("");
   const [settingsMessage, setSettingsMessage] = useState<string | null>(null);
 
@@ -36,7 +36,7 @@ export function useDshSettings(): DshSettingsController {
         setSettingsSnapshot(res);
         const permNs = res.namespaces.find((ns) => ns.ns === "permission");
         const permission = permNs?.value as { defaultPreset?: string } | undefined;
-        setDefaultPreset(permission?.defaultPreset || "standard");
+        setDefaultPreset(permission?.defaultPreset || "workspace-write");
         const admNs = res.namespaces.find(
           (ns) => ns.ns === "agent-default-model",
         );

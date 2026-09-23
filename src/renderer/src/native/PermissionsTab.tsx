@@ -24,9 +24,9 @@ export function PermissionsTab({ dsh }: { dsh: DshSettingsController }) {
             value={dsh.defaultPreset}
             onChange={(e) => void dsh.saveDefaultPreset(e.target.value)}
           >
-            <option value="standard">标准询问</option>
-            <option value="elevated">完全授权</option>
-            <option value="restricted">安全只读</option>
+            <option value="workspace-write">工作区内修改（推荐）</option>
+            <option value="read-only">仅可查看</option>
+            <option value="danger-full-access">完全权限</option>
           </select>
         </SettingsRow>
       </div>

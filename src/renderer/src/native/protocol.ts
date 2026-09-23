@@ -34,6 +34,7 @@ export const Endpoints = {
   settingsMutate: 'settings/mutate',
   settingsOpenSettingsDocument: 'settings/openSettingsDocument',
   settingsUpdate: 'settings/update',
+  permissionPresetsCatalog: 'permissionPresets/catalog',
   workspaceFollow: 'workspace/follow',
   workspaceCreate: 'workspace/create',
   workspaceRename: 'workspace/rename',
@@ -132,6 +133,13 @@ export interface PresetOption {
   value: string;
   name: string;
   description?: string;
+}
+
+/** 权限预设目录（permissionPresets/catalog 返回）。 */
+export interface PermissionCatalog {
+  options: PresetOption[];
+  defaultOptions: PresetOption[];
+  defaultPreset: string;
 }
 
 /** 会话投影 permissions：可切换预设 + 当前生效值（custom 表示旋钮组合无预设）。 */
@@ -317,8 +325,17 @@ export interface ToolCallEventData {
 }
 
 export interface ToolResultEventData {
-  message?: { content?: { type: string; toolCallId: string; content?: unknown[]; isError?: boolean }[] };
-  error?: { name: string; code: string };
+  turn?: number;
+  step?: number;
+  message?: {
+    role?: string;
+    toolCallId?: string;
+    source?: { kind?: string; callId?: string };
+    content?: unknown[];
+    isError?: boolean;
+  };
+  error?: { name?: string; code?: string };
+  meta?: unknown;
 }
 
 /** 队列里的一条待发送消息（journal 事件 agent/inbox/spliced 的 inserted 元素）。 */

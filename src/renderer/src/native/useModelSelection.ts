@@ -3,12 +3,17 @@
  * 以及会话内/空态两套选择器的数据源与写回。
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { permissionPresetsFromSchema } from "./ComposerControls";
+import {
+  DEFAULT_PERMISSION_OPTIONS,
+  permissionPresetsFromSchema,
+} from "./ComposerControls";
 import {
   Endpoints,
   type ModelCatalog,
   type ModelSelection,
+  type PermissionCatalog,
   type PermissionSelect,
+  type PresetOption,
   type SessionSummary,
   type SettingsDescribeValue,
 } from "./protocol";
@@ -37,6 +42,9 @@ export function useModelSelection({
   const [defaultPermission, setDefaultPermission] = useState<
     (PermissionSelect & { writable: boolean; revision: number }) | null
   >(null);
+  /** 权限目录（permissionPresets/catalog 返回的完整可选与默认档位）。 */
+  const [permissionCatalog, setPermissionCatalog] =
+    useState<PermissionCatalog | null>(null);
 
   // 模型目录与界面生命周期解耦，失败静默降级（选择器显示目录不可用）
   const refreshModelCatalog = useCallback(async () => {
@@ -50,6 +58,38 @@ export function useModelSelection({
   useEffect(() => {
     void refreshModelCatalog();
   }, [refreshModelCatalog]);
+
+  /** 读取权限目录（permissionPresets/catalog）。 */
+  const refreshPermissionCatalog = useCallback(async () => {
+    try {
+      setPermissionCatalog(
+        await rpc<PermissionCatalog>(Endpoints.permissionPresetsCatalog, {}),
+      );
+    } catch {
+      // 失败保留现有目录，依赖内置 DEFAULT_PERMISSION_OPTIONS 兜底
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshPermissionCatalog();
+  }, [refreshPermissionCatalog]);
+
+  const sessionOptions = useMemo<PresetOption[]>(() => {
+    if (permissionCatalog?.options && permissionCatalog.options.length > 0) {
+      return permissionCatalog.options;
+    }
+    return DEFAULT_PERMISSION_OPTIONS;
+  }, [permissionCatalog]);
+
+  const defaultOptions = useMemo<PresetOption[]>(() => {
+    if (
+      permissionCatalog?.defaultOptions &&
+      permissionCatalog.defaultOptions.length > 0
+    ) {
+      return permissionCatalog.defaultOptions;
+    }
+    return DEFAULT_PERMISSION_OPTIONS;
+  }, [permissionCatalog]);
 
   /** 读取新会话默认权限（settings/describe 的 permission 命名空间）。 */
   const refreshDefaultPermission = useCallback(async () => {
@@ -70,10 +110,11 @@ export function useModelSelection({
         setDefaultPermission(null);
         return;
       }
-      const options = permissionPresetsFromSchema(view.schema);
+      const schemaOptions = permissionPresetsFromSchema(view.schema);
+      const options =
+        schemaOptions.length > 0 ? schemaOptions : defaultOptions;
       setDefaultPermission({
-        options:
-          options.length > 0 ? options : [{ value: current, name: current }],
+        options,
         currentValue: current,
         writable: described.writable,
         revision: view.revision,
@@ -81,7 +122,7 @@ export function useModelSelection({
     } catch {
       setDefaultPermission(null);
     }
-  }, []);
+  }, [defaultOptions]);
 
   useEffect(() => {
     void refreshDefaultPermission();
@@ -102,16 +143,26 @@ export function useModelSelection({
     return emptySelection ?? modelCatalog?.default ?? null;
   }, [currentId, sessions, emptySelection, modelCatalog]);
 
-  /** 权限选择器数据：会话内取该会话投影，空态取新会话默认（settings permission.defaultPreset）。 */
+  /** 权限选择器数据：会话内取该会话投影并补全选项，空态取新会话默认（settings permission.defaultPreset）。 */
   const currentPermission = useMemo<PermissionSelect | null>(() => {
     if (currentId) {
-      return (
-        sessions.find((s) => s.sessionId === currentId)?.projections?.values
-          ?.permissions ?? null
-      );
+      const projection = sessions.find((s) => s.sessionId === currentId)
+        ?.projections?.values?.permissions;
+      if (!projection) return null;
+      return {
+        options: sessionOptions,
+        currentValue:
+          projection.currentValue ??
+          defaultPermission?.currentValue ??
+          "workspace-write",
+      };
     }
-    return defaultPermission;
-  }, [currentId, sessions, defaultPermission]);
+    if (!defaultPermission) return null;
+    return {
+      ...defaultPermission,
+      options: defaultOptions,
+    };
+  }, [currentId, sessions, defaultPermission, sessionOptions, defaultOptions]);
 
   /** 应用模型选择到会话并刷新投影（reasoningEffort 缺省用模型默认档）。 */
   const applyModelSelection = useCallback(
