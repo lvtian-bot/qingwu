@@ -21,20 +21,7 @@ npm run dev
 npm run dist
 ```
 
-`npm start` 预览已有构建，使用前先运行 `npm run build`。环境要求、按任务阅读的模块入口与验证方法见 [维护导航](docs/maintenance.md)。
-
-## 产品定位
-
-把 Agent 引擎封装成普通桌面软件：双击打开即用，会话、工具调用、文件读写由内置引擎提供。定位与边界见 docs/product-positioning.md。
-
-## 项目结构
-
-- AGENTS.md：协作规范
-- docs/product-positioning.md：产品定位
-- docs/tech-architecture.md：技术路线与决策
-- docs/maintenance.md：模块导航、开发排障与升级验证
-- docs/TODO.md：待办
-- docs/release.md：发布流程
+`npm start` 预览已有构建，使用前先运行 `npm run build`。项目定位、技术文档入口与协作规则见 [AGENTS.md](AGENTS.md)。
 
 ## AI Agent 驱动开发
 

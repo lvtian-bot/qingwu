@@ -1,0 +1,22 @@
+# 会话与项目
+
+## 职责
+
+- dsh 保存会话、项目注册表、运行状态与对话事件；青梧界面只维护当前会话的展示投影、临时输入草稿和侧栏交互状态。
+- `useEngineStreams` 订阅全局 `$events`、`workspace/follow` 和选中会话的 `session/follow`，将快照与增量折成对话、队列、运行状态和待处理项；`NativeApp` 组合输入、会话操作、滚动和决策回执。
+- 新会话落到当前或最近活跃项目。切换项目 chip 时建或复用目标项目的空白会话，并迁移未发送草稿；已有会话的项目归属不能靠 `workspace/insertSessionBefore` 跨项目改写。
+
+## 主要代码入口
+
+- 会话与项目：`src/renderer/src/native/useEngineStreams.ts`、`useSessionActions.ts`、`SessionSidebar.tsx`、`SidebarRows.tsx`、`sidebar-data.ts`。
+- 对话与输入：`NativeApp.tsx`、`events.ts`、`TurnItems.tsx`、`Composer.tsx`、`ChatComposer.tsx`、`useComposerDrafts.ts`、`useChatScroll.ts`。
+- 审批、问答与队列：`PendingInteraction.tsx`、`QueueStrip.tsx`、`RunningStrip.tsx`；协议入口在 `protocol.ts`，实际请求经 `rpc.ts` 与主进程桥转发。
+
+## 易复发的技术约束
+
+- **侧栏切换引起过黑屏**：`NativeApp` 曾因 React Hook 条件调用破坏渲染顺序。组件每次渲染时必须以相同顺序调用 Hook，不能将它放进条件分支或早返回之后；错误边界和诊断日志只帮助发现问题，不替代修正 Hook 结构。
+- **会话实时输出**：当前 `session/follow` 订阅需声明 `assistantStream: true`，文本和思考增量由 `assistant-stream` 帧提供。开场快照可包含在飞内容的压实基线；检测到 revision 跳号时应重开订阅并用新快照重建，不能继续拼接旧增量，否则会漏字或重复。
+- **历史翻页**：切换会话、重开订阅或收到新快照，都会使旧翻页请求失效；仅在有效响应即将前插时记录滚动锚点。会话流打开失败或异常结束要解除加载态并报错，避免界面一直转圈。
+- **草稿与发送**：提交前记录草稿版本和所属会话；发送失败只恢复仍未被再次编辑的原会话草稿，切到其他会话后不能覆盖当前输入。首次发送创建会话后，空白页草稿须清理并在失败时恢复到新会话。
+- **运行状态**：`api-session/status` 只在状态变化时推送，切换会话和断线重连不能依赖它重播；进入会话时从会话列表快照播种状态，后续再由事件更新。
+- **待处理项归属**：`$events` 是全局流，审批和问答帧的 `agentId` 是所属会话 ID。待处理项必须带会话归属，不能做成所有会话共用的扁平界面列表；决策回执的信封约束见 [dsh 运行与连接](dsh-integration.md)。
