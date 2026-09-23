@@ -315,4 +315,48 @@ test('对齐 DSH 官方投影生命周期：新轮次开始时清空上一轮待
   assert.deepEqual(foldPanelData(turn2WriteHistory).todos, todosTurn2);
 });
 
+test('DSH 标准协议 tool/result 正常结算调用状态、耗时与排除失败调用', () => {
+  const dshResult = (id, text, isError = false) => ({
+    turn: 1,
+    step: 1,
+    message: {
+      role: 'tool',
+      source: { kind: 'tool', callId: id },
+      toolCallId: id,
+      content: [{ type: 'text', text }],
+      isError,
+    },
+  });
+
+  const history = [
+    event('turn/start', { turn: 1 }, 1),
+    event('tool/call', { callId: 'dsh-call-1', name: 'pwsh', arguments: '{"command":"dir"}', turn: 1 }, 2),
+    event('tool/result', dshResult('dsh-call-1', '输出列表'), 3),
+    event('tool/call', { callId: 'dsh-call-2', name: 'edit', arguments: '{"file_path":"test.txt"}', turn: 1 }, 4),
+    event('tool/result', dshResult('dsh-call-2', '文件不存在', true), 5),
+    event('turn/end', { turn: 1 }, 6),
+  ];
+
+  const [view] = foldChatItems(history);
+  const tool1 = view.items[0].tool;
+  const tool2 = view.items[1].tool;
+
+  assert.equal(tool1.callId, 'dsh-call-1');
+  assert.equal(tool1.pending, false);
+  assert.equal(tool1.resultText, '输出列表');
+  assert.equal(tool1.isError, false);
+  assert.equal(tool1.resultTime, 3000);
+
+  assert.equal(tool2.callId, 'dsh-call-2');
+  assert.equal(tool2.pending, false);
+  assert.equal(tool2.resultText, '文件不存在');
+  assert.equal(tool2.isError, true);
+  assert.equal(tool2.resultTime, 5000);
+
+  // 验证 panelData 能够通过 failedCalls 排除失败的工具调用
+  const panel = foldPanelData(history);
+  assert.equal(panel.fileChanges.length, 0); // 失败的 edit 不会被计入 modified files
+});
+
+
 

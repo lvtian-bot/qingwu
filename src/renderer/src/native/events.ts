@@ -68,6 +68,51 @@ export function expandStreamRecords(
   return deltas;
 }
 
+/** 从 tool/result 事件中提取调用标识、结果文本与失败标记（对齐 DSH 标准结构并兼容旧格式）。 */
+export function extractToolResult(data: ToolResultEventData | null | undefined): {
+  callId: string | null;
+  resultText: string;
+  isError: boolean;
+} {
+  if (!data) return { callId: null, resultText: "", isError: false };
+
+  const message = data.message;
+  const legacyBlock = Array.isArray(message?.content)
+    ? (message.content[0] as Record<string, unknown> | undefined)
+    : undefined;
+
+  // 1. callId：优先底层 DSH 标准字段 toolCallId，其次 source.callId / subCallId，兼容旧 mock 的 content[0].toolCallId
+  const callId =
+    (typeof message?.toolCallId === "string" && message.toolCallId) ||
+    (typeof message?.source?.callId === "string" && message.source.callId) ||
+    (typeof (data as Record<string, unknown>).subCallId === "string" &&
+      ((data as Record<string, unknown>).subCallId as string)) ||
+    (typeof legacyBlock?.toolCallId === "string" && legacyBlock.toolCallId) ||
+    null;
+
+  // 2. resultText：底层 DSH 标准结构中 message.content 即为 ContentBlock[]，旧结构则在 legacyBlock.content
+  let resultText = "";
+  if (Array.isArray(message?.content)) {
+    resultText = textOf(message.content, "text");
+    if (!resultText && legacyBlock && Array.isArray(legacyBlock.content)) {
+      resultText = textOf(legacyBlock.content, "text");
+    }
+  }
+
+  const err = data.error;
+  if (!resultText && err) {
+    resultText = `${err.name || "Error"}: ${err.code || "UNKNOWN"}`;
+  }
+
+  // 3. isError
+  const isError =
+    Boolean(data.error) ||
+    Boolean(message?.isError) ||
+    Boolean(legacyBlock?.isError);
+
+  return { callId, resultText, isError };
+}
+
 /** 会话内渲染条目。 */
 export type ChatItem =
   | {
@@ -283,29 +328,24 @@ export function foldChatItems(events: SessionEvent[]): TurnView[] {
       items.push({ kind: "tool", key: `t-${event.seq}`, tool: item, turn });
     } else if (event.type === "tool/result") {
       const data = event.data as ToolResultEventData;
-      const block = data.message?.content?.[0];
-      if (block && block.type === "tool-result") {
-        const target = tools.get(block.toolCallId);
-        const resultText = Array.isArray(block.content)
-          ? textOf(block.content as unknown[], "text")
-          : "";
+      const { callId, resultText, isError } = extractToolResult(data);
+      if (callId) {
+        const target = tools.get(callId);
         if (target) {
           target.pending = false;
           target.resultTime = event.time;
-          target.resultText =
-            resultText ||
-            (data.error ? `${data.error.name}: ${data.error.code}` : "");
-          target.isError = Boolean(data.error) || Boolean(block.isError);
+          target.resultText = resultText;
+          target.isError = isError;
         } else {
           items.push({
             kind: "tool",
             key: `t-${event.seq}`,
             tool: {
-              callId: block.toolCallId,
+              callId,
               name: "tool",
               arguments: "",
               resultText,
-              isError: Boolean(block.isError),
+              isError,
               pending: false,
               resultTime: event.time,
             },

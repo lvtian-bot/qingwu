@@ -1,3 +1,4 @@
+import { extractToolResult } from "./events";
 import type {
   EditArgs,
   PresentArgs,
@@ -17,14 +18,9 @@ export function foldPanelData(events: SessionEvent[]) {
   for (const event of events) {
     if (event.type === "tool/result") {
       const data = event.data as ToolResultEventData | null;
-      const block = data?.message?.content?.[0];
-      if (
-        data &&
-        block &&
-        block.type === "tool-result" &&
-        (data.error || block.isError)
-      ) {
-        failedCalls.add(block.toolCallId);
+      const { callId, isError } = extractToolResult(data);
+      if (callId && isError) {
+        failedCalls.add(callId);
       }
     } else if (event.type === "deliverables/presented") {
       // DSH 规范 deliverables/presented 事件
