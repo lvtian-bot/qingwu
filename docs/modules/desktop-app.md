@@ -16,4 +16,5 @@
 
 ## 易复发的技术约束
 
-- **开发机启动即退且没有 JS 日志**：先排查残留实例占用单实例锁。若 `node_modules\electron\dist\electron.exe --version` 也以 `0x80000003` 退出、`app.log` 无新记录，而 Node 构建正常，主进程 JS 尚未运行；曾确认项目目录的 Windows Low 强制完整性标签会造成这一现象。用 `icacls <项目根目录>` 核对标签和拒绝权限，确认后将完整性标签恢复为 Medium，并只移除异常的显式拒绝项；不要按渲染代码或 dsh 故障排查。
+- **开发机启动即退且没有 JS 日志**：先排查残留实例占用单实例锁。若 `node_modules\electron\dist\electron.exe --version` 也以 `0x80000003` 退出、`app.log` 无新记录，而 Node 构建正常，主进程 JS 尚未运行；检查项目目录的 Windows 完整性标签。dsh 的 Windows ACL 沙盒可能将工作区标为 Low，使目录内的开发版 Electron 无法启动；恢复 Medium 只能解除当次故障，下一次 dsh 工作区写入授权仍可能重新标为 Low。不要按渲染代码故障排查。
+- **切换到 DeepSeek 界面显示空白**：`WebContentsView` 在后台（隐藏状态）加载时 Chromium 视口未建立有效布局（`size=0x0`）；在 `applyUiMode` 切换为 official（`setVisible(true)`）时，必须同步显式调用 `updateViewBounds()` 重新计算并下发视图 Bounds，避免 Chromium 合成器和前端 Flex/Grid 布局滞留在 0x0 坍缩状态。

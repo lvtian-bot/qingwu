@@ -155,30 +155,18 @@ export class WindowManager {
       dshView.webContents.insertCSS(DSH_SCROLLBAR_CSS).catch(() => {});
     });
 
-    const updateViewBounds = () => {
-      if (!this.mainWindow || win.isDestroyed() || !this.dshView) return;
-      const [width, height] = win.getContentSize();
-      const isFullScreen = win.isFullScreen();
-      const topOffset = isFullScreen ? 0 : TITLE_BAR_HEIGHT;
-      dshView.setBounds({
-        x: 0,
-        y: topOffset,
-        width: width,
-        height: Math.max(0, height - topOffset),
-      });
-    };
-
-    win.on("resize", updateViewBounds);
-    win.on("maximize", updateViewBounds);
-    win.on("unmaximize", updateViewBounds);
+    const onBoundsChanged = () => this.updateViewBounds();
+    win.on("resize", onBoundsChanged);
+    win.on("maximize", onBoundsChanged);
+    win.on("unmaximize", onBoundsChanged);
     win.on("enter-full-screen", () => {
-      updateViewBounds();
+      this.updateViewBounds();
       if (!win.isDestroyed()) {
         win.webContents.send("window:fullscreen-changed", true);
       }
     });
     win.on("leave-full-screen", () => {
-      updateViewBounds();
+      this.updateViewBounds();
       if (!win.isDestroyed()) {
         win.webContents.send("window:fullscreen-changed", false);
       }
@@ -245,7 +233,7 @@ export class WindowManager {
       if (lastState.isMaximized) {
         win.maximize();
       }
-      updateViewBounds();
+      this.updateViewBounds();
       win.show();
     });
 
@@ -257,6 +245,31 @@ export class WindowManager {
     this.applyUiMode(settings.get("uiMode"));
     this.loadUrl(url);
     return win;
+  }
+
+  updateViewBounds(): void {
+    if (
+      !this.mainWindow ||
+      this.mainWindow.isDestroyed() ||
+      !this.dshView ||
+      typeof this.mainWindow.getContentSize !== "function"
+    ) {
+      return;
+    }
+    const [width, height] = this.mainWindow.getContentSize();
+    const isFullScreen =
+      typeof this.mainWindow.isFullScreen === "function"
+        ? this.mainWindow.isFullScreen()
+        : false;
+    const topOffset = isFullScreen ? 0 : TITLE_BAR_HEIGHT;
+    if (typeof this.dshView.setBounds === "function") {
+      this.dshView.setBounds({
+        x: 0,
+        y: topOffset,
+        width,
+        height: Math.max(0, height - topOffset),
+      });
+    }
   }
 
   applyTitleBarOverlay(): void {
@@ -273,7 +286,11 @@ export class WindowManager {
     this.uiMode = mode;
     console.log(`[Window] 界面模式: ${mode}`);
     if (this.dshView && !this.dshView.webContents.isDestroyed()) {
-      this.dshView.setVisible(mode === "official");
+      const isOfficial = mode === "official";
+      this.dshView.setVisible(isOfficial);
+      if (isOfficial) {
+        this.updateViewBounds();
+      }
     }
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
       this.mainWindow.webContents.send("ui:mode-changed", mode);

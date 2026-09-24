@@ -19,4 +19,5 @@
 - **进程与控制台**：Windows 安装版用随包控制台子系统 `node.exe` 跑 dsh CLI，使引擎及逐层派生的命令进程继承主进程隐藏控制台。若改用 GUI 子系统的 `electron.exe` 作为 Node 运行时，或主进程未取得控制台，Agent 执行命令可能反复闪出黑窗。随包 Node 由脚本校验后准备，版本应与 Electron 内置 Node 对齐；缺失时开发运行可退回其他 Node/Electron，表现不能代表安装版。
 - **依赖实路径**：dsh profile 中的插件 junction 需要真实的 `node_modules` 路径，不能把整棵依赖重新塞进 `app.asar`；当前 `asarUnpack: ["node_modules/**"]` 是运行约束。打包前钩子必须保证随包 Node 就绪。
 - **退出边界**：Windows 正常退出用 `taskkill /T /F` 清理本次进程树；若根进程已先消失，只能确认根 PID 不存在，不能由此证明脱离进程树的后代全部结束。不要批量结束系统中其他 Node、PowerShell 或 conhost；终止引擎依赖的 conhost 会使后续命令失败。
+- **Windows 工作区权限**：当前 `@deepseek-ai/dsh-sandbox-windows-acl` 在 `workspace-write` 写入授权时，为真实工作区添加路径派生的能力 SID、目录删除拒绝项和可继承的 Low 完整性标签；工作区授权会跨会话保留。若青梧源码目录同时是 dsh 工作区和开发运行目录，Low 标签可能令 Electron 在主进程 JS 执行前以 `0x80000003` 退出，或令随包开发运行时 `build/node-runtime/node.exe` 无法写入用户目录下的 `.dsh` 配置而报 `EPERM`。恢复时分别核对项目根、Electron 和随包 Node 的完整性标签；根目录为 Medium 不代表子文件都已恢复。不要把权限标签复发误判为代码回归，也不要通过授予个人账户完全控制来处理 dsh 的命令审批。
 - **升级影响**：dsh API 未承诺稳定，改依赖时核对 controller 的端点参数、返回值、流帧及现有契约测试；还需运行双界面会话、审批、流式输出和命令执行。青梧虽有桥接边界，消息和队列语义仍与 dsh 耦合。

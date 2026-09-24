@@ -16,6 +16,7 @@ import type {} from '@deepseek-ai/dsh-api-workspace-controller/remote';
 import type {} from '@deepseek-ai/dsh-api-settings-controller/remote';
 import type {} from '@deepseek-ai/dsh-commands/remote';
 import type {} from '@deepseek-ai/dsh-llm/remote';
+import type {} from '@deepseek-ai/dsh-permission-presets/remote';
 import type { TypertRemoteMap } from '@deepseek-ai/dsh-typert-protocol';
 import type * as S from '@deepseek-ai/dsh-api-session-controller/types';
 import type * as W from '@deepseek-ai/dsh-api-workspace-controller/types';

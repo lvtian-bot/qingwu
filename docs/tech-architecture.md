@@ -24,6 +24,7 @@ DeepSeek 界面（WebContentsView） → 本地 HTTP / WS ──┤
 | [会话与项目](modules/sessions-workspaces.md)      | 项目与会话操作、流式展示、历史、草稿、审批与队列。 |
 | [设置与模型](modules/settings-models.md)          | 应用设置与引擎设置的分界、模型供应商、权限选择。   |
 | [工作区文件与交付](modules/files-deliverables.md) | 文件变更和交付物投影、右侧面板、桌面文件操作。     |
+| [界面与视觉设计](modules/ui-design-system.md)     | 视觉设计语言、色彩 Token、组件交互动线、暗色模式。 |
 
 模块按功能和数据责任划分，源代码可能跨主进程、preload 与渲染层。修改跨模块接口时，先核对两端实现与共享类型，再更新相关说明。
 

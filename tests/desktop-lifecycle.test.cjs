@@ -303,20 +303,38 @@ test("菜单目标和焦点跟随当前界面，鉴权跳转按完整 origin 判
     send() {},
   };
   const manager = new WindowManager();
+  const boundsCalls = [];
+  const visibilityCalls = [];
   manager.mainWindow = {
     webContents: native,
     isDestroyed: () => false,
     isVisible: () => true,
     isMinimized: () => false,
+    getContentSize: () => [1200, 800],
+    isFullScreen: () => false,
     focus() {},
   };
-  manager.dshView = { webContents: official, setVisible() {} };
+  manager.dshView = {
+    webContents: official,
+    setVisible: (val) => visibilityCalls.push(val),
+    setBounds: (rect) => boundsCalls.push(rect),
+  };
   assert.equal(manager.getTargetWebContents(), official);
   manager.applyUiMode("native");
   assert.equal(manager.getTargetWebContents(), native);
+  assert.equal(visibilityCalls.at(-1), false);
+  const boundsCountBeforeOfficial = boundsCalls.length;
   manager.focus();
   assert.equal(focused.at(-1), "native");
   manager.applyUiMode("official");
+  assert.equal(visibilityCalls.at(-1), true);
+  assert.equal(boundsCalls.length, boundsCountBeforeOfficial + 1);
+  assert.deepEqual(boundsCalls.at(-1), {
+    x: 0,
+    y: 35,
+    width: 1200,
+    height: 765,
+  });
   manager.focus();
   assert.equal(focused.at(-1), "official");
   assert.equal(

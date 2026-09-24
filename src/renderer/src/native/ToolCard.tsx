@@ -192,12 +192,11 @@ function parseArgs<T>(tool: ToolItem): T | null {
 
 function PwshCard({ tool }: { tool: ToolItem }) {
   const args = parseArgs<PwshArgs>(tool);
-  const title = tool.name === 'bash' ? 'Bash' : 'Pwsh';
   const subtitle = args?.description?.trim() || args?.command || undefined;
   return (
     <CardShell
       icon={ICONS.terminal}
-      title={title}
+      title="执行命令"
       subtitle={subtitle}
       status={<StatusView tool={tool} />}
       error={tool.isError || (parseExitCode(tool.resultText) ?? 0) !== 0}

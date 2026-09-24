@@ -209,16 +209,20 @@ export function QuestionCard({
           <Markdown text={plan.item.detail ?? ""} />
         </div>
         <div className="native-card-actions">
+          <span className="native-question-spacer" />
           <button
-            className="primary"
+            type="button"
+            className="native-question-dismiss"
             disabled={submitting}
-            onClick={() => void decide(plan.approve)}
+            title="不选任何选项，直接说出你的想法"
+            onClick={() => void dismiss()}
           >
-            {plan.approve}
+            讨论一下
           </button>
           {others.map((option) => (
             <button
               key={option.label}
+              type="button"
               disabled={submitting}
               title={option.description}
               onClick={() => void decide(option.label)}
@@ -226,14 +230,13 @@ export function QuestionCard({
               {option.label}
             </button>
           ))}
-          <span className="native-question-spacer" />
           <button
-            className="native-question-dismiss"
+            type="button"
+            className="primary"
             disabled={submitting}
-            title="不选任何选项，直接说出你的想法"
-            onClick={() => void dismiss()}
+            onClick={() => void decide(plan.approve)}
           >
-            讨论一下
+            {plan.approve}
           </button>
         </div>
       </div>
@@ -313,15 +316,28 @@ export function QuestionCard({
         </div>
       </div>
       <div className="native-card-actions native-question-submit">
-        {error ? (
-          <span className="native-question-error">{error}</span>
-        ) : (
-          total > 1 && (
+        <div className="native-question-status">
+          {error ? (
+            <span className="native-question-error">{error}</span>
+          ) : total > 1 ? (
             <span className="native-question-hint">
               已填 {completedCount} / {total}
             </span>
-          )
-        )}
+          ) : null}
+        </div>
+        <button
+          type="button"
+          className="native-question-dismiss"
+          disabled={submitting}
+          title={
+            total > 1
+              ? "放弃当前所有问题，改为直接说出你的想法"
+              : "不选择预设选项，改为直接说出你的想法"
+          }
+          onClick={() => void dismiss()}
+        >
+          直接打字沟通
+        </button>
         {total > 1 && (
           <button
             type="button"
@@ -341,16 +357,6 @@ export function QuestionCard({
           onClick={continueFlow}
         >
           {submitting ? "提交中…" : at < total - 1 ? "下一题" : "提交"}
-        </button>
-        <span className="native-question-spacer" />
-        <button
-          type="button"
-          className="native-question-dismiss"
-          disabled={submitting}
-          title="放弃整组问题，改为直接说出你的想法"
-          onClick={() => void dismiss()}
-        >
-          放弃整组问题
         </button>
       </div>
     </div>

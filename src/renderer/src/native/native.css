@@ -1905,23 +1905,27 @@ pre.native-codeblock-body.plain {
   color: var(--native-accent-fg);
 }
 
-/* 授权审批卡片：对齐官方 DSH 设计，操作按钮居右下角，主按钮使用青梧品牌蓝 */
+/* 授权审批卡片：对齐官方 DSH 设计，操作按钮居右下角 */
 .native-card.approval .native-card-actions {
   justify-content: flex-end;
 }
 
-.native-card.approval .native-card-actions button.primary {
+/* 授权审批与提问卡片：主按钮统一使用青梧品牌蓝 */
+.native-card.approval .native-card-actions button.primary,
+.native-card.question .native-card-actions button.primary {
   background: var(--native-send, #3A83F7);
   border-color: var(--native-send, #3A83F7);
   color: var(--native-send-fg, #ffffff);
 }
 
-.native-card.approval .native-card-actions button.primary:hover:not(:disabled) {
+.native-card.approval .native-card-actions button.primary:hover:not(:disabled),
+.native-card.question .native-card-actions button.primary:hover:not(:disabled) {
   background: var(--native-send, #3A83F7);
   filter: brightness(1.08);
 }
 
-.native-card.approval .native-card-actions button.primary:disabled:hover {
+.native-card.approval .native-card-actions button.primary:disabled:hover,
+.native-card.question .native-card-actions button.primary:disabled:hover {
   background: var(--native-send, #3A83F7);
 }
 
@@ -2010,7 +2014,7 @@ pre.native-codeblock-body.plain {
 }
 
 .native-option.selected {
-  border-color: var(--native-accent);
+  border-color: var(--native-send, #3A83F7);
   background: var(--native-hover);
 }
 
@@ -2021,7 +2025,7 @@ pre.native-codeblock-body.plain {
   margin-top: 1px;
   border: 1px solid var(--native-muted);
   border-radius: 50%;
-  color: var(--native-accent-fg);
+  color: var(--native-send-fg, #ffffff);
   font-size: 11px;
   line-height: 14px;
   text-align: center;
@@ -2032,8 +2036,8 @@ pre.native-codeblock-body.plain {
 }
 
 .native-option.selected .native-option-mark {
-  border-color: var(--native-accent);
-  background: var(--native-accent);
+  border-color: var(--native-send, #3A83F7);
+  background: var(--native-send, #3A83F7);
 }
 
 .native-option-body {
@@ -2087,7 +2091,7 @@ pre.native-codeblock-body.plain {
   font-size: 12px;
 }
 
-/* 「放弃整组问题 / 讨论一下」：弱化的次要出口，不跟主按钮抢注意力 */
+/* 「直接打字沟通 / 讨论一下」：弱化的次要出口，不跟主按钮抢注意力 */
 .native-question-dismiss {
   color: var(--native-muted);
 }
@@ -2098,11 +2102,11 @@ pre.native-codeblock-body.plain {
   bottom: 0;
   padding-top: 8px;
   background: var(--native-bg);
+  align-items: center;
 }
 
-/* 左侧信息（错误 / 已填进度）占满剩余宽度，动作按钮靠右成组 */
-.native-question-submit .native-question-hint,
-.native-question-submit .native-question-error {
+/* 左侧状态区（错误 / 已填进度）占满剩余宽度，动作按钮靠右成组 */
+.native-question-status {
   flex: 1;
   min-width: 0;
 }
@@ -2112,7 +2116,7 @@ pre.native-codeblock-body.plain {
   font-size: 12px;
 }
 
-/* 计划审批的按钮行：把「讨论一下」推到最右 */
+/* 占位弹性空间：将操作按钮推到最右侧 */
 .native-question-spacer {
   flex: 1;
 }

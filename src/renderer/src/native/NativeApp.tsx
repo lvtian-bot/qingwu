@@ -986,7 +986,6 @@ export function NativeApp({
                     // 随内容一起滚动（对齐官方 webui：不钉在输入框上方）
                     <RunningStrip startedAt={turnStartedAt} />
                   )}
-                  <div ref={scroll.bottomRef} />
                 </div>
               </div>
 

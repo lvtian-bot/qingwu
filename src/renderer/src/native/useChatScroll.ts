@@ -17,7 +17,6 @@ import type { PendingApproval, PendingQuestion } from "./PendingInteraction";
 
 /** 滚动控制器：refs、事件回调、会话切换复位与前插锚点记录。 */
 export function useChatScroll() {
-  const bottomRef = useRef<HTMLDivElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const stickBottomRef = useRef(true);
   /** 切换会话标志：新会话快照上屏初次沉底前置为 true，屏蔽高度剧变引发的 onScroll 误关贴底。 */
@@ -42,7 +41,6 @@ export function useChatScroll() {
         el.scrollTop = el.scrollHeight;
       }
     }
-    bottomRef.current?.scrollIntoView({ behavior, block: "end" });
   }, []);
 
   // 滚轮事件：用户手动滑动滚轮时，立即解除程序化平滑滚动锁定，恢复用户自主控制
@@ -87,7 +85,6 @@ export function useChatScroll() {
 
   return {
     scrollRef,
-    bottomRef,
     stickBottomRef,
     initialScrollNeededRef,
     restoreScrollRef,
@@ -134,7 +131,6 @@ export function useChatScrollFollow(
   } = view;
   const {
     scrollRef,
-    bottomRef,
     stickBottomRef,
     initialScrollNeededRef,
     restoreScrollRef,
@@ -156,16 +152,14 @@ export function useChatScrollFollow(
     if (el) {
       el.scrollTop = el.scrollHeight;
     }
-    bottomRef.current?.scrollIntoView({ block: "end" });
     const rafId = requestAnimationFrame(() => {
       if (scrollRef.current) {
         scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
       }
-      bottomRef.current?.scrollIntoView({ block: "end" });
       initialScrollNeededRef.current = false;
     });
     return () => cancelAnimationFrame(rafId);
-  }, [items, loadingHistory, scrollRef, bottomRef, initialScrollNeededRef]);
+  }, [items, loadingHistory, scrollRef, initialScrollNeededRef]);
 
   // 贴底模式下的自动跟随：当会话内容（流式正文/思考/工具/回显等）变化时，持续保持视口贴底
   useLayoutEffect(() => {
@@ -178,7 +172,6 @@ export function useChatScrollFollow(
       if (el) {
         el.scrollTop = el.scrollHeight;
       }
-      bottomRef.current?.scrollIntoView({ block: "end" });
     }
   }, [
     items,
@@ -190,7 +183,6 @@ export function useChatScrollFollow(
     approvals,
     questions,
     scrollRef,
-    bottomRef,
     stickBottomRef,
     initialScrollNeededRef,
     restoreScrollRef,
@@ -206,7 +198,6 @@ export function useChatScrollFollow(
       const rafId = requestAnimationFrame(() => {
         if (stickBottomRef.current && scrollRef.current) {
           scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-          bottomRef.current?.scrollIntoView({ block: "end" });
         }
       });
       return () => cancelAnimationFrame(rafId);
@@ -215,7 +206,6 @@ export function useChatScrollFollow(
     items,
     echoes,
     scrollRef,
-    bottomRef,
     stickBottomRef,
     initialScrollNeededRef,
     restoreScrollRef,
