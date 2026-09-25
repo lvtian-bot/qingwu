@@ -23,7 +23,7 @@
 
 ## Bug 修复
 
-- [x] 解决应用冷启动时 Windows 中文输入法候选框固定在顶部/左上角的问题：随着 DeepSeek 界面及后台 WebContentsView 彻底移除，消除了后台加载 autofocus 抢焦与 TSF 上下文竞争的根因 ✅ 2026-09-24
+
 
 ## 暂不考虑
 
