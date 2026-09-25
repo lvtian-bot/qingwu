@@ -143,6 +143,60 @@ export class HarnessManager {
     };
   }
 
+  /**
+   * 确保用户主目录下存在青梧专属的 dsh profile（~/.dsh/profiles/qingwu）。
+   *
+   * 为什么需要专属 profile：
+   * 1. 避免与终端下运行的官方 Web 版（~/.dsh/profiles/web）共享配置、插件与持久化；
+   * 2. 对齐官方桌面端独立 profile 规范（官方桌面端使用 ~/.dsh/profiles/desktop）；
+   * 3. 首次使用自动初始化 manifest 与空补丁层，后续用户或青梧的定制不污染其他环境。
+   */
+  private ensureQingwuProfile(): void {
+    try {
+      const dshHome =
+        process.env.DSH_HOME || path.join(app.getPath("home"), ".dsh");
+      const profileDir = path.join(dshHome, "profiles", "qingwu");
+      const manifestPath = path.join(profileDir, "package.json");
+
+      if (fs.existsSync(manifestPath)) return;
+
+      if (typeof fs.mkdirSync === "function") {
+        fs.mkdirSync(profileDir, { recursive: true });
+      }
+
+      const manifest = {
+        name: "dsh-profile-qingwu",
+        private: true,
+        dependencies: {},
+        dsh: {
+          profile: {
+            bundles: [
+              "@deepseek-ai/dsh-base",
+              "@deepseek-ai/dsh-web-app",
+            ],
+          },
+        },
+      };
+
+      if (typeof fs.writeFileSync === "function") {
+        fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
+        const patchPath = path.join(profileDir, "cordis.patch.yml");
+        if (!fs.existsSync(patchPath)) {
+          fs.writeFileSync(patchPath, "# 青梧专属 profile 补丁层\n[]\n");
+        }
+        const workspacePath = path.join(profileDir, "pnpm-workspace.yaml");
+        if (!fs.existsSync(workspacePath)) {
+          fs.writeFileSync(
+            workspacePath,
+            "packages:\n  - .\n\nnodeLinker: hoisted\nautoInstallPeers: false\n",
+          );
+        }
+      }
+    } catch (err) {
+      console.warn("[Harness] 初始化青梧专属 profile 失败，将尝试直接启动:", err);
+    }
+  }
+
   async start(): Promise<void> {
     if (this.stopRequested) throw new Error("引擎启动已取消");
     if (this.process) throw new Error("引擎已启动");
@@ -154,6 +208,8 @@ export class HarnessManager {
       throw new Error(`未找到 DeepSeek Harness 引擎入口文件: ${binPath}`);
     }
 
+    this.ensureQingwuProfile();
+
     console.log(
       `[Harness] 启动引擎: ${binPath} (Host: ${this.host}, Port: ${this.port})`,
     );
@@ -163,7 +219,8 @@ export class HarnessManager {
     const args = [
       "--expose-internals",
       binPath,
-      "web",
+      "--profile",
+      "qingwu",
       "--host",
       this.host,
       "--port",
@@ -193,7 +250,7 @@ export class HarnessManager {
     this.process = child;
 
     const stdout = createLineReader((line) => {
-      const match = line.match(/dsh web: (http:\/\/\S+)/);
+      const match = line.match(/dsh (?:web|\w+): (http:\/\/\S+)/);
       if (match) {
         try {
           const url = new URL(match[1]);
