@@ -255,6 +255,7 @@ export function NativeApp({
     handleWorkspaceReorder,
     handleSessionRename,
     handleSessionArchive,
+    handleSessionFork,
     handleSessionUnarchive,
     handleRestoreAndOpenSession,
     handleWorkspaceChipPick,
@@ -951,6 +952,11 @@ export function NativeApp({
                       sessionId={currentId}
                       collapseProcess={collapseProcess}
                       onPreviewImage={(url) => setLightboxUrl(url)}
+                      onFork={
+                        currentId && !running
+                          ? (atSeq) => handleSessionFork(currentId, atSeq)
+                          : undefined
+                      }
                     />
                   ))}
                   {liveReasoning && !draft && (

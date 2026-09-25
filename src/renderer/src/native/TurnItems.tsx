@@ -47,6 +47,30 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
+/** 助手答复分叉按钮：从这一轮答复切分出新会话继续对话，原会话保持不动。 */
+function ForkButton({ onFork }: { onFork: () => void }) {
+  return (
+    <button className="native-msg-action" title="从这条回复分出新会话" onClick={onFork}>
+      <svg
+        viewBox="0 0 24 24"
+        width="13"
+        height="13"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <line x1="6" y1="3" x2="6" y2="15" />
+        <circle cx="18" cy="6" r="3" />
+        <circle cx="6" cy="18" r="3" />
+        <path d="M18 9a9 9 0 0 1-9 9" />
+      </svg>
+    </button>
+  );
+}
+
 /**
  * 整轮过程折叠行（对齐官方「已思考 · N 次工具调用」）：
  * 一轮收束后，把答复之前的思考与执行收进这一行，点开才铺开。
@@ -84,8 +108,12 @@ function TurnProcessRow({
 /** 一条助手消息的正文与元信息行。 */
 function AssistantBody({
   item,
+  forkable,
+  onFork,
 }: {
   item: Extract<ChatItem, { kind: "assistant" }>;
+  forkable?: boolean;
+  onFork?: () => void;
 }) {
   return (
     <>
@@ -103,6 +131,7 @@ function AssistantBody({
             <span>用时 {formatDuration(item.time - item.startTime)}</span>
           )}
           <span style={{ flex: 1 }} />
+          {forkable && onFork && <ForkButton onFork={onFork} />}
           <CopyButton text={item.text} />
         </div>
       )}
@@ -120,12 +149,15 @@ export function TurnItems({
   sessionId,
   collapseProcess = false,
   onPreviewImage,
+  onFork,
 }: {
   view: TurnView;
   cwd?: string;
   sessionId?: string | null;
   collapseProcess?: boolean;
   onPreviewImage?: (url: string) => void;
+  /** 从这一轮答复分叉（session/fork）。缺省或会话运行中不提供分叉按钮。 */
+  onFork?: (atSeq: number) => void;
 }) {
   const [open, setOpen] = useState(false);
   const renderItem = (item: MarkedChatItem, showReasoning = true) => {
@@ -133,6 +165,9 @@ export function TurnItems({
       return <ToolCard key={item.key} tool={item.tool} cwd={cwd} />;
     }
     if (item.kind === "assistant") {
+      // 分叉按钮只挂在这一轮的正式答复上（answer 仅在轮次收束后有值，
+      // 运行中的轮次天然不出现）；思考行、过程消息一律不挂。
+      const isAnswer = item.key === view.answer?.key;
       // 思考行的显示由调用方决定：过程折叠行收起时，思考已经由那一行代表，
       // 答复里再挂一条「思考」就是同一段推理重复两遍（对齐官方：过程行接管）。
       if (
@@ -154,7 +189,11 @@ export function TurnItems({
           {showReasoning && item.reasoning && (
             <ReasoningRow text={item.reasoning} />
           )}
-          <AssistantBody item={item} />
+          <AssistantBody
+            item={item}
+            forkable={isAnswer}
+            onFork={isAnswer && onFork ? () => onFork(item.seq) : undefined}
+          />
         </div>
       );
     }
