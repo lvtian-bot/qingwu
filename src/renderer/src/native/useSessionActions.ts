@@ -215,6 +215,52 @@ export function useSessionActions({
     [currentId, setArchivedSessionIds, setCurrentId, setError],
   );
 
+  /**
+   * 分叉善后：引擎 fork 不复制标题、模型回到默认选择，这里补齐——
+   * 子会话改名「源标题 · 分支」以便侧栏辨识，并延续源会话的生效模型选择。
+   * 任一步失败都不阻断进入子会话，错误照常上报。
+   */
+  const settleForkedSession = async (childId: string, sourceId: string) => {
+    const source = sessions.find((s) => s.sessionId === sourceId);
+    const title = source?.projections?.values?.title;
+    const selection = source?.projections?.values?.modelSelection?.next;
+    if (title) {
+      await rpc(Endpoints.sessionRename, {
+        request: { sessionId: childId, title: `${title} · 分支` },
+      });
+    }
+    if (selection) {
+      await rpc(Endpoints.sessionSelectModel, {
+        request: { sessionId: childId, ...selection },
+      });
+    }
+  };
+
+  /**
+   * 从指定答复分叉出新会话（session/fork，atSeq 为包含切点的日志事件 seq）：
+   * 子会话继承截至该轮答复的完整对话与工作区归属，原会话保持不动。
+   */
+  const handleSessionFork = async (sessionId: string, atSeq: number) => {
+    try {
+      const value = await rpc<{ sessionId: string }>(Endpoints.sessionFork, {
+        request: { sessionId, atSeq },
+      });
+      const childId = value.sessionId;
+      try {
+        await settleForkedSession(childId, sessionId);
+      } catch (settleErr) {
+        setError(toErrMsg(settleErr));
+      }
+      await refreshSessions();
+      openSession(childId);
+    } catch (err) {
+      const message = toErrMsg(err);
+      setError(
+        message.includes("fork-unavailable") ? "当前会话不支持分叉" : message,
+      );
+    }
+  };
+
   /** 取消归档会话（workspace/unarchiveSession，恢复到主列表）。 */
   const handleSessionUnarchive = useCallback(
     async (sessionId: string) => {
@@ -274,6 +320,7 @@ export function useSessionActions({
     handleWorkspaceReorder,
     handleSessionRename,
     handleSessionArchive,
+    handleSessionFork,
     handleSessionUnarchive,
     handleRestoreAndOpenSession,
     handleWorkspaceChipPick,

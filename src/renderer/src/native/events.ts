@@ -125,6 +125,8 @@ export type ChatItem =
   | {
       kind: "assistant";
       key: string;
+      /** 会话日志事件 seq（key 同源），答复分叉（session/fork atSeq）用它定位切点。 */
+      seq: number;
       text: string;
       reasoning: string;
       interrupted?: boolean;
@@ -307,6 +309,7 @@ export function foldChatItems(events: SessionEvent[]): TurnView[] {
       items.push({
         kind: "assistant",
         key: `a-${event.seq}`,
+        seq: event.seq,
         text: content ? textOf(content, "text") : "",
         reasoning: content ? textOf(content, "reasoning") : "",
         interrupted: data?.interrupted,

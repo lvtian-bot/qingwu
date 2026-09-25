@@ -21,6 +21,7 @@ export const Endpoints = {
   sessionModelCatalog: 'session/modelCatalog',
   sessionSelectModel: 'session/selectModel',
   sessionRename: 'session/rename',
+  sessionFork: 'session/fork',
   commandsList: 'commands/list',
   commandsExecute: 'commands/execute',
   skillsList: 'skills/list',
