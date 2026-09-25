@@ -413,7 +413,7 @@ export const PENDING_LABELS: Record<PendingKind, string> = {
 /**
  * 待处理项的所属会话：子代理会话的待处理项归到它的根会话。
  *
- * 青梧界面不展示子代理会话（见 SessionSidebar 的 visibleSessions），子代理请求审批时若按子会话
+ * 界面不展示子代理会话（见 SessionSidebar 的 visibleSessions），子代理请求审批时若按子会话
  * 归位，那张卡片在界面上就没有任何入口可答，宿主会一直挂着等。会话不在列表里
  * （已删除、帧缺 agentId）时原样返回，由调用方决定兜底。
  */

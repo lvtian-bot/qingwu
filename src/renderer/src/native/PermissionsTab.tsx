@@ -7,7 +7,7 @@ export function PermissionsTab({ dsh }: { dsh: DshSettingsController }) {
     <>
       <div className="native-settings-panel-header">
         <h2>权限</h2>
-        <p>配置写入引擎配置目录，与 DeepSeek 界面共享。</p>
+        <p>配置写入底层引擎配置目录。</p>
       </div>
 
       {dsh.settingsMessage && (

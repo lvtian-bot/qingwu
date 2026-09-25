@@ -22,7 +22,7 @@ interface MenuPopupPayload {
 
 /**
  * 菜单弹层页面（独立透明子窗口，?view=menu 路由）。
- * 与标题栏共用同一套 MenuDropdown / Win32 规范样式，双界面渲染完全一致。
+ * 与标题栏共用同一套 MenuDropdown / Win32 规范样式。
  */
 export function MenuPopupView() {
   const [data, setData] = useState<MenuPopupPayload | null>(null);

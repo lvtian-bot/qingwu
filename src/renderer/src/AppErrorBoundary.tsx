@@ -64,7 +64,7 @@ export class AppErrorBoundary extends Component<
           }}
         >
           <h1 style={{ margin: "0 0 12px", fontSize: "20px" }}>
-            青梧界面发生错误
+            界面发生错误
           </h1>
           <p style={{ margin: "0 0 20px", color: "#a1a1aa", lineHeight: 1.7 }}>
             错误信息已写入应用日志。重新加载通常可以恢复当前窗口；如果问题重复出现，请保留发生时间以便继续排查。

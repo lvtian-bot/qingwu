@@ -1,7 +1,7 @@
 import {
   app,
   BrowserWindow,
-  WebContentsView,
+  dialog,
   shell,
   nativeTheme,
 } from "electron";
@@ -11,9 +11,7 @@ import fs from "node:fs";
 import { CONFIG } from "./config";
 import { settings } from "./settings";
 import { WindowStateManager } from "./window-state";
-import { redactSecrets } from "./logging";
 import { observeWebContents } from "./diagnostics";
-import type { UiMode } from "../shared/types";
 
 const TITLE_BAR_HEIGHT = 35;
 
@@ -22,24 +20,10 @@ const TITLE_BAR_OVERLAY_COLORS = {
   light: { color: "#eef4f9", symbolColor: "#6b6b6b" },
 } as const;
 
-export function isServiceNavigation(
-  target: string,
-  serviceOrigin: string | null,
-): boolean {
-  try {
-    return serviceOrigin !== null && new URL(target).origin === serviceOrigin;
-  } catch {
-    return false;
-  }
-}
-
 export class WindowManager {
   mainWindow: BrowserWindow | null = null;
-  dshView: WebContentsView | null = null;
   isQuitting = false;
   private wasMaximized = false;
-  private serviceOrigin: string | null = null;
-  private uiMode: UiMode = settings.get("uiMode");
   private windowState = new WindowStateManager();
 
   constructor() {
@@ -65,9 +49,8 @@ export class WindowManager {
     return undefined;
   }
 
-  createWindow(url: string): BrowserWindow {
+  createWindow(_url?: string): BrowserWindow {
     const icon = this.getIconPath();
-    this.serviceOrigin = new URL(url).origin;
     const lastState = this.windowState.load();
     this.wasMaximized = lastState.isMaximized;
 
@@ -114,71 +97,10 @@ export class WindowManager {
       }
     });
 
-    const dshView = new WebContentsView({
-      webPreferences: {
-        nodeIntegration: false,
-        contextIsolation: true,
-        sandbox: true,
-        spellcheck: false,
-      },
-    });
-    this.dshView = dshView;
-    win.contentView.addChildView(dshView);
-    observeWebContents("青梧界面", win.webContents);
-    observeWebContents("DeepSeek 界面", dshView.webContents);
+    observeWebContents("主窗口", win.webContents);
 
-    const DSH_SCROLLBAR_CSS = `
-      * {
-        scrollbar-width: thin;
-        scrollbar-color: rgba(128, 128, 128, 0.32) transparent;
-      }
-      ::-webkit-scrollbar {
-        width: 12px;
-        height: 12px;
-      }
-      ::-webkit-scrollbar-track {
-        background: transparent;
-      }
-      ::-webkit-scrollbar-thumb {
-        border-radius: 9999px;
-        background-color: rgba(128, 128, 128, 0.32);
-        border: 2px solid transparent;
-        background-clip: padding-box;
-      }
-      ::-webkit-scrollbar-thumb:hover {
-        background-color: rgba(128, 128, 128, 0.42);
-      }
-      ::-webkit-scrollbar-thumb:active {
-        background-color: rgba(128, 128, 128, 0.56);
-      }
-      ::-webkit-scrollbar-corner {
-        background: transparent;
-      }
-    `;
-
-    const reclaimNativeFocus = () => {
-      if (
-        this.uiMode === "native" &&
-        win &&
-        !win.isDestroyed() &&
-        win.isVisible()
-      ) {
-        win.webContents.focus();
-      }
-    };
-
-    dshView.webContents.on("dom-ready", () => {
-      dshView.webContents.insertCSS(DSH_SCROLLBAR_CSS).catch(() => {});
-      reclaimNativeFocus();
-    });
-    dshView.webContents.on("did-finish-load", reclaimNativeFocus);
-    dshView.webContents.on("focus", reclaimNativeFocus);
-
-    const onBoundsChanged = () => this.updateViewBounds();
-    win.on("resize", onBoundsChanged);
     win.on("maximize", () => {
       this.wasMaximized = true;
-      onBoundsChanged();
     });
     win.on("unmaximize", () => {
       // 在 Windows 上，最小化最大化窗口时会伴随触发 unmaximize。
@@ -186,57 +108,19 @@ export class WindowManager {
       if (!win.isMinimized()) {
         this.wasMaximized = false;
       }
-      onBoundsChanged();
     });
     win.on("enter-full-screen", () => {
-      this.updateViewBounds();
       if (!win.isDestroyed()) {
         win.webContents.send("window:fullscreen-changed", true);
       }
     });
     win.on("leave-full-screen", () => {
-      this.updateViewBounds();
       if (!win.isDestroyed()) {
         win.webContents.send("window:fullscreen-changed", false);
       }
     });
 
-    dshView.webContents.on("page-title-updated", (e, title) => {
-      e.preventDefault();
-      const displayTitle =
-        title && title !== CONFIG.appName
-          ? `${CONFIG.appName} - ${title}`
-          : CONFIG.appName;
-      win.setTitle(displayTitle);
-      if (!win.isDestroyed()) {
-        win.webContents.send("titlebar:title-changed", displayTitle);
-      }
-    });
-
-    dshView.webContents.setWindowOpenHandler(({ url: targetUrl }) => {
-      if (targetUrl.startsWith("http:") || targetUrl.startsWith("https:")) {
-        if (!isServiceNavigation(targetUrl, this.serviceOrigin)) {
-          shell.openExternal(targetUrl);
-          return { action: "deny" };
-        }
-      }
-      return {
-        action: isServiceNavigation(targetUrl, this.serviceOrigin)
-          ? "allow"
-          : "deny",
-      };
-    });
-
-    dshView.webContents.on("will-navigate", (e, targetUrl) => {
-      if (!isServiceNavigation(targetUrl, this.serviceOrigin)) {
-        e.preventDefault();
-        if (targetUrl.startsWith("http:") || targetUrl.startsWith("https:")) {
-          void shell.openExternal(targetUrl);
-        }
-      }
-    });
-
-    // 自研界面（主窗口）的外链：一律拒绝开新窗口，http(s) 转系统浏览器
+    // 主窗口外链：一律拒绝开新窗口，http(s) 转系统浏览器
     win.webContents.setWindowOpenHandler(({ url: targetUrl }) => {
       if (targetUrl.startsWith("http:") || targetUrl.startsWith("https:")) {
         void shell.openExternal(targetUrl);
@@ -262,44 +146,15 @@ export class WindowManager {
       if (this.wasMaximized) {
         win.maximize();
       }
-      this.updateViewBounds();
       win.show();
       this.focus();
     });
 
     win.on("closed", () => {
       this.mainWindow = null;
-      this.dshView = null;
     });
 
-    this.applyUiMode(settings.get("uiMode"));
-    this.loadUrl(url);
     return win;
-  }
-
-  updateViewBounds(): void {
-    if (
-      !this.mainWindow ||
-      this.mainWindow.isDestroyed() ||
-      !this.dshView ||
-      typeof this.mainWindow.getContentSize !== "function"
-    ) {
-      return;
-    }
-    const [width, height] = this.mainWindow.getContentSize();
-    const isFullScreen =
-      typeof this.mainWindow.isFullScreen === "function"
-        ? this.mainWindow.isFullScreen()
-        : false;
-    const topOffset = isFullScreen ? 0 : TITLE_BAR_HEIGHT;
-    if (typeof this.dshView.setBounds === "function") {
-      this.dshView.setBounds({
-        x: 0,
-        y: topOffset,
-        width,
-        height: Math.max(0, height - topOffset),
-      });
-    }
   }
 
   applyTitleBarOverlay(): void {
@@ -311,40 +166,7 @@ export class WindowManager {
     this.mainWindow.setTitleBarOverlay({ ...colors, height: TITLE_BAR_HEIGHT });
   }
 
-  /** 应用界面模式：official 显示官方视图层，native 隐藏之并显示自研界面层。 */
-  applyUiMode(mode: UiMode): void {
-    this.uiMode = mode;
-    console.log(`[Window] 界面模式: ${mode}`);
-    if (this.dshView && !this.dshView.webContents.isDestroyed()) {
-      const isOfficial = mode === "official";
-      this.dshView.setVisible(isOfficial);
-      if (isOfficial) {
-        this.updateViewBounds();
-      }
-    }
-    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-      this.mainWindow.webContents.send("ui:mode-changed", mode);
-      this.getTargetWebContents()?.focus();
-    }
-  }
-
-  loadUrl(url: string): void {
-    this.serviceOrigin = new URL(url).origin;
-    if (this.dshView && !this.dshView.webContents.isDestroyed()) {
-      this.dshView.webContents.loadURL(url).catch((err) => {
-        console.error("[Window] 加载页面失败:", redactSecrets(err));
-      });
-    }
-  }
-
   getTargetWebContents(): WebContents | null {
-    if (
-      this.uiMode === "official" &&
-      this.dshView &&
-      !this.dshView.webContents.isDestroyed()
-    ) {
-      return this.dshView.webContents;
-    }
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
       return this.mainWindow.webContents;
     }
@@ -364,70 +186,13 @@ export class WindowManager {
         win.maximize();
       }
       win.focus();
-      this.getTargetWebContents()?.focus();
+      win.webContents.focus();
     }
   }
 
   showErrorMessage(title: string, message: string): void {
-    if (this.dshView && !this.dshView.webContents.isDestroyed()) {
-      const escapedMsg = message
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/\n/g, "<br>");
-      const errorHtml = `
-        <!DOCTYPE html>
-        <html lang="zh-CN">
-        <head>
-          <meta charset="UTF-8">
-          <style>
-            body {
-              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-              display: flex;
-              flex-direction: column;
-              align-items: center;
-              justify-content: center;
-              height: 100vh;
-              margin: 0;
-              background: #0f172a;
-              color: #f8fafc;
-            }
-            .card {
-              background: #1e293b;
-              border: 1px solid #334155;
-              border-radius: 12px;
-              padding: 32px;
-              max-width: 520px;
-              text-align: center;
-              box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
-            }
-            h2 { color: #f43f5e; margin-top: 0; }
-            p { color: #94a3b8; line-height: 1.6; }
-            button {
-              margin-top: 20px;
-              padding: 10px 24px;
-              background: #3b82f6;
-              color: white;
-              border: none;
-              border-radius: 6px;
-              cursor: pointer;
-              font-size: 14px;
-              font-weight: 500;
-            }
-            button:hover { background: #2563eb; }
-          </style>
-        </head>
-        <body>
-          <div class="card">
-            <h2>${title}</h2>
-            <p>${escapedMsg}</p>
-            <button onclick="location.reload()">重新连接</button>
-          </div>
-        </body>
-        </html>
-      `;
-      this.dshView.webContents.loadURL(
-        `data:text/html;charset=utf-8,${encodeURIComponent(errorHtml)}`,
-      );
+    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+      dialog.showErrorBox(title, message);
     }
   }
 }

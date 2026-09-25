@@ -20,7 +20,6 @@ class SettingsManager {
   constructor() {
     this.settings = {
       closeToTray: true,
-      uiMode: 'native',
       collapseProcess: false,
       chatWidth: 'narrow',
       notifyOnTaskFinished: true,
@@ -46,9 +45,6 @@ class SettingsManager {
         const parsed: unknown = JSON.parse(raw);
         if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
           this.settings = { ...this.settings, ...(parsed as Partial<AppSettings>) };
-          if (this.settings.uiMode !== 'official' && this.settings.uiMode !== 'native') {
-            this.settings.uiMode = 'native';
-          }
           if (!CHAT_WIDTHS.includes(this.settings.chatWidth as ChatWidth)) {
             this.settings.chatWidth = 'narrow';
           }

@@ -81,8 +81,8 @@ export class DshBridge {
    *
    * 载荷同样必须走 {args} 信封：网关的 parseRemoteEventResultPayload 只接受
    * 「恰好一个 plain-object args 字段」的载荷，少了这层包装会被直接拒绝。
-   * 这里曾经漏掉包装，导致青梧界面的审批/问答回执全部静默失败（宿主一直挂着、
-   * 界面却以为已提交），只有切到官方界面才能回答。
+   * 这里曾经漏掉包装，导致界面的审批/问答回执全部静默失败（宿主一直挂着、
+   * 界面却以为已提交）。
    */
   async eventResult(
     clientId: string,

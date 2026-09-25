@@ -1,5 +1,5 @@
 /**
- * 青梧界面消费的 dsh 0.1.5-rc.2 wire 视图，不是完整上游协议。
+ * 界面消费的 dsh 0.1.5-rc.2 wire 视图，不是完整上游协议。
  * 可选字段保留界面对缺失能力的容错语义；动态事件 data 与投影值仍须按消费处检查。
  * tests/contract-installed-dsh.test.cjs 使用已安装引擎的公开 controller /remote、
  * /types 出口检查端点参数名和关键返回形状。gateway 内部帧没有公开类型出口，
@@ -8,7 +8,7 @@
 
 // ---------- 一元 RPC endpoint ----------
 
-/** 自研界面消费的一元 RPC endpoint（wire 名为斜杠分隔）。 */
+/** 界面消费的一元 RPC endpoint（wire 名为斜杠分隔）。 */
 export const Endpoints = {
   sessionList: 'session/list',
   sessionCreate: 'session/create',
@@ -619,7 +619,7 @@ export interface SessionSummary {
   running: boolean;
   blank: boolean;
   origin?: string;
-  /** 父会话：只有子代理会话带（青梧界面不展示子代理会话，其待处理项归到这条上）。 */
+  /** 父会话：只有子代理会话带（界面不展示子代理会话，其待处理项归到这条上）。 */
   parentSessionId?: string;
   cwd?: string;
   projections?: {

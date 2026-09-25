@@ -19,7 +19,7 @@ import { setupFileLogging, redactSecrets } from "./logging";
 import { openTerminal, openPath, showItemInFolder, setActiveWorkspacePath } from "./terminal";
 import { setupApplicationDiagnostics } from "./diagnostics";
 import { NotificationManager } from "./notification";
-import type { RendererErrorReport, UiMode } from "../shared/types";
+import type { RendererErrorReport } from "../shared/types";
 
 setupFileLogging(path.join(app.getPath("userData"), "logs"));
 setupApplicationDiagnostics();
@@ -100,7 +100,7 @@ if (!gotTheLock) {
         return;
       }
       console.error(
-        "[Renderer] 青梧界面未捕获错误:",
+        "[Renderer] 界面未捕获错误:",
         JSON.stringify({
           kind: trimDiagnostic(report?.kind, 40),
           message: trimDiagnostic(report?.message, 2_000),
@@ -181,21 +181,11 @@ if (!gotTheLock) {
     dshBridge.reconnect?.();
   });
 
-  ipcMain.handle("ui:getMode", () => settings.get("uiMode"));
-  ipcMain.handle("ui:setMode", (_event, mode: UiMode) => {
-    if (mode !== "official" && mode !== "native") return;
-    settings.set("uiMode", mode);
-    windowManager.applyUiMode(mode);
-  });
-
   ipcMain.handle("appSettings:get", () => settings.getAll());
   ipcMain.handle(
     "appSettings:set",
     (_event, patch: Partial<import("../shared/types").AppSettings>) => {
       const updated = settings.update(patch);
-      if (patch.uiMode && (patch.uiMode === "official" || patch.uiMode === "native")) {
-        windowManager.applyUiMode(patch.uiMode);
-      }
       windowManager.mainWindow?.webContents.send("appSettings:changed", updated);
       return updated;
     },
@@ -247,13 +237,6 @@ if (!gotTheLock) {
       // 菜单动作统一在主进程分发（自绘弹层经 menu-popup:action 上行）。
       const handleMenuAction = (actionId: string) => {
         switch (actionId) {
-          case "switchUiMode": {
-            const next: UiMode =
-              settings.get("uiMode") === "native" ? "official" : "native";
-            settings.set("uiMode", next);
-            windowManager.applyUiMode(next);
-            break;
-          }
           case "openTerminal": {
             void openTerminal();
             break;

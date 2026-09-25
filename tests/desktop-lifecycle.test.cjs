@@ -285,26 +285,21 @@ test(
   },
 );
 
-test("菜单目标和焦点跟随当前界面，鉴权跳转按完整 origin 判断", () => {
-  const { WindowManager, isServiceNavigation } = loadTs("src/main/window.ts", {
+test("菜单目标和焦点指向主窗口界面", () => {
+  const { WindowManager } = loadTs("src/main/window.ts", {
     electron: { nativeTheme: { on() {} } },
-    "./settings": { settings: { get: () => "official" } },
+    "./settings": { settings: { get: () => false } },
     "./window-state": { WindowStateManager: class {} },
     "./config": { CONFIG: {} },
+    "./diagnostics": { observeWebContents() {} },
   });
   const focused = [];
-  const official = {
-    isDestroyed: () => false,
-    focus: () => focused.push("official"),
-  };
   const native = {
     isDestroyed: () => false,
     focus: () => focused.push("native"),
     send() {},
   };
   const manager = new WindowManager();
-  const boundsCalls = [];
-  const visibilityCalls = [];
   manager.mainWindow = {
     webContents: native,
     isDestroyed: () => false,
@@ -312,53 +307,14 @@ test("菜单目标和焦点跟随当前界面，鉴权跳转按完整 origin 判
     isMinimized: () => false,
     getContentSize: () => [1200, 800],
     isFullScreen: () => false,
-    focus() {},
+    focus() {
+      focused.push("window");
+    },
   };
-  manager.dshView = {
-    webContents: official,
-    setVisible: (val) => visibilityCalls.push(val),
-    setBounds: (rect) => boundsCalls.push(rect),
-  };
-  assert.equal(manager.getTargetWebContents(), official);
-  manager.applyUiMode("native");
   assert.equal(manager.getTargetWebContents(), native);
-  assert.equal(visibilityCalls.at(-1), false);
-  const boundsCountBeforeOfficial = boundsCalls.length;
   manager.focus();
-  assert.equal(focused.at(-1), "native");
-  manager.applyUiMode("official");
-  assert.equal(visibilityCalls.at(-1), true);
-  assert.equal(boundsCalls.length, boundsCountBeforeOfficial + 1);
-  assert.deepEqual(boundsCalls.at(-1), {
-    x: 0,
-    y: 35,
-    width: 1200,
-    height: 765,
-  });
-  manager.focus();
-  assert.equal(focused.at(-1), "official");
-  assert.equal(
-    isServiceNavigation(
-      "http://127.0.0.1:3080/session/a",
-      "http://127.0.0.1:3080",
-    ),
-    true,
-  );
-  assert.equal(
-    isServiceNavigation("http://127.0.0.1:30800/", "http://127.0.0.1:3080"),
-    false,
-  );
-  assert.equal(
-    isServiceNavigation(
-      "http://127.0.0.1:3080.evil.test/",
-      "http://127.0.0.1:3080",
-    ),
-    false,
-  );
-  assert.equal(
-    isServiceNavigation("javascript:void(0)", "http://127.0.0.1:3080"),
-    false,
-  );
+  assert.equal(focused.includes("window"), true);
+  assert.equal(focused.includes("native"), true);
 });
 
 test("主入口先提供托盘退出入口，启动期间退出后不创建窗口，无托盘也可重新打开重试", async (t) => {

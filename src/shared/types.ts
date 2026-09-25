@@ -20,10 +20,7 @@ export interface UpdateState {
   message?: string;
 }
 
-/** 界面模式：official = 官方 dsh web UI，native = 自研界面。 */
-export type UiMode = 'official' | 'native';
-
-/** 聊天区内容列宽档位：narrow 紧凑（默认，与 DeepSeek 界面一致）、medium 适中、wide 宽敞。 */
+/** 聊天区内容列宽档位：narrow 紧凑（默认）、medium 适中、wide 宽敞。 */
 export type ChatWidth = 'narrow' | 'medium' | 'wide';
 
 export const CHAT_WIDTHS: readonly ChatWidth[] = ['narrow', 'medium', 'wide'];
@@ -32,11 +29,9 @@ export const CHAT_WIDTHS: readonly ChatWidth[] = ['narrow', 'medium', 'wide'];
 export interface AppSettings {
   /** 窗口关闭行为：true 为最小化到托盘，false 为直接退出。 */
   closeToTray: boolean;
-  /** 默认启动界面。 */
-  uiMode: UiMode;
-  /** 是否折叠回合执行过程与工具调用（默认 false：不折叠与 DeepSeek 保持一致；开启时折叠为单行摘要）。 */
+  /** 是否折叠回合执行过程与工具调用（默认 false：平铺展开；开启时折叠为单行摘要）。 */
   collapseProcess?: boolean;
-  /** 聊天区内容列宽档位（默认 narrow 紧凑，与 DeepSeek 界面保持一致）。 */
+  /** 聊天区内容列宽档位（默认 narrow 紧凑）。 */
   chatWidth?: ChatWidth;
   /** 任务执行结束时是否发送桌面通知（默认 true：开启）。 */
   notifyOnTaskFinished?: boolean;
@@ -75,7 +70,7 @@ export interface RendererErrorReport {
  * 主进程、preload、渲染层共同以此为准，避免 IPC 契约漂移。
  */
 export interface QingwuApi {
-  /** 将青梧界面的未捕获错误交给主进程脱敏落盘。 */
+  /** 将界面的未捕获错误交给主进程脱敏落盘。 */
   reportRendererError: (report: RendererErrorReport) => void;
   onUpdateState: (listener: (state: UpdateState) => void) => () => void;
   getUpdateState: () => Promise<UpdateState | null>;
@@ -122,7 +117,7 @@ export interface QingwuApi {
   /** 菜单关闭：失焦关闭不抢焦点，显式关闭恢复当前界面焦点。 */
   onMenuClosed: (listener: (reason: "blur" | "explicit") => void) => () => void;
   onFullscreenChanged: (listener: (isFullScreen: boolean) => void) => () => void;
-  /** 菜单动作「设置」：主进程通知青梧界面打开设置页。 */
+  /** 菜单动作「设置」：主进程通知界面打开设置页。 */
   onOpenSettings: (listener: () => void) => () => void;
 
   /** 调用引擎一元 RPC（POST /api/<endpoint>，如 'session/list'），主进程铸造 rpcId 并包信封。 */
@@ -146,10 +141,6 @@ export interface QingwuApi {
   reconnectDsh: () => Promise<void>;
   /** 订阅引擎连接状态变化（connected: true 为已连通，false 为断连）。 */
   onDshConnectionChanged: (listener: (connected: boolean) => void) => () => void;
-
-  getUiMode: () => Promise<UiMode>;
-  setUiMode: (mode: UiMode) => Promise<void>;
-  onUiModeChanged: (listener: (mode: UiMode) => void) => () => void;
 
   /** 获取青梧本地应用设置。 */
   getAppSettings: () => Promise<AppSettings>;

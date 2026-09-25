@@ -105,8 +105,7 @@ export function ModelsTab({
             <h2>模型设置</h2>
             <p>
               管理各供应商的 API
-              地址、协议与密钥，配置后即可在对话中选择使用；配置与 DeepSeek
-              界面共享。
+              地址、协议与密钥，配置后即可在对话中选择使用。
             </p>
           </div>
         )}
@@ -298,7 +297,7 @@ export function ModelsTab({
         )}
       </div>
 
-      {/* 新会话默认模型（引擎 agent-default-model 命名空间，与 DeepSeek 界面共享） */}
+      {/* 新会话默认模型（引擎 agent-default-model 命名空间） */}
       {modelOptions.length > 0 && (
         <div className="native-settings-card">
           <SettingsRow

@@ -262,8 +262,7 @@ export function SettingsPage({
             <div className="native-settings-storage-desc">
               <strong>存储位置：DSH 引擎配置目录 (~/.dsh)</strong>
               <span>
-                此分区配置直接写入底层引擎并与 DeepSeek
-                界面共享互通，后续官方推出桌面版时可直接继承。
+                此分区配置直接写入底层引擎配置目录，与 DSH 官方桌面版及命令行共享互通。
               </span>
             </div>
           </div>

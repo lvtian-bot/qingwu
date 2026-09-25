@@ -12,13 +12,11 @@ export interface MenuItemData {
   disabled?: boolean;
 }
 
-export interface MenuStateContext {
-  uiMode: "native" | "official";
-}
+export interface MenuStateContext {}
 
 export function getMenuItems(
   menuName: MenuName,
-  context: MenuStateContext,
+  _context?: MenuStateContext,
 ): MenuItemData[] {
   switch (menuName) {
     case "文件":
@@ -63,14 +61,6 @@ export function getMenuItems(
         { id: "sep-1", label: "", type: "separator" },
         { id: "toggleFullScreen", label: "切换全屏", accelerator: "F11" },
         { id: "sep-2", label: "", type: "separator" },
-        {
-          id: "switchUiMode",
-          label:
-            context.uiMode === "native"
-              ? "切换到 DeepSeek 界面"
-              : "切换到青梧界面",
-        },
-        { id: "sep-3", label: "", type: "separator" },
         { id: "toggleDevTools", label: "开发者工具", accelerator: "F12" },
       ];
 

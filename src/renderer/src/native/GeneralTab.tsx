@@ -7,7 +7,6 @@ import type { DshSettingsController } from "./useDshSettings";
 export function GeneralTab({ dsh }: { dsh: DshSettingsController }) {
   const [appSettings, setAppSettings] = useState<AppSettings>({
     closeToTray: true,
-    uiMode: "native",
     collapseProcess: false,
     chatWidth: "narrow",
   });
@@ -67,24 +66,9 @@ export function GeneralTab({ dsh }: { dsh: DshSettingsController }) {
           </select>
         </SettingsRow>
 
-        <SettingsRow label="默认界面" desc="启动青梧时默认展示的界面。">
-          <select
-            className="native-settings-select"
-            value={appSettings.uiMode}
-            onChange={(e) =>
-              void handleUpdateAppSetting({
-                uiMode: e.target.value as AppSettings["uiMode"],
-              })
-            }
-          >
-            <option value="native">青梧界面</option>
-            <option value="official">DeepSeek 界面</option>
-          </select>
-        </SettingsRow>
-
         <SettingsRow
           label="聊天区宽度"
-          desc="对话正文与会话输入框的最大列宽，首页输入框固定紧凑档；默认紧凑，与 DeepSeek 界面保持一致。"
+          desc="对话正文与会话输入框的最大列宽，首页输入框固定紧凑档；默认紧凑。"
         >
           <select
             className="native-settings-select"
@@ -116,7 +100,7 @@ export function GeneralTab({ dsh }: { dsh: DshSettingsController }) {
 
         <SettingsRow
           label="折叠执行过程与工具调用"
-          desc="对话回合完成后，将思考过程与工具调用收起为单行摘要；默认关闭，平铺展开与 DeepSeek 界面保持一致。"
+          desc="对话回合完成后，将思考过程与工具调用收起为单行摘要；默认关闭，平铺展开。"
         >
           <SettingsSwitch
             checked={Boolean(appSettings.collapseProcess)}

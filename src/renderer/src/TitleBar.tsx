@@ -36,8 +36,7 @@ function QingwuIcon() {
 
 /**
  * 标题栏菜单触发器：只负责高亮与向主进程子窗口弹层发指令。
- * 菜单本体由独立透明子窗口渲染（MenuPopupView），双界面（青梧 / DeepSeek）共用同一套自绘样式，
- * 官方界面下天然浮于 WebContentsView 之上，不推挤页面、无黑带。
+ * 菜单本体由独立透明子窗口渲染（MenuPopupView），采用自绘样式与 Windows 原生系统菜单体验对齐。
  */
 export function TitleBar({
   sidebarCollapsed,

@@ -5,7 +5,6 @@ import type {
   DshStreamItem,
   QingwuApi,
   RendererErrorReport,
-  UiMode,
   UpdateState,
 } from '../shared/types';
 
@@ -154,14 +153,6 @@ const api: QingwuApi = {
     const handler = (_event: IpcRendererEvent, connected: boolean) => listener(connected);
     ipcRenderer.on('dsh:connection-status', handler);
     return () => ipcRenderer.removeListener('dsh:connection-status', handler);
-  },
-
-  getUiMode: () => ipcRenderer.invoke('ui:getMode'),
-  setUiMode: (mode) => ipcRenderer.invoke('ui:setMode', mode),
-  onUiModeChanged: (listener) => {
-    const handler = (_event: IpcRendererEvent, mode: UiMode) => listener(mode);
-    ipcRenderer.on('ui:mode-changed', handler);
-    return () => ipcRenderer.removeListener('ui:mode-changed', handler);
   },
 
   getAppSettings: () => ipcRenderer.invoke('appSettings:get'),

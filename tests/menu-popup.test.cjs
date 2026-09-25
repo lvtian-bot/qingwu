@@ -91,9 +91,6 @@ function fixture() {
         }),
       },
     },
-    "./settings": {
-      settings: { get: (key) => (key === "uiMode" ? "native" : false) },
-    },
   });
   const manager = new MenuPopupManager({
     getMainWindow: () => parent,
@@ -155,9 +152,6 @@ test("隐藏快捷键与自绘菜单共用定义和动作入口", () => {
         },
         setApplicationMenu() {},
       },
-    },
-    "./settings": {
-      settings: { get: (key) => (key === "uiMode" ? "native" : false) },
     },
   });
   createApplicationMenu({ onAction: (id) => actions.push(id) });

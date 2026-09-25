@@ -178,7 +178,7 @@ export function progressLabel(todos: TodoEntry[]): string {
 }
 
 /**
- * 输入框上方任务停靠面板（对齐 DeepSeek 官方 UI 逻辑）。
+ * 输入框上方任务停靠面板。
  * 默认折叠，展示任务图标、标题与进度；点击展开任务清单与状态图符。
  */
 export function TodoPanel({ todos }: { todos: TodoEntry[] | null }) {

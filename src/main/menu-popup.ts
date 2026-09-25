@@ -7,7 +7,6 @@ import {
   MENU_SHADOW_INSET_TOP,
   MENU_SHADOW_INSET_BOTTOM,
 } from "../shared/menu-layout";
-import { settings } from "./settings";
 
 export interface MenuPopupOptions {
   getMainWindow: () => BrowserWindow | null;
@@ -15,7 +14,7 @@ export interface MenuPopupOptions {
   restoreFocus: () => void;
 }
 
-/** 独立透明子窗口使两套界面的菜单都能覆盖 WebContentsView。 */
+/** 独立透明子窗口使菜单能原生悬浮在窗口之上。 */
 export class MenuPopupManager {
   private popupWindow: BrowserWindow | null = null;
   private currentMenu: MenuName | null = null;
@@ -46,9 +45,7 @@ export class MenuPopupManager {
   }
 
   private context() {
-    return {
-      uiMode: settings.get("uiMode") || ("native" as const),
-    };
+    return {};
   }
 
   private sendData() {
