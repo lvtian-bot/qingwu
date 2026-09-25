@@ -360,3 +360,74 @@ test('DSH 标准协议 tool/result 正常结算调用状态、耗时与排除失
 
 
 
+
+test('收束轮次折出用量、整轮用时、首字延迟与吐字速率指标', () => {
+  const events = [
+    event('turn/start', { turn: 1 }, 1),
+    event('step/start', { turn: 1, step: 1 }, 2),
+    event('user/message', message('u1', '你好'), 3),
+    event('assistant/message', {
+      turn: 1,
+      step: 1,
+      message: {
+        content: [{ type: 'text', text: '你好，有什么可以帮你？' }],
+        source: { provider: 'deepseek', model: 'deepseek-chat' },
+      },
+      usage: {
+        inputTokens: 100,
+        outputTokens: 50,
+        totalTokens: 550,
+        cacheReadTokens: 400,
+        cacheWriteTokens: 0,
+        reasoningTokens: 10,
+      },
+      stream: [
+        { type: 'text-chunks', time0: 3500, index: 0, dt: [200, 300], texts: ['你好，', '有什么可以帮你？'] },
+      ],
+    }, 4),
+    event('step/end', { turn: 1, step: 1 }, 5),
+    event('turn/end', { turn: 1 }, 6),
+  ];
+  const [view] = foldChatItems(events);
+  assert.equal(view.metrics.usage.totalTokens, 550);
+  assert.equal(view.metrics.usage.uncachedInputTokens, 100);
+  assert.equal(view.metrics.usage.outputTokens, 50);
+  assert.equal(view.metrics.usage.cacheReadTokens, 400);
+  assert.deepEqual(view.metrics.usage.routes, [{ provider: 'deepseek', model: 'deepseek-chat' }]);
+  assert.equal(view.metrics.durationMs, 5000);
+  assert.equal(view.metrics.ttftMs, 500); // 首块 3500 − 紧邻 user/message 3000
+  assert.equal(view.metrics.tokPerS, 100); // 50 tok / (4000 − 3500)ms
+});
+
+test('用量证据不全时指标缺省但耗时仍可用', () => {
+  const events = [
+    event('turn/start', { turn: 1 }, 1),
+    event('step/start', { turn: 1, step: 1 }, 2),
+    event('user/message', message('u1', '在吗'), 3),
+    event('assistant/message', {
+      turn: 1,
+      step: 1,
+      message: { content: [{ type: 'text', text: '在的' }] },
+      stream: [
+        { type: 'text-chunks', time0: 3800, index: 0, dt: [100], texts: ['在的'] },
+      ],
+    }, 4),
+    event('step/end', { turn: 1, step: 1 }, 5),
+    event('turn/end', { turn: 1 }, 6),
+  ];
+  const [view] = foldChatItems(events);
+  assert.equal(view.metrics.usage, undefined);
+  assert.equal(view.metrics.durationMs, 5000);
+  assert.equal(view.metrics.ttftMs, 800);
+  assert.equal(view.metrics.tokPerS, undefined);
+});
+
+test('运行中的轮次不产出指标', () => {
+  const events = [
+    event('turn/start', { turn: 1 }, 1),
+    event('step/start', { turn: 1, step: 1 }, 2),
+    event('user/message', message('u1', '你好'), 3),
+  ];
+  const [view] = foldChatItems(events);
+  assert.equal(view.metrics, undefined);
+});

@@ -11,6 +11,8 @@ import type {
   ToolResultEventData,
 } from "./protocol";
 import type { ToolItem } from "./ToolCard";
+import { deriveTurnTokenUsage } from "@deepseek-ai/dsh-token-meter/client";
+import type { TurnTokenUsage } from "@deepseek-ai/dsh-token-meter/client";
 
 /** 按块类型提取可展示文本（text / reasoning 块均携带 text 字段）。 */
 function textOf(content: unknown[], blockType: "text" | "reasoning"): string {
@@ -152,6 +154,20 @@ export type MarkedChatItem = ChatItem & {
   tier?: "answer" | "context";
 };
 
+/** 一轮收束后的用量与耗时指标；证据不足的项缺省，整体无证据时为 undefined。 */
+export interface TurnMetrics {
+  /** 提供方报告的整轮精确用量（生命周期证据不全时缺省）。 */
+  usage?: TurnTokenUsage;
+  /** 整轮耗时：turn/start → turn/end 的墙钟时长。 */
+  durationMs?: number;
+  /** 答复首字延迟：首个可见输出块减紧邻上一事件时间（含请求构建与上传）。 */
+  ttftMs?: number;
+  /** 聚合吐字速率（tok/s）：有计时尝试的输出合计 ÷ 生成时长合计。 */
+  tokPerS?: number;
+  /** 答复路由（usage.routes 缺省时由答复消息 source 回退）。 */
+  answerRoute?: { provider: string; model: string };
+}
+
 /** 一轮的聚合视图：轮内条目 + 该轮是否收束 + 折叠行计数。 */
 export interface TurnView {
   turn: number;
@@ -166,6 +182,8 @@ export interface TurnView {
   foldable: boolean;
   /** 回答条目的 key（据它把 answer 从 items 里取出来）。 */
   answerKey: string | null;
+  /** 收束轮次的用量与耗时指标（未收束或证据不足时缺省）。 */
+  metrics?: TurnMetrics;
 }
 
 /**
@@ -244,11 +262,128 @@ function groupTurns(
   return turns;
 }
 
+/** 流记录里首个可见输出块（text / reasoning）的引擎时间戳。 */
+function firstVisibleChunkTime(
+  stream: AssistantStreamRecord[] | undefined,
+): number | undefined {
+  if (!Array.isArray(stream)) return undefined;
+  let first: number | undefined;
+  for (const record of stream) {
+    let time: number | undefined;
+    if (record.type === "text-chunks" || record.type === "reasoning-chunks") {
+      time = record.time0;
+    } else if (
+      record.type === "chunk" &&
+      (record.chunk?.type === "text-delta" ||
+        record.chunk?.type === "reasoning-delta")
+    ) {
+      time = record.time;
+    }
+    if (typeof time === "number" && (first === undefined || time < first)) {
+      first = time;
+    }
+  }
+  return first;
+}
+
+/** 答复消息事件里的 provider/model 路由（缺源头或空串时不返回）。 */
+function messageRoute(data: AssistantMessageData | null | undefined) {
+  const message = data?.message as
+    | { source?: { provider?: unknown; model?: unknown } }
+    | undefined;
+  const source = message?.source;
+  const provider = typeof source?.provider === "string" ? source.provider : "";
+  const model = typeof source?.model === "string" ? source.model : "";
+  return provider && model ? { provider, model } : undefined;
+}
+
+/**
+ * 折叠一轮收束事件的用量与耗时指标。
+ *
+ * 用量交给上游 token-meter 的精确 fold（任何生命周期证据缺失即不出数）；
+ * 耗时与速率用事件及流记录自带的时间戳近似：请求起点取紧邻上一事件，
+ * 生成时长取答复事件时间减首个可见输出块时间。
+ */
+function deriveTurnMetrics(
+  events: SessionEvent[],
+  answerKey: string | null,
+): TurnMetrics | undefined {
+  // 上游 fold 对个别缺字段事件（如无 source 的答复消息）会抛错而非返回
+  // undefined；边界处兜底让用量缺省、计时指标照常。
+  let usage: TurnTokenUsage | undefined;
+  try {
+    usage = deriveTurnTokenUsage(
+      events as unknown as Parameters<typeof deriveTurnTokenUsage>[0],
+    );
+  } catch {
+    usage = undefined;
+  }
+
+  const startEvent = events[0];
+  const endEvent = events[events.length - 1];
+  const durationMs =
+    startEvent.type === "turn/start" && endEvent.type === "turn/end"
+      ? Math.max(0, endEvent.time - startEvent.time)
+      : undefined;
+
+  const answerSeq = answerKey ? Number(answerKey.slice(2)) : NaN;
+  let ttftMs: number | undefined;
+  let outputSum = 0;
+  let spanSum = 0;
+  let answerRoute: { provider: string; model: string } | undefined;
+  let prevTime: number | null = null;
+  for (const event of events) {
+    if (event.type === "assistant/message") {
+      const data = event.data as (AssistantMessageData & {
+        usage?: { outputTokens?: unknown };
+        stream?: AssistantStreamRecord[];
+      }) | null;
+      const firstChunk = firstVisibleChunkTime(data?.stream);
+      if (firstChunk !== undefined) {
+        if (prevTime !== null && event.seq === answerSeq) {
+          ttftMs = Math.max(0, firstChunk - prevTime);
+        }
+        if (event.time > firstChunk) spanSum += event.time - firstChunk;
+      }
+      const output = data?.usage?.outputTokens;
+      if (typeof output === "number" && Number.isSafeInteger(output)) {
+        outputSum += output;
+      }
+      if (event.seq === answerSeq) answerRoute = messageRoute(data);
+    }
+    prevTime = event.time;
+  }
+  const tokPerS =
+    spanSum > 0 && outputSum > 0
+      ? outputSum / (spanSum / 1000)
+      : undefined;
+
+  if (
+    usage === undefined &&
+    durationMs === undefined &&
+    ttftMs === undefined &&
+    tokPerS === undefined &&
+    answerRoute === undefined
+  ) {
+    return undefined;
+  }
+  return {
+    ...(usage === undefined ? {} : { usage }),
+    ...(durationMs === undefined ? {} : { durationMs }),
+    ...(ttftMs === undefined ? {} : { ttftMs }),
+    ...(tokPerS === undefined ? {} : { tokPerS }),
+    ...(answerRoute === undefined ? {} : { answerRoute }),
+  };
+}
+
 export function foldChatItems(events: SessionEvent[]): TurnView[] {
   const tools = new Map<string, ToolItem>();
   const items: MarkedChatItem[] = [];
   /** 已经收到 turn/end 的轮次：只有这些轮次收进折叠行。 */
   const endedTurns = new Set<number>();
+  /** 已收束轮次的本地事件切片（turn/start → turn/end），供指标折叠。 */
+  const turnSlices = new Map<number, SessionEvent[]>();
+  let slice: SessionEvent[] | null = null;
   let lastUserTime: number | null = null;
   /** 当前事件所属轮次：优先 turn/start 声明，其次沿用上一条已知轮次。 */
   let turn = 0;
@@ -256,14 +391,25 @@ export function foldChatItems(events: SessionEvent[]): TurnView[] {
   for (const event of events) {
     if (event.type === "turn/start") {
       const data = event.data as { turn?: number } | null;
-      if (typeof data?.turn === "number") turn = data.turn;
+      if (typeof data?.turn === "number") {
+        turn = data.turn;
+        slice = [event];
+      }
       continue;
     }
     if (event.type === "turn/end") {
       const data = event.data as { turn?: number } | null;
-      if (typeof data?.turn === "number") endedTurns.add(data.turn);
+      if (typeof data?.turn === "number") {
+        endedTurns.add(data.turn);
+        if (slice !== null) {
+          slice.push(event);
+          turnSlices.set(data.turn, slice);
+          slice = null;
+        }
+      }
       continue;
     }
+    if (slice !== null) slice.push(event);
     if (event.type === "user/message") {
       const data = event.data as {
         source?: { kind: string };
@@ -362,7 +508,12 @@ export function foldChatItems(events: SessionEvent[]): TurnView[] {
   // 一轮里最后一条有正文的助手消息就是这一轮的答复；它之前的内部条目都是过程。
   // 只有已经收到 turn/end 的轮次才收：正在跑的轮次中途也可能已经有一条答复，
   // 那时收起来会把后面还在跑的过程挡在外面（且运行中用户正要看过程）。
-  return groupTurns(items, endedTurns);
+  const views = groupTurns(items, endedTurns);
+  for (const view of views) {
+    const turnSlice = turnSlices.get(view.turn);
+    if (turnSlice) view.metrics = deriveTurnMetrics(turnSlice, view.answerKey);
+  }
+  return views;
 }
 
 /**
