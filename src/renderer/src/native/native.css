@@ -21,7 +21,7 @@ textarea {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* 自研界面：Codex 风格近单色设计系统，位于标题栏（35px）下方。 */
+/* 界面设计系统：Codex 风格近单色设计，位于标题栏（35px）下方。 */
 
 .native-app,
 .native-app button,
@@ -1123,7 +1123,7 @@ textarea {
 }
 
 /* 当思考行位于已有正文的助手答复内时，顶部贴齐消息、底部留出 8px 与正文隔开 */
-.native-msg.assistant > .native-reasoning {
+.native-msg.assistant:not(.process-only) > .native-reasoning {
   margin: 0 0 8px 0;
 }
 
@@ -2236,10 +2236,9 @@ pre.native-codeblock-body.plain {
   background: var(--native-border);
 }
 
-/* ---------- 青梧自研界面标题栏 ---------- */
+/* ---------- 标题栏视觉融合 ---------- */
 
 /*
- * 自研界面下标题栏不画底分割线：
  * 标题栏底色（浅 #eef4f9 / 深 #181825）与侧栏同色自然融合，
  * 对话区与右侧面板已有自身顶栏（.native-chat-header / .native-panel-header）
  * 及与标题栏的色块自然分界，无需额外的横向分割线；同时避免在 Windows 原生控件区
@@ -2844,8 +2843,7 @@ body.native-ui-active .titlebar {
 }
 
 /*
- * 空输入时常显禁用态（灰底灰箭头），不隐藏：隐藏会让用户找不到发送入口，
- * 与官方 DeepSeek 界面（常显变灰）不一致。禁用只由 disabled 决定。
+ * 空输入时常显禁用态（灰底灰箭头），不隐藏：隐藏会让用户找不到发送入口。禁用只由 disabled 决定。
  */
 .native-send:disabled {
   background: var(--native-hover);

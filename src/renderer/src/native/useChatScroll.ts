@@ -107,7 +107,6 @@ interface ChatScrollView {
   queue: QueuedItem[];
   draft: string;
   liveReasoning: string;
-  toolCalling: boolean;
   approvals: PendingApproval[];
   questions: PendingQuestion[];
   loadingHistory: boolean;
@@ -124,7 +123,6 @@ export function useChatScrollFollow(
     queue,
     draft,
     liveReasoning,
-    toolCalling,
     approvals,
     questions,
     loadingHistory,
@@ -179,7 +177,6 @@ export function useChatScrollFollow(
     queue,
     draft,
     liveReasoning,
-    toolCalling,
     approvals,
     questions,
     scrollRef,

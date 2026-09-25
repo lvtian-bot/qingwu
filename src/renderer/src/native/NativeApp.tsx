@@ -1,6 +1,6 @@
-/** 青梧界面编排：组合引擎流、草稿、滚动、模型选择与侧栏操作 hooks，负责任务发送与决策回执。 */
+/** 界面编排：组合引擎流、草稿、滚动、模型选择与侧栏操作 hooks，负责任务发送与决策回执。 */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ChatWidth, UiMode } from "../../../shared/types";
+import type { ChatWidth } from "../../../shared/types";
 import { Markdown } from "./markdown";
 import "./native.css";
 import { foldPanelData } from "./panel-data";
@@ -63,12 +63,11 @@ export function NativeApp({
   /** 侧栏折叠态（开关在标题栏菜单栏，状态由入口层持有，与 TitleBar 共用）。 */
   sidebarCollapsed: boolean;
 }) {
-  const [visible, setVisible] = useState(false);
   /** 设置面板显隐状态 */
   const [settingsOpen, setSettingsOpen] = useState(false);
-  /** 是否折叠回合执行过程与工具调用（应用设置项，默认 false 与 DSH 平铺一致） */
+  /** 是否折叠回合执行过程与工具调用（应用设置项，默认 false：平铺展开） */
   const [collapseProcess, setCollapseProcess] = useState(false);
-  /** 聊天区内容列宽档位（应用设置项，默认紧凑与 DSH 一致） */
+  /** 聊天区内容列宽档位（应用设置项，默认紧凑） */
   const [chatWidth, setChatWidth] = useState<ChatWidth>("narrow");
   /** 最近活跃工作区（对齐官方 New Session 语义：新会话落在这里）。 */
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(
@@ -192,7 +191,6 @@ export function NativeApp({
     draft,
     liveReasoning,
     reasoningActive,
-    toolCalling,
     approvals,
     setApprovals,
     questions,
@@ -210,7 +208,6 @@ export function NativeApp({
     queue,
     draft,
     liveReasoning,
-    toolCalling,
     approvals,
     questions,
     loadingHistory,
@@ -275,27 +272,18 @@ export function NativeApp({
     handlePermissionPick,
   } = useModelSelection({ sessions, currentId, refreshSessions, setError });
 
-  // 初始化：界面模式 + 会话列表；无活跃工作区时默认取第一个
+  // 初始化：刷新会话列表；无活跃工作区时默认取第一个
   useEffect(() => {
-    void qingwu
-      .getUiMode()
-      .then((mode: UiMode) => setVisible(mode === "native"));
     void refreshSessions();
-    return qingwu.onUiModeChanged((mode) => setVisible(mode === "native"));
   }, [refreshSessions]);
 
-  // 青梧界面激活时给 body 添加标记类（控制标题栏样式对齐等）
+  // 给 body 添加标记类（控制标题栏样式对齐等）
   useEffect(() => {
-    const body = document.body;
-    if (visible) {
-      body.classList.add("native-ui-active");
-    } else {
-      body.classList.remove("native-ui-active");
-    }
+    document.body.classList.add("native-ui-active");
     return () => {
-      body.classList.remove("native-ui-active");
+      document.body.classList.remove("native-ui-active");
     };
-  }, [visible]);
+  }, []);
 
   useEffect(() => {
     if (workspaces.length > 0 && !activeWorkspaceId) {
@@ -815,8 +803,6 @@ export function NativeApp({
     [currentId, sessions],
   );
 
-  if (!visible) return null;
-
   const chipWorkspaceId = currentId
     ? (workspaceOfSession.get(currentId) ?? null)
     : activeWorkspaceId;
@@ -967,30 +953,27 @@ export function NativeApp({
                       onPreviewImage={(url) => setLightboxUrl(url)}
                     />
                   ))}
-                  {(liveReasoning || draft || toolCalling) && (
-                    // 本轮在飞内容合成一条助手消息：思考折叠行在上、正文在下，
-                    // 与回合结束后的落库布局一致，收束时不会整块跳位。
-                    // 在仅有思考/工具调用提示、尚未输出正文答复时，采用紧凑过程间距。
-                    <div
-                      className={`native-msg assistant${!draft ? " process-only" : ""}`}
-                    >
+                  {liveReasoning && !draft && (
+                    // 仅有思考未出正文的流式过程：直接渲染独立思考行，不包裹助手答复气泡外壳，
+                    // 与 TurnItems 落库后的独立思考行保持完全一致的 DOM 结构与尺寸，避免收束时高度跳变
+                    <ReasoningRow
+                      text={liveReasoning}
+                      running={reasoningActive}
+                    />
+                  )}
+                  {draft && (
+                    // 已有正文时合成助手消息：思考折叠行在上、正文在下，与回合结束后的落库布局一致
+                    <div className="native-msg assistant">
                       {liveReasoning && (
                         <ReasoningRow
                           text={liveReasoning}
                           running={reasoningActive}
                         />
                       )}
-                      {draft ? (
-                        <div className="native-msg-body">
-                          <Markdown text={draft} />
-                          <span className="native-cursor" />
-                        </div>
-                      ) : (
-                        toolCalling &&
-                        !liveReasoning && (
-                          <div className="native-tool-hint">正在调用工具…</div>
-                        )
-                      )}
+                      <div className="native-msg-body">
+                        <Markdown text={draft} />
+                        <span className="native-cursor" />
+                      </div>
                     </div>
                   )}
                   {running && (
@@ -1005,20 +988,20 @@ export function NativeApp({
                 <button
                   type="button"
                   className={`native-scroll-to-bottom${
-                    running || liveReasoning || draft || toolCalling
+                    running || liveReasoning || draft
                       ? " is-generating"
                       : ""
                   }`}
                   onClick={() => scrollToBottom("smooth")}
                   title={
-                    running || liveReasoning || draft || toolCalling
+                    running || liveReasoning || draft
                       ? "回到底部（正在生成…）"
                       : "回到底部"
                   }
                   aria-label="回到底部"
                 >
                   <ChevronDownIcon />
-                  {(running || liveReasoning || draft || toolCalling) && (
+                  {(running || liveReasoning || draft) && (
                     <span className="native-scroll-to-bottom-dot" />
                   )}
                 </button>

@@ -91,8 +91,6 @@ export function useEngineStreams({
    * 折叠行的摘取哪一行、要不要扫光（对齐官方「推理块是否仍是流式尾巴」的判据）。
    */
   const [reasoningActive, setReasoningActive] = useState(false);
-  /** block-start(tool-call) 已宣告但 tool/call 事件未落地的提示态。 */
-  const [toolCalling, setToolCalling] = useState(false);
   /** 引擎 inbox 里的待发送队列（排队中／插话中），由 agent/inbox/spliced 折出。 */
   const [queue, setQueue] = useState<QueuedItem[]>([]);
   /** 本地乐观回显：提交当帧即显示，宿主落库或入队后退休。 */
@@ -173,7 +171,6 @@ export function useEngineStreams({
   const appendEvent = useCallback(
     (event: SessionEvent) => {
       eventsRef.current = [...eventsRef.current, event];
-      if (event.type === "tool/call") setToolCalling(false);
       // 上下文占用/用量随这些事件变化。官方是客户端自己折投影，我们直接复用宿主
       // 算好的投影列，所以要在这些事件到达时重取一次会话列表。
       if (movesContextMeter(event.type)) scheduleRefresh();
@@ -425,7 +422,6 @@ export function useEngineStreams({
     setDraft("");
     setLiveReasoning("");
     setReasoningActive(false);
-    setToolCalling(false);
     setQueue([]);
     setEchoes([]);
     setTurnStartedAt(null);
@@ -476,7 +472,6 @@ export function useEngineStreams({
       setDraft("");
       setLiveReasoning("");
       setReasoningActive(false);
-      setToolCalling(false);
     };
 
     const invalidateHistory = () => {
@@ -542,7 +537,6 @@ export function useEngineStreams({
     const applyAssistantChunk = (chunk: AssistantBlockDelta) => {
       if (chunk.type === "block-start") {
         setReasoningActive(chunk.blockType === "reasoning");
-        if (chunk.blockType === "tool-call") setToolCalling(true);
         return;
       }
       if (chunk.type === "text-delta" && typeof chunk.text === "string") {
@@ -694,7 +688,6 @@ export function useEngineStreams({
     draft,
     liveReasoning,
     reasoningActive,
-    toolCalling,
     // 待处理决策与事件流客户端
     approvals,
     setApprovals,
