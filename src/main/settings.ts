@@ -23,6 +23,7 @@ class SettingsManager {
       uiMode: 'native',
       collapseProcess: false,
       chatWidth: 'narrow',
+      notifyOnTaskFinished: true,
     };
     this.listeners = new Set();
     this.loaded = false;
@@ -50,6 +51,9 @@ class SettingsManager {
           }
           if (!CHAT_WIDTHS.includes(this.settings.chatWidth as ChatWidth)) {
             this.settings.chatWidth = 'narrow';
+          }
+          if (typeof this.settings.notifyOnTaskFinished !== 'boolean') {
+            this.settings.notifyOnTaskFinished = true;
           }
         }
       }

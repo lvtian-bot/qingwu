@@ -37,6 +37,7 @@ export class WindowManager {
   mainWindow: BrowserWindow | null = null;
   dshView: WebContentsView | null = null;
   isQuitting = false;
+  private wasMaximized = false;
   private serviceOrigin: string | null = null;
   private uiMode: UiMode = settings.get("uiMode");
   private windowState = new WindowStateManager();
@@ -68,6 +69,7 @@ export class WindowManager {
     const icon = this.getIconPath();
     this.serviceOrigin = new URL(url).origin;
     const lastState = this.windowState.load();
+    this.wasMaximized = lastState.isMaximized;
 
     const win = new BrowserWindow({
       title: CONFIG.appName,
@@ -102,7 +104,10 @@ export class WindowManager {
     this.applyTitleBarOverlay();
 
     win.on("close", (e) => {
-      this.windowState.save(win);
+      if (!win.isMinimized()) {
+        this.wasMaximized = win.isMaximized();
+      }
+      this.windowState.save(win, this.wasMaximized);
       if (!this.isQuitting && settings.get("closeToTray")) {
         e.preventDefault();
         win.hide();
@@ -151,14 +156,38 @@ export class WindowManager {
       }
     `;
 
+    const reclaimNativeFocus = () => {
+      if (
+        this.uiMode === "native" &&
+        win &&
+        !win.isDestroyed() &&
+        win.isVisible()
+      ) {
+        win.webContents.focus();
+      }
+    };
+
     dshView.webContents.on("dom-ready", () => {
       dshView.webContents.insertCSS(DSH_SCROLLBAR_CSS).catch(() => {});
+      reclaimNativeFocus();
     });
+    dshView.webContents.on("did-finish-load", reclaimNativeFocus);
+    dshView.webContents.on("focus", reclaimNativeFocus);
 
     const onBoundsChanged = () => this.updateViewBounds();
     win.on("resize", onBoundsChanged);
-    win.on("maximize", onBoundsChanged);
-    win.on("unmaximize", onBoundsChanged);
+    win.on("maximize", () => {
+      this.wasMaximized = true;
+      onBoundsChanged();
+    });
+    win.on("unmaximize", () => {
+      // 在 Windows 上，最小化最大化窗口时会伴随触发 unmaximize。
+      // 只有在非最小化状态下发生的 unmaximize，才代表用户显式还原为普通窗口。
+      if (!win.isMinimized()) {
+        this.wasMaximized = false;
+      }
+      onBoundsChanged();
+    });
     win.on("enter-full-screen", () => {
       this.updateViewBounds();
       if (!win.isDestroyed()) {
@@ -230,11 +259,12 @@ export class WindowManager {
     }
 
     win.once("ready-to-show", () => {
-      if (lastState.isMaximized) {
+      if (this.wasMaximized) {
         win.maximize();
       }
       this.updateViewBounds();
       win.show();
+      this.focus();
     });
 
     win.on("closed", () => {
@@ -323,13 +353,17 @@ export class WindowManager {
 
   focus(): void {
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-      if (!this.mainWindow.isVisible()) {
-        this.mainWindow.show();
+      const win = this.mainWindow;
+      if (!win.isVisible()) {
+        win.show();
       }
-      if (this.mainWindow.isMinimized()) {
-        this.mainWindow.restore();
+      if (win.isMinimized()) {
+        win.restore();
       }
-      this.mainWindow.focus();
+      if (this.wasMaximized && !win.isMaximized()) {
+        win.maximize();
+      }
+      win.focus();
       this.getTargetWebContents()?.focus();
     }
   }

@@ -771,6 +771,18 @@ export function NativeApp({
     };
   }, [settingsOpen, lightboxUrl, running, currentId]);
 
+  // 主进程点击系统桌面通知经 IPC 调度进入对应会话
+  useEffect(() => {
+    const unsub = window.qingwu?.onNotificationNavigate?.((targetSessionId) => {
+      if (targetSessionId) {
+        openSession(targetSessionId);
+      }
+    });
+    return () => {
+      unsub?.();
+    };
+  }, [openSession]);
+
   /** 查询当前会话或活跃工作区关联的文件/目录引用候选。 */
   const handleQueryFileReferences = useCallback(
     async (

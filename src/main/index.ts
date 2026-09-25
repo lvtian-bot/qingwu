@@ -18,6 +18,7 @@ import { AppLifecycle } from "./app-lifecycle";
 import { setupFileLogging, redactSecrets } from "./logging";
 import { openTerminal, openPath, showItemInFolder, setActiveWorkspacePath } from "./terminal";
 import { setupApplicationDiagnostics } from "./diagnostics";
+import { NotificationManager } from "./notification";
 import type { RendererErrorReport, UiMode } from "../shared/types";
 
 setupFileLogging(path.join(app.getPath("userData"), "logs"));
@@ -32,6 +33,7 @@ if (!gotTheLock) {
   const hasConsole = acquireHiddenConsole();
   app.setAppUserModelId(CONFIG.appId || "com.qingwu.desktop");
   const windowManager = new WindowManager();
+  const notificationManager = new NotificationManager(windowManager);
   const harnessManager = new HarnessManager({ hasConsole });
   const updateService = new UpdateService();
   const updateWindowManager = new UpdateWindowManager(
@@ -217,6 +219,15 @@ if (!gotTheLock) {
   ipcMain.handle("workspace:setActivePath", (_event, targetPath: string | null) => {
     setActiveWorkspacePath(targetPath);
   });
+  ipcMain.handle(
+    "notification:show",
+    (
+      _event,
+      options: { title?: string; body: string; sessionId?: string },
+    ) => {
+      notificationManager.show(options);
+    },
+  );
 
   app.whenReady().then(async () => {
     try {

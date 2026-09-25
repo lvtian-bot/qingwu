@@ -63,11 +63,12 @@ export class WindowStateManager {
   }
 
   /** 保存窗口当前状态（最大化时记录还原边界），在窗口 close 时调用。 */
-  save(win: BrowserWindow): void {
+  save(win: BrowserWindow, wasMaximized?: boolean): void {
     try {
       if (win.isDestroyed()) return;
       const { x, y, width, height } = win.getNormalBounds();
-      const state: WindowState = { x, y, width, height, isMaximized: win.isMaximized() };
+      const isMax = wasMaximized !== undefined ? wasMaximized : win.isMaximized();
+      const state: WindowState = { x, y, width, height, isMaximized: isMax };
       fs.writeFileSync(this.getFilePath(), JSON.stringify(state, null, 2), 'utf-8');
     } catch (err) {
       console.error('[WindowState] 保存窗口状态失败:', err);

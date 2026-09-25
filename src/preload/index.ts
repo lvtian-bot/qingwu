@@ -179,6 +179,12 @@ const api: QingwuApi = {
   setActiveWorkspacePath: (targetPath) => {
     void ipcRenderer.invoke('workspace:setActivePath', targetPath);
   },
+  showNotification: (options) => ipcRenderer.invoke('notification:show', options),
+  onNotificationNavigate: (listener) => {
+    const handler = (_event: IpcRendererEvent, sessionId: string) => listener(sessionId);
+    ipcRenderer.on('notification:navigate', handler);
+    return () => ipcRenderer.removeListener('notification:navigate', handler);
+  },
 };
 
 contextBridge.exposeInMainWorld('qingwu', api);

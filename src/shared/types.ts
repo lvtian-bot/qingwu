@@ -38,6 +38,8 @@ export interface AppSettings {
   collapseProcess?: boolean;
   /** 聊天区内容列宽档位（默认 narrow 紧凑，与 DeepSeek 界面保持一致）。 */
   chatWidth?: ChatWidth;
+  /** 任务执行结束时是否发送桌面通知（默认 true：开启）。 */
+  notifyOnTaskFinished?: boolean;
 }
 
 /** dsh RPC 业务错误（对齐 typert RemoteError 的线上形态）。 */
@@ -166,4 +168,12 @@ export interface QingwuApi {
   showItemInFolder: (targetPath: string) => Promise<void>;
   /** 通知主进程当前活跃的工作区路径，以便全局菜单与快捷键呼出。 */
   setActiveWorkspacePath: (targetPath: string | null) => void;
+  /** 请求发送任务完成等系统桌面通知。 */
+  showNotification: (options: {
+    title?: string;
+    body: string;
+    sessionId?: string;
+  }) => Promise<void>;
+  /** 监听用户点击桌面通知后跳转到指定会话的事件。 */
+  onNotificationNavigate: (listener: (sessionId: string) => void) => () => void;
 }

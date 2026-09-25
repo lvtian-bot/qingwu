@@ -36,7 +36,7 @@ import type {
 import { Endpoints } from "./protocol";
 import type { PendingApproval, PendingQuestion } from "./PendingInteraction";
 import { rpc, toErrMsg } from "./rpc";
-import { orderWorkspaces, upsertWorkspace } from "./sidebar-data";
+import { orderWorkspaces, sessionTitle, upsertWorkspace } from "./sidebar-data";
 
 const qingwu = window.qingwu;
 
@@ -287,12 +287,21 @@ export function useEngineStreams({
           setSessions((prev) =>
             prev.map((s) => {
               if (s.sessionId === sessionId) {
-                if (
-                  s.running &&
-                  !isRunning &&
-                  currentIdRef.current !== sessionId
-                ) {
-                  setUnreadFinishedSessionIds((u) => new Set(u).add(sessionId));
+                if (s.running && !isRunning) {
+                  const isAppFocused =
+                    typeof document !== "undefined" && document.hasFocus();
+                  if (currentIdRef.current !== sessionId) {
+                    setUnreadFinishedSessionIds((u) => new Set(u).add(sessionId));
+                  }
+                  // 仅在应用不在前台（失焦、最小化或隐藏后台）时发送系统桌面通知；前台使用时绝不弹窗打扰
+                  if (!isAppFocused) {
+                    const title = sessionTitle(s);
+                    void window.qingwu?.showNotification?.({
+                      title: "任务执行完成",
+                      body: `「${title}」任务已执行完成`,
+                      sessionId,
+                    });
+                  }
                 }
                 return { ...s, running: isRunning };
               }

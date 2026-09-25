@@ -128,6 +128,19 @@ export function GeneralTab({ dsh }: { dsh: DshSettingsController }) {
         </SettingsRow>
 
         <SettingsRow
+          label="任务完成时发送桌面通知"
+          desc="当青梧在后台运行且任务执行结束时，弹出系统桌面通知；点击通知可快速回到对应会话。"
+        >
+          <SettingsSwitch
+            checked={appSettings.notifyOnTaskFinished ?? true}
+            onChange={(next) =>
+              void handleUpdateAppSetting({ notifyOnTaskFinished: next })
+            }
+            label="任务完成时发送桌面通知"
+          />
+        </SettingsRow>
+
+        <SettingsRow
           label="青梧应用数据目录"
           desc="存放桌面窗口状态、应用配置与运行日志的本地目录 (%APPDATA%/qingwu)。"
         >
