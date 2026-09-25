@@ -944,13 +944,14 @@ export function NativeApp({
                       {loadingOlderHistory ? "加载中…" : "加载更早"}
                     </button>
                   )}
-                  {items.map((view) => (
+                  {items.map((view, index) => (
                     <TurnItems
                       key={view.turn}
                       view={view}
                       cwd={currentCwd}
                       sessionId={currentId}
                       collapseProcess={collapseProcess}
+                      alwaysShowActions={index === items.length - 1}
                       onPreviewImage={(url) => setLightboxUrl(url)}
                       onFork={
                         currentId && !running

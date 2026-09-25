@@ -1075,20 +1075,34 @@ textarea {
   word-break: break-word;
 }
 
-/* 助手消息元信息行：用时 + 复制等操作 */
+/*
+ * 助手消息操作栏：完成时间戳 + 分叉 + 复制，紧凑横排。
+ * 历史轮次默认隐藏、悬停所在回复时浮现；最新轮次带 native-msg-meta-live 常驻。
+ * 用 visibility + opacity 而非 display，保留占位避免悬停出现时布局跳动。
+ */
 .native-msg-meta {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-top: 10px;
-  padding-top: 8px;
-  border-top: 1px solid var(--native-border);
+  gap: 4px;
+  margin-top: 6px;
   font-size: 12px;
   color: var(--native-muted);
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 0.15s ease,
+    visibility 0.15s ease;
 }
 
-.native-msg-meta .spacer {
-  flex: 1;
+.native-msg.assistant:hover .native-msg-meta,
+.native-msg-meta.native-msg-meta-live {
+  opacity: 1;
+  visibility: visible;
+}
+
+.native-msg-time {
+  margin-right: 4px;
+  white-space: nowrap;
 }
 
 .native-msg-action {
@@ -1104,9 +1118,63 @@ textarea {
   cursor: pointer;
 }
 
-.native-msg-action:hover {
+.native-msg-action:hover,
+.native-msg-action[data-open] {
   background: var(--native-hover);
   color: var(--native-fg);
+}
+
+/* 用量 / 用时胶囊与其详情卡片 */
+.native-msg-metrics {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.native-metrics-card {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 250px;
+  max-width: 330px;
+  padding: 10px 12px;
+  border: 1px solid var(--native-card-border);
+  border-radius: 10px;
+  background: var(--native-bg);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+  font-size: 12px;
+  text-align: left;
+}
+
+.native-metrics-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.native-metrics-label {
+  color: var(--native-muted);
+  white-space: nowrap;
+}
+
+.native-metrics-value {
+  color: var(--native-fg);
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.native-metrics-section {
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--native-border-subtle);
+  color: var(--native-muted);
+  font-size: 11px;
 }
 
 .native-muted {
