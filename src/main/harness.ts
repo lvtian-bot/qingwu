@@ -5,6 +5,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { app } from "electron";
 import { CONFIG } from "./config";
+import { resolveQingwuProfileDir } from "./dsh-paths";
 import { createLineReader, redactSecrets } from "./logging";
 
 interface HarnessManagerOptions {
@@ -153,9 +154,7 @@ export class HarnessManager {
    */
   private ensureQingwuProfile(): void {
     try {
-      const dshHome =
-        process.env.DSH_HOME || path.join(app.getPath("home"), ".dsh");
-      const profileDir = path.join(dshHome, "profiles", "qingwu");
+      const profileDir = resolveQingwuProfileDir();
       const manifestPath = path.join(profileDir, "package.json");
 
       if (fs.existsSync(manifestPath)) return;

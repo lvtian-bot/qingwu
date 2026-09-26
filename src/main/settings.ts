@@ -2,6 +2,7 @@ import { app } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import { CHAT_WIDTHS, type AppSettings, type ChatWidth } from '../shared/types';
+import { resolveQingwuProfileDir } from './dsh-paths';
 
 export type { AppSettings };
 
@@ -28,17 +29,44 @@ class SettingsManager {
     this.loaded = false;
   }
 
-  /** 惰性求值：等 paths.ts 完成 userData 重定向后再取目录。 */
+  /**
+   * 惰性求值：等 paths.ts 完成 userData 重定向后再取目录，
+   * 保证老配置搬移读取的是实际生效的 userData。
+   */
   private getConfigPath(): string {
     if (!this.configPath) {
-      this.configPath = path.join(app.getPath('userData'), 'settings.json');
+      this.configPath = path.join(resolveQingwuProfileDir(), 'app-settings.json');
     }
     return this.configPath;
+  }
+
+  /**
+   * 一次性搬移：应用设置与引擎配置统一存放于 dsh profile 目录。
+   * 旧 userData/settings.json 复制成功后改名留档，避免目标文件被清后旧值回灌；
+   * 搬移失败不阻塞加载，下次启动重试（复制幂等）。
+   */
+  private migrateFromUserData(configPath: string): void {
+    if (fs.existsSync(configPath)) return;
+    const legacyPath = path.join(app.getPath('userData'), 'settings.json');
+    if (!fs.existsSync(legacyPath)) return;
+    try {
+      fs.mkdirSync(path.dirname(configPath), { recursive: true });
+      fs.copyFileSync(legacyPath, configPath);
+      try {
+        fs.renameSync(legacyPath, `${legacyPath}.migrated`);
+      } catch (renameErr) {
+        console.warn('[Settings] 旧配置改名留档失败，下次启动重试:', renameErr);
+      }
+      console.log(`[Settings] 应用设置已搬移至 dsh profile 目录: ${configPath}`);
+    } catch (err) {
+      console.error('[Settings] 应用设置搬移失败:', err);
+    }
   }
 
   load() {
     if (this.loaded) return;
     const configPath = this.getConfigPath();
+    this.migrateFromUserData(configPath);
     try {
       if (fs.existsSync(configPath)) {
         const raw = fs.readFileSync(configPath, 'utf-8');
