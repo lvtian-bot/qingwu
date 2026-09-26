@@ -620,7 +620,7 @@ export interface SessionSummary {
   running: boolean;
   blank: boolean;
   origin?: string;
-  /** 父会话：只有子代理会话带（界面不展示子代理会话，其待处理项归到这条上）。 */
+  /** 父会话：子代理与分叉会话都带。子代理不在界面展示，待处理项归到这条；分叉会话可见，待处理项归自己。 */
   parentSessionId?: string;
   cwd?: string;
   projections?: {
