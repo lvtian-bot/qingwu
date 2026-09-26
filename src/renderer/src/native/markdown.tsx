@@ -2,7 +2,7 @@
  * Markdown 渲染：react-markdown + remark-gfm，代码块经 Shiki（JS 引擎，无 wasm）
  * 双主题高亮。高亮器懒加载单例，就绪前代码块回退纯文本。
  */
-import { memo, useEffect, useState } from 'react';
+import { createContext, memo, useContext, useEffect, useMemo, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Components } from 'react-markdown';
@@ -186,6 +186,201 @@ function CodeBlock({ code, lang }: { code: string; lang: string }) {
   );
 }
 
+// ---------- 图片渲染 ----------
+
+interface ResolvedImageTarget {
+  isRemote: boolean;
+  target: string;
+}
+
+function resolveImageTarget(
+  rawSrc: string | undefined,
+  cwd?: string | null,
+): ResolvedImageTarget | null {
+  if (!rawSrc) return null;
+  let clean = rawSrc.trim();
+  if (clean.startsWith('<') && clean.endsWith('>')) {
+    clean = clean.slice(1, -1).trim();
+  }
+  const queryIndex = clean.indexOf('?');
+  if (queryIndex !== -1) clean = clean.slice(0, queryIndex);
+  const hashIndex = clean.indexOf('#');
+  if (hashIndex !== -1) clean = clean.slice(0, hashIndex);
+
+  try {
+    clean = decodeURIComponent(clean);
+  } catch {
+    // 忽略解码错误
+  }
+
+  if (/^(https?:|data:|blob:)/i.test(clean)) {
+    return { isRemote: true, target: clean };
+  }
+
+  if (clean.startsWith('file:///')) {
+    clean = clean.slice(8);
+  } else if (clean.startsWith('file://')) {
+    clean = clean.slice(7);
+  }
+
+  if (/^\/[a-zA-Z]:/.test(clean)) {
+    clean = clean.slice(1);
+  }
+
+  const isAbsolute =
+    /^[a-zA-Z]:[/\\]/.test(clean) || clean.startsWith('/') || clean.startsWith('\\');
+  if (!isAbsolute && cwd) {
+    const sep = cwd.includes('\\') ? '\\' : '/';
+    const trimmedCwd = cwd.replace(/[/\\]+$/, '');
+    const trimmedRelative = clean.replace(/^[/\\]+/, '');
+    clean = `${trimmedCwd}${sep}${trimmedRelative}`;
+  }
+
+  return { isRemote: false, target: clean };
+}
+
+interface MarkdownContextValue {
+  cwd?: string | null;
+  onPreviewImage?: (url: string) => void;
+}
+
+const MarkdownContext = createContext<MarkdownContextValue>({});
+
+const localImageCache = new Map<string, string>();
+
+function MarkdownImage({ src, alt }: { src?: string; alt?: string }) {
+  const { cwd, onPreviewImage } = useContext(MarkdownContext);
+  const resolved = useMemo(() => resolveImageTarget(src, cwd), [src, cwd]);
+  const cachedDataUrl =
+    resolved && !resolved.isRemote ? localImageCache.get(resolved.target) : null;
+
+  const [displaySrc, setDisplaySrc] = useState<string | null>(
+    () => (resolved?.isRemote ? resolved.target : cachedDataUrl ?? null),
+  );
+  const [loading, setLoading] = useState<boolean>(
+    () => !resolved?.isRemote && !!resolved?.target && !cachedDataUrl,
+  );
+  const [failed, setFailed] = useState<boolean>(!resolved?.target);
+
+  useEffect(() => {
+    if (!resolved?.target) {
+      setFailed(true);
+      setLoading(false);
+      return;
+    }
+    if (resolved.isRemote) {
+      setDisplaySrc(resolved.target);
+      setLoading(false);
+      setFailed(false);
+      return;
+    }
+
+    const hit = localImageCache.get(resolved.target);
+    if (hit) {
+      setDisplaySrc(hit);
+      setLoading(false);
+      setFailed(false);
+      return;
+    }
+
+    let cancelled = false;
+    setLoading(true);
+    setFailed(false);
+
+    window.qingwu
+      ?.readLocalImage?.(resolved.target)
+      .then((res) => {
+        if (cancelled) return;
+        if (res?.dataUrl) {
+          localImageCache.set(resolved.target, res.dataUrl);
+          setDisplaySrc(res.dataUrl);
+          setLoading(false);
+        } else {
+          setFailed(true);
+          setLoading(false);
+        }
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setFailed(true);
+        setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [resolved]);
+
+  if (failed) {
+    const rawTarget = resolved?.target || src || '';
+    return (
+      <span className="native-md-image-fallback" title={rawTarget}>
+        <svg
+          viewBox="0 0 24 24"
+          width="14"
+          height="14"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+          <circle cx="8.5" cy="8.5" r="1.5" />
+          <polyline points="21 15 16 10 5 21" />
+        </svg>
+        <span className="native-md-image-fallback-text">{alt || rawTarget}</span>
+        {rawTarget && window.qingwu?.showItemInFolder && (
+          <button
+            type="button"
+            className="native-md-image-fallback-btn"
+            onClick={(e) => {
+              e.preventDefault();
+              void window.qingwu?.showItemInFolder?.(rawTarget);
+            }}
+            title="在文件夹中定位"
+          >
+            定位
+          </button>
+        )}
+      </span>
+    );
+  }
+
+  if (loading || !displaySrc) {
+    return (
+      <span className="native-md-image-loading">
+        <span className="native-spinner" />
+        <span>加载图片中…</span>
+      </span>
+    );
+  }
+
+  const handleClick = () => {
+    onPreviewImage?.(displaySrc);
+  };
+
+  return (
+    <figure className="native-md-image-wrap">
+      <button
+        type="button"
+        className="native-md-image-btn"
+        onClick={handleClick}
+        title={alt ? `${alt}（点击放大）` : '点击查看大图'}
+      >
+        <img
+          src={displaySrc}
+          alt={alt ?? ''}
+          loading="lazy"
+          onError={() => setFailed(true)}
+        />
+      </button>
+      {alt && <figcaption className="native-md-image-caption">{alt}</figcaption>}
+    </figure>
+  );
+}
+
 // ---------- Markdown ----------
 
 const mdComponents: Components = {
@@ -206,14 +401,51 @@ const mdComponents: Components = {
       {children}
     </a>
   ),
+  img: ({ src, alt }) => (
+    <MarkdownImage
+      src={typeof src === 'string' ? src : undefined}
+      alt={typeof alt === 'string' ? alt : undefined}
+    />
+  ),
 };
 
-export const Markdown = memo(function Markdown({ text }: { text: string }) {
+export interface MarkdownProps {
+  text: string;
+  cwd?: string | null;
+  onPreviewImage?: (url: string) => void;
+}
+
+function safeUrlTransform(url: string): string {
+  if (!url) return '';
+  const trimmed = url.trim();
+  // 阻止危险脚本协议，放行 http/https/data/blob/file/以及本地绝对路径与相对路径
+  if (/^(javascript|vbscript):/i.test(trimmed)) {
+    return '';
+  }
+  return url;
+}
+
+export const Markdown = memo(function Markdown({
+  text,
+  cwd,
+  onPreviewImage,
+}: MarkdownProps) {
+  const contextValue = useMemo(
+    () => ({ cwd, onPreviewImage }),
+    [cwd, onPreviewImage],
+  );
+
   return (
-    <div className="native-md">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>
-        {text}
-      </ReactMarkdown>
-    </div>
+    <MarkdownContext.Provider value={contextValue}>
+      <div className="native-md">
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          components={mdComponents}
+          urlTransform={safeUrlTransform}
+        >
+          {text}
+        </ReactMarkdown>
+      </div>
+    </MarkdownContext.Provider>
   );
 });

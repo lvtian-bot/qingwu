@@ -78,6 +78,12 @@ export function NativeApp({
   const currentIdRef = useRef<string | null>(currentId);
   currentIdRef.current = currentId;
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const handlePreviewImage = useCallback((url: string) => {
+    setLightboxUrl(url);
+  }, []);
+  const handleCloseLightbox = useCallback(() => {
+    setLightboxUrl(null);
+  }, []);
   /** 右侧面板折叠态（默认收起，需要时再展开）。 */
   const [panelCollapsed, setPanelCollapsed] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -876,7 +882,7 @@ export function NativeApp({
                   draftImages={draftImages}
                   onRemoveDraftImage={handleRemoveDraftImage}
                   onAddImages={handleAddImages}
-                  onPreviewImage={(url) => setLightboxUrl(url)}
+                  onPreviewImage={handlePreviewImage}
                   commands={availableCommands}
                   onExecuteCommand={(line) => void handleExecuteCommand(line)}
                   onQueryFileReferences={handleQueryFileReferences}
@@ -952,7 +958,7 @@ export function NativeApp({
                       sessionId={currentId}
                       collapseProcess={collapseProcess}
                       alwaysShowActions={index === items.length - 1}
-                      onPreviewImage={(url) => setLightboxUrl(url)}
+                      onPreviewImage={handlePreviewImage}
                       onFork={
                         currentId && !running
                           ? (atSeq) => handleSessionFork(currentId, atSeq)
@@ -978,7 +984,11 @@ export function NativeApp({
                         />
                       )}
                       <div className="native-msg-body">
-                        <Markdown text={draft} />
+                        <Markdown
+                          text={draft}
+                          cwd={currentCwd}
+                          onPreviewImage={handlePreviewImage}
+                        />
                         <span className="native-cursor" />
                       </div>
                     </div>
@@ -1050,7 +1060,7 @@ export function NativeApp({
                     draftImages={draftImages}
                     onRemoveDraftImage={handleRemoveDraftImage}
                     onAddImages={handleAddImages}
-                    onPreviewImage={(url) => setLightboxUrl(url)}
+                    onPreviewImage={handlePreviewImage}
                     commands={availableCommands}
                     onExecuteCommand={(line) => void handleExecuteCommand(line)}
                     onQueryFileReferences={handleQueryFileReferences}
@@ -1076,7 +1086,7 @@ export function NativeApp({
       </main>
 
       {lightboxUrl && (
-        <LightboxModal src={lightboxUrl} onClose={() => setLightboxUrl(null)} />
+        <LightboxModal src={lightboxUrl} onClose={handleCloseLightbox} />
       )}
 
       {!panelCollapsed && (
