@@ -157,6 +157,10 @@ export interface QingwuApi {
   openPath: (targetPath: string) => Promise<string>;
   /** 在文件管理器中高亮定位指定文件或目录。 */
   showItemInFolder: (targetPath: string) => Promise<void>;
+  /** 安全读取本地图片并返回 Data URL。限制常见图片扩展名与 20MB 大小。若不存在或超限返回 null。 */
+  readLocalImage: (
+    targetPath: string,
+  ) => Promise<{ dataUrl: string; mimeType: string } | null>;
   /** 通知主进程当前活跃的工作区路径，以便全局菜单与快捷键呼出。 */
   setActiveWorkspacePath: (targetPath: string | null) => void;
   /** 请求发送任务完成等系统桌面通知。 */

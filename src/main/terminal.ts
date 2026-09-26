@@ -161,3 +161,64 @@ export async function showItemInFolder(targetPath: string): Promise<void> {
   const target = resolveFileOrDirectory(targetPath);
   shell.showItemInFolder(target);
 }
+
+const IMAGE_MIME_MAP: Record<string, string> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.gif': 'image/gif',
+  '.svg': 'image/svg+xml',
+  '.ico': 'image/x-icon',
+  '.bmp': 'image/bmp',
+};
+const MAX_LOCAL_IMAGE_BYTES = 20 * 1024 * 1024; // 20MB
+
+export async function readLocalImage(
+  inputPath: string
+): Promise<{ dataUrl: string; mimeType: string } | null> {
+  if (!inputPath || typeof inputPath !== 'string') return null;
+
+  let cleanPath = inputPath.trim();
+  if (cleanPath.startsWith('<') && cleanPath.endsWith('>')) {
+    cleanPath = cleanPath.slice(1, -1).trim();
+  }
+  if (cleanPath.startsWith('file:///')) {
+    cleanPath = cleanPath.slice(8);
+  } else if (cleanPath.startsWith('file://')) {
+    cleanPath = cleanPath.slice(7);
+  }
+  const queryIndex = cleanPath.indexOf('?');
+  if (queryIndex !== -1) cleanPath = cleanPath.slice(0, queryIndex);
+  const hashIndex = cleanPath.indexOf('#');
+  if (hashIndex !== -1) cleanPath = cleanPath.slice(0, hashIndex);
+
+  try {
+    cleanPath = decodeURIComponent(cleanPath);
+  } catch {
+    // 忽略解码错误
+  }
+
+  if (/^\/[a-zA-Z]:/.test(cleanPath)) {
+    cleanPath = cleanPath.slice(1);
+  }
+
+  const resolved = resolveFileOrDirectory(cleanPath);
+  try {
+    if (!fs.existsSync(resolved)) return null;
+    const stat = await fs.promises.stat(resolved);
+    if (!stat.isFile()) return null;
+    if (stat.size > MAX_LOCAL_IMAGE_BYTES) return null;
+
+    const ext = path.extname(resolved).toLowerCase();
+    const mimeType = IMAGE_MIME_MAP[ext];
+    if (!mimeType) return null;
+
+    const buffer = await fs.promises.readFile(resolved);
+    const dataUrl = `data:${mimeType};base64,${buffer.toString('base64')}`;
+    return { dataUrl, mimeType };
+  } catch {
+    return null;
+  }
+}
+

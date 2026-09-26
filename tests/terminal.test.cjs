@@ -69,3 +69,35 @@ test("resolveFileOrDirectory 能够保留原文件路径并正确结合 activeWo
   showItemInFolder(relativeFile);
   assert.equal(shownPath, expectedFull);
 });
+
+test("readLocalImage 能够安全读取本地图片并返回 Data URL", async () => {
+  const { readLocalImage, setActiveWorkspacePath } = loadTs("src/main/terminal.ts", {
+    electron: {
+      app: { getPath: () => process.cwd() },
+      shell: {},
+    },
+  });
+
+  setActiveWorkspacePath(process.cwd());
+
+  // 1. 读取存在的真实图片 (build/icon.png)
+  const res = await readLocalImage("<build/icon.png>");
+  assert.ok(res !== null);
+  assert.equal(res.mimeType, "image/png");
+  assert.ok(res.dataUrl.startsWith("data:image/png;base64,"));
+
+  // 2. 带 file:/// 前缀的绝对路径
+  const absPath = path.resolve(process.cwd(), "build/icon.png");
+  const fileUrl = "file:///" + absPath.replace(/\\/g, "/");
+  const res2 = await readLocalImage(fileUrl);
+  assert.ok(res2 !== null);
+  assert.equal(res2.mimeType, "image/png");
+
+  // 3. 不存在的文件返回 null
+  const missing = await readLocalImage("build/non-exist.png");
+  assert.equal(missing, null);
+
+  // 4. 非图片扩展名返回 null
+  const nonImage = await readLocalImage("package.json");
+  assert.equal(nonImage, null);
+});

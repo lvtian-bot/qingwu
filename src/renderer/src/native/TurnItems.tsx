@@ -310,6 +310,8 @@ function AssistantBody({
   onFork,
   alwaysShow,
   metrics,
+  cwd,
+  onPreviewImage,
 }: {
   item: Extract<ChatItem, { kind: "assistant" }>;
   forkable?: boolean;
@@ -318,12 +320,18 @@ function AssistantBody({
   alwaysShow?: boolean;
   /** 这一条是本轮正式答复时的轮次指标；胶囊据它替换纯文本用时。 */
   metrics?: TurnMetrics;
+  cwd?: string;
+  onPreviewImage?: (url: string) => void;
 }) {
   return (
     <>
       {(item.text || item.interrupted) && (
         <div className="native-msg-body">
-          <Markdown text={item.text} />
+          <Markdown
+            text={item.text}
+            cwd={cwd}
+            onPreviewImage={onPreviewImage}
+          />
           {item.interrupted && !item.text && (
             <span className="native-muted">（已中断）</span>
           )}
@@ -415,6 +423,8 @@ export function TurnItems({
             alwaysShow={alwaysShowActions}
             metrics={isAnswer ? view.metrics : undefined}
             onFork={isAnswer && onFork ? () => onFork(item.seq) : undefined}
+            cwd={cwd}
+            onPreviewImage={onPreviewImage}
           />
         </div>
       );
