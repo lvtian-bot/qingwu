@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import type { ChatItem, MarkedChatItem, TurnMetrics, TurnView } from "./events";
+import type {
+  ChatItem,
+  MarkedChatItem,
+  TurnDeliverable,
+  TurnMetrics,
+  TurnView,
+} from "./events";
+import { DeliverableCards } from "./DeliverableCards";
 import { MessageImageView } from "./images";
 import { Markdown } from "./markdown";
 import { ChevronDownIcon } from "./native-icons";
@@ -376,6 +383,8 @@ export function TurnItems({
   alwaysShowActions = false,
   onPreviewImage,
   onFork,
+  deliverables,
+  onOpenFile,
 }: {
   view: TurnView;
   cwd?: string;
@@ -386,6 +395,10 @@ export function TurnItems({
   onPreviewImage?: (url: string) => void;
   /** 从这一轮答复分叉（session/fork）。缺省或会话运行中不提供分叉按钮。 */
   onFork?: (atSeq: number) => void;
+  /** 本轮显式交付的文件（收尾卡片）。 */
+  deliverables?: TurnDeliverable[];
+  /** 点击交付卡片：在右侧面板打开文件预览。 */
+  onOpenFile?: (path: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const renderItem = (item: MarkedChatItem, showReasoning = true) => {
@@ -452,7 +465,12 @@ export function TurnItems({
 
   // 未开启折叠设置、或没收束完整一轮（运行中、或整轮没有答复）时照旧逐条显示，不折叠
   if (!collapseProcess || !view.foldable || !view.answer) {
-    return <>{view.items.map((item) => renderItem(item))}</>;
+    return (
+      <>
+        {view.items.map((item) => renderItem(item))}
+        <DeliverableCards files={deliverables ?? []} cwd={cwd} onOpenFile={onOpenFile} />
+      </>
+    );
   }
 
   const answerIndex = view.items.findIndex(
@@ -482,6 +500,7 @@ export function TurnItems({
       {/* 折叠行收起时思考由它代表，展开后答复里的思考行照常显示 */}
       {renderItem(view.answer, open)}
       {trailingItems.map((item) => renderItem(item))}
+      <DeliverableCards files={deliverables ?? []} cwd={cwd} onOpenFile={onOpenFile} />
     </>
   );
 }

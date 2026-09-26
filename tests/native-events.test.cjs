@@ -3,8 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { loadTs } = require('./helpers/load-ts.cjs');
-const { expandStreamRecords, foldChatItems, foldQueue, foldUserRpcIds, lastTurnStartTime } = loadTs('src/renderer/src/native/events.ts');
-const { foldPanelData } = loadTs('src/renderer/src/native/panel-data.ts');
+const { expandStreamRecords, foldChatItems, foldQueue, foldUserRpcIds, foldTodos, lastTurnStartTime } = loadTs('src/renderer/src/native/events.ts');
 const { progressLabel } = loadTs('src/renderer/src/native/TodoPanel.tsx');
 
 const event = (type, data, seq = 1) => ({ type, data, seq, time: seq * 1000 });
@@ -192,58 +191,51 @@ test('完成回合的过程折叠：含思考/工具调用时折叠生效，用�
   assert.equal(runningView.foldable, false);
 });
 
-test('面板保留最新任务与同文件修改计数，并排除失败及非法参数调用', () => {
+test('任务清单保留最新 todo_write，并排除失败及非法参数调用', () => {
   const call = (callId, name, args) => event('tool/call', { callId, name, arguments: JSON.stringify(args) });
   const todos = [{ content: '核对材料', status: 'completed' }];
   const history = [
     call('todo-old', 'todo_write', { todos: [{ content: '核对材料', status: 'pending' }] }),
-    call('edit-1', 'edit', { file_path: 'a.md', old_string: '旧', new_string: '新' }),
-    call('write-1', 'write', { file_path: 'a.md', content: '全文' }),
-    call('failed', 'write', { file_path: 'b.md', content: '没有写成' }),
+    call('failed', 'todo_write', { todos: [{ content: '没有写成', status: 'pending' }] }),
     event('tool/result', result('failed', '权限不足', true)),
-    event('tool/call', { callId: 'invalid', name: 'write', arguments: '{invalid' }),
+    event('tool/call', { callId: 'invalid', name: 'todo_write', arguments: '{invalid' }),
     call('todo-new', 'todo_write', { todos }),
   ];
   const before = structuredClone(history);
-  assert.deepEqual(foldPanelData(history), {
-    todos,
-    fileChanges: [{ path: 'a.md', edits: 1, writes: 1, addedLines: 2, removedLines: 1, lastEdit: { oldStr: '', newStr: '全文' } }],
-    deliverables: [],
-  });
+  assert.deepEqual(foldTodos(history), todos);
   assert.deepEqual(history, before);
 });
 
-test('面板正确折算显式 deliverables/presented 事件与新写入产物', () => {
-  const call = (callId, name, args) => event('tool/call', { callId, name, arguments: JSON.stringify(args) });
+test('收尾交付按轮折叠 deliverables/presented 事件，同路径保留最近一次说明', () => {
   const history = [
-    // 1. 新建文件写入 -> 自动并入交付物
-    call('write-new', 'write', { file_path: 'reports/summary.docx', content: '第1行\n第2行' }),
-    // 2. 显式 present 工具调用声明
-    call('present-1', 'present', { files: [{ path: 'calc/bonus.xlsx', description: '奖金测算表' }] }),
-    // 3. DSH 官方 deliverables/presented 规范事件（可覆盖或追加）
+    event('turn/start', { turn: 1 }, 1),
+    event('user/message', message('u1', '做一份测算'), 2),
     event('deliverables/presented', {
       turn: 1,
       callId: 'present-1',
-      files: [{ path: 'calc/bonus.xlsx', description: '最终奖金测算底稿' }],
+      files: [{ path: 'calc/bonus.xlsx', description: '奖金测算表' }],
     }, 100),
+    event('deliverables/presented', {
+      turn: 1,
+      callId: 'present-2',
+      files: [
+        { path: 'calc/bonus.xlsx', description: '最终奖金测算底稿' },
+        { path: 'reports/summary.docx' },
+      ],
+    }, 101),
+    event('assistant/message', {
+      turn: 1,
+      message: { content: [{ type: 'text', text: '已完成，文件见交付。' }] },
+    }, 102),
+    event('turn/end', { turn: 1 }, 103),
   ];
-
-  const data = foldPanelData(history);
-  assert.equal(data.fileChanges.length, 1);
-  assert.equal(data.fileChanges[0].path, 'reports/summary.docx');
-  assert.equal(data.fileChanges[0].addedLines, 2);
-
-  assert.equal(data.deliverables.length, 2);
-  const docx = data.deliverables.find((d) => d.path === 'reports/summary.docx');
-  const xlsx = data.deliverables.find((d) => d.path === 'calc/bonus.xlsx');
-
-  assert.ok(docx);
-  assert.equal(docx.source, 'write');
-
-  assert.ok(xlsx);
-  assert.equal(xlsx.source, 'presented');
-  assert.equal(xlsx.description, '最终奖金测算底稿');
-  assert.equal(xlsx.time, 100000);
+  const before = structuredClone(history);
+  const [view] = foldChatItems(history);
+  assert.deepEqual(view.deliverables, [
+    { path: 'calc/bonus.xlsx', description: '最终奖金测算底稿' },
+    { path: 'reports/summary.docx', description: undefined },
+  ]);
+  assert.deepEqual(history, before);
 });
 
 test('任务进度文案对齐官方格式，按完成、进行中、待处理汇总并省略零项', () => {
@@ -298,21 +290,21 @@ test('对齐 DSH 官方投影生命周期：新轮次开始时清空上一轮待
     call('todo-1', 'todo_write', { todos: todosTurn1 }),
     event('turn/end', { turn: 1 }),
   ];
-  assert.deepEqual(foldPanelData(turn1History).todos, todosTurn1);
+  assert.deepEqual(foldTodos(turn1History), todosTurn1);
 
   // 2. 第2轮开始：turn/start 触发，上一轮任务自动重置为 null（输入框上方不残留悬浮条）
   const turn2StartHistory = [
     ...turn1History,
     event('turn/start', { turn: 2 }),
   ];
-  assert.equal(foldPanelData(turn2StartHistory).todos, null);
+  assert.equal(foldTodos(turn2StartHistory), null);
 
   // 3. 第2轮通过 DSH 原生 todo/write 事件写入新任务
   const turn2WriteHistory = [
     ...turn2StartHistory,
     event('todo/write', { todos: todosTurn2 }),
   ];
-  assert.deepEqual(foldPanelData(turn2WriteHistory).todos, todosTurn2);
+  assert.deepEqual(foldTodos(turn2WriteHistory), todosTurn2);
 });
 
 test('DSH 标准协议 tool/result 正常结算调用状态、耗时与排除失败调用', () => {
@@ -353,9 +345,8 @@ test('DSH 标准协议 tool/result 正常结算调用状态、耗时与排除失
   assert.equal(tool2.isError, true);
   assert.equal(tool2.resultTime, 5000);
 
-  // 验证 panelData 能够通过 failedCalls 排除失败的工具调用
-  const panel = foldPanelData(history);
-  assert.equal(panel.fileChanges.length, 0); // 失败的 edit 不会被计入 modified files
+  // 失败的工具调用不会进入任务清单折算（该轮没有成功 todo_write）
+  assert.equal(foldTodos(history), null);
 });
 
 

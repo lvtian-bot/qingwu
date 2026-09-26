@@ -1,4 +1,5 @@
 import type { MessageImageItem } from "./images";
+import type { TodoEntry } from "./TodoPanel";
 import type {
   AssistantBlockDelta,
   AssistantMessageData,
@@ -168,6 +169,12 @@ export interface TurnMetrics {
   answerRoute?: { provider: string; model: string };
 }
 
+/** 一轮收尾显式交付的文件（deliverables/presented 事件折叠）。 */
+export interface TurnDeliverable {
+  path: string;
+  description?: string;
+}
+
 /** 一轮的聚合视图：轮内条目 + 该轮是否收束 + 折叠行计数。 */
 export interface TurnView {
   turn: number;
@@ -184,6 +191,8 @@ export interface TurnView {
   answerKey: string | null;
   /** 收束轮次的用量与耗时指标（未收束或证据不足时缺省）。 */
   metrics?: TurnMetrics;
+  /** 本轮显式交付的文件（有才携带，收尾卡片渲染）。 */
+  deliverables?: TurnDeliverable[];
 }
 
 /**
@@ -383,6 +392,8 @@ export function foldChatItems(events: SessionEvent[]): TurnView[] {
   const endedTurns = new Set<number>();
   /** 已收束轮次的本地事件切片（turn/start → turn/end），供指标折叠。 */
   const turnSlices = new Map<number, SessionEvent[]>();
+  /** 每轮显式交付（deliverables/presented），同一路径保留最近一次的说明。 */
+  const turnDeliverables = new Map<number, TurnDeliverable[]>();
   let slice: SessionEvent[] | null = null;
   let lastUserTime: number | null = null;
   /** 当前事件所属轮次：优先 turn/start 声明，其次沿用上一条已知轮次。 */
@@ -475,6 +486,30 @@ export function foldChatItems(events: SessionEvent[]): TurnView[] {
       };
       tools.set(data.callId, item);
       items.push({ kind: "tool", key: `t-${event.seq}`, tool: item, turn });
+    } else if (event.type === "deliverables/presented") {
+      // present 工具成功交付：按事件自带轮次归拢（缺省沿用当前轮次）
+      const data = event.data as {
+        turn?: number;
+        files?: { path?: string; description?: string }[];
+      } | null;
+      const eventTurn = typeof data?.turn === "number" ? data.turn : turn;
+      if (!Array.isArray(data?.files)) continue;
+      let bucket = turnDeliverables.get(eventTurn);
+      if (!bucket) {
+        bucket = [];
+        turnDeliverables.set(eventTurn, bucket);
+      }
+      for (const file of data.files) {
+        if (typeof file?.path !== "string" || !file.path.trim()) continue;
+        const path = file.path.trim();
+        const description =
+          typeof file.description === "string" && file.description
+            ? file.description
+            : undefined;
+        const existing = bucket.find((item) => item.path === path);
+        if (existing) existing.description = description;
+        else bucket.push({ path, description });
+      }
     } else if (event.type === "tool/result") {
       const data = event.data as ToolResultEventData;
       const { callId, resultText, isError } = extractToolResult(data);
@@ -512,8 +547,52 @@ export function foldChatItems(events: SessionEvent[]): TurnView[] {
   for (const view of views) {
     const turnSlice = turnSlices.get(view.turn);
     if (turnSlice) view.metrics = deriveTurnMetrics(turnSlice, view.answerKey);
+    const deliverables = turnDeliverables.get(view.turn);
+    if (deliverables && deliverables.length > 0)
+      view.deliverables = deliverables;
   }
   return views;
+}
+
+/**
+ * 当前会话的任务清单（TodoPanel 数据源）。
+ * 对齐 DSH 官方 todos 投影：优先 todo/write 事件；兼容旧引擎的 todo_write
+ * 工具调用参数；新轮次开始即清空上一轮的清单。
+ */
+export function foldTodos(events: SessionEvent[]): TodoEntry[] | null {
+  const failedCalls = new Set<string>();
+  for (const event of events) {
+    if (event.type !== "tool/result") continue;
+    const data = event.data as ToolResultEventData | null;
+    const { callId, isError } = extractToolResult(data);
+    if (callId && isError) failedCalls.add(callId);
+  }
+
+  let todos: TodoEntry[] | null = null;
+  for (const event of events) {
+    if (event.type === "turn/start") {
+      todos = null;
+      continue;
+    }
+    if (event.type === "todo/write") {
+      const data = event.data as { todos?: TodoEntry[] } | null;
+      if (data && Array.isArray(data.todos)) todos = data.todos;
+      continue;
+    }
+    if (event.type === "tool/call") {
+      const data = event.data as ToolCallEventData | null;
+      if (!data || data.name !== "todo_write") continue;
+      if (typeof data.arguments !== "string" || failedCalls.has(data.callId))
+        continue;
+      try {
+        const args = JSON.parse(data.arguments) as { todos?: TodoEntry[] };
+        if (Array.isArray(args.todos)) todos = args.todos;
+      } catch {
+        // 参数非合法 JSON 时跳过该条
+      }
+    }
+  }
+  return todos;
 }
 
 /**

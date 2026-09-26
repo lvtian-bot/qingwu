@@ -1,421 +1,392 @@
 /**
- * 右侧工作区与交付成果面板（Files & Changes Panel）：
- * - 变更审查（Changes Review）：对齐 DSH changes-review 语义与 Codex 变更列表，支持 Diff 与 write 全量预览。
- * - 成果交付（Deliverables）：对齐 DSH deliverables/presented 语义，提供桌面级系统操作（打开、定位、复制）。
+ * 右侧面板壳（对齐官方 sidebar-right 的骨架语义）：
+ * - 没有标题行，tab 条就是整条上边；右上角是全屏与收起两个面板控件；
+ * - 两种形态：普通（会话区让位，宽度可拖）与全屏覆盖（窄窗自动全屏，
+ *   窄屏退出全屏即收起）；
+ * - 打开的页、选中页、宽度与呈现方式按会话存 localStorage；
+ * - 展开且为空时播种「开始页」；开始页是该格的落点页、不画关闭控件；
+ *   关闭最后一个非开始页时整列收起，布局回到空，下次展开再播种。
  */
-import { useMemo, useState } from 'react';
-import type { ReactNode } from 'react';
-import { DiffView } from './ToolCard';
-export type { TodoEntry } from './TodoPanel';
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from "react";
+import { basename, fileInfoOf } from "./panel/workspace-files";
+import {
+  defaultPanelLayout,
+  loadPanelLayout,
+  PANEL_DEFAULT_WIDTH,
+  PANEL_MAX_WIDTH,
+  PANEL_MIN_WIDTH,
+  savePanelLayout,
+  type PanelLayout,
+  type PanelTab,
+} from "./panel/layout";
+import { PanelGuide } from "./panel/PanelGuide";
+import { PanelFiles } from "./panel/PanelFiles";
+import { PanelPreview } from "./panel/PanelPreview";
+import {
+  CompassIcon,
+  FileGlyph,
+  PanelCollapseIcon,
+  PanelFullscreenIcon,
+} from "./panel/glyphs";
 
-export interface FileChangeEntry {
-  path: string;
-  edits: number;
-  writes: number;
-  /** 最近一次修改的 diff：edit 的前后片段，或 write 的完整内容。 */
-  lastEdit?: { oldStr: string; newStr: string };
-  addedLines?: number;
-  removedLines?: number;
-}
-
-export interface DeliverableItem {
-  path: string;
-  description?: string;
-  source: 'presented' | 'write';
-  time?: number;
+export interface RightPanelHandle {
+  /** 打开（或聚焦）工作区文件页；面板收起时先展开。 */
+  openFiles: () => void;
+  /** 打开（或聚焦）一个文件的预览页；面板收起时先展开。 */
+  openFile: (path: string) => void;
 }
 
 export interface RightPanelProps {
-  collapsed: boolean;
-  /** 面板宽度（拖拽调节），折叠态不消费。 */
-  width: number;
-  fileChanges: FileChangeEntry[];
-  deliverables?: DeliverableItem[];
-  workspacePath?: string | null;
-  /** 展开/收起面板；按钮在面板顶栏右缘，与会话标题栏的收起态按钮共用图标。 */
-  onToggle: () => void;
+  sessionId: string | null;
+  /** 会话工作目录（文件树根、终端打开目标）。 */
+  cwd?: string | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  /** 预览页点击图片时转交应用的大图浮层。 */
+  onPreviewImage?: (url: string) => void;
 }
 
-/** 面板开关图标：圆角矩形 + 左侧竖线（对齐官方右侧面板按钮）。 */
-export function PanelIcon(): ReactNode {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width="15"
-      height="15"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <rect x="3" y="4" width="18" height="16" rx="2" />
-      <path d="M9 4v16" />
-    </svg>
-  );
-}
+/** 窗口低于该宽度时打开面板自动进入全屏形态（对齐官方断点）。 */
+const NARROW_WINDOW_PX = 768;
 
-function basename(p: string): string {
-  return p.split(/[\\/]/).filter(Boolean).pop() ?? p;
-}
+export const RightPanel = forwardRef<RightPanelHandle, RightPanelProps>(
+  function RightPanel(
+    { sessionId, cwd, open, onOpenChange, onPreviewImage },
+    ref,
+  ) {
+    const [layout, setLayout] = useState<PanelLayout>(defaultPanelLayout);
+    const [narrow, setNarrow] = useState(
+      () => window.innerWidth < NARROW_WINDOW_PX,
+    );
+    const [dragging, setDragging] = useState(false);
+    /** 已为哪个会话载入过布局：避免切换会话的过渡期把默认布局写进存储。 */
+    const loadedForRef = useRef<string | null>(null);
+    /** 载入后吞掉一次持久化：setLayout 应用前的过渡帧会带着旧会话的布局。 */
+    const skipPersistRef = useRef(false);
 
-interface FileMetaInfo {
-  name: string;
-  ext: string;
-  type: 'doc' | 'sheet' | 'slide' | 'pdf' | 'text' | 'code' | 'zip' | 'file';
-  label: string;
-}
+    // 每会话载入布局（展开态由父层持有并注入）
+    useEffect(() => {
+      loadedForRef.current = null;
+      if (!sessionId) {
+        skipPersistRef.current = true;
+        setLayout(defaultPanelLayout());
+        return;
+      }
+      const saved = loadPanelLayout(sessionId);
+      skipPersistRef.current = true;
+      setLayout(saved);
+      loadedForRef.current = sessionId;
+      if (saved.expanded !== open) onOpenChange(saved.expanded);
+      // open 变化不触发重载：载入只跟随会话切换
+    }, [sessionId]);
 
-function getFileInfo(filePath: string): FileMetaInfo {
-  const name = basename(filePath);
-  const match = name.match(/\.([a-zA-Z0-9]+)$/);
-  const ext = match ? match[1].toLowerCase() : '';
+    // 布局或展开态变化即持久化（展开态并入存储，下次进会话还原）
+    useEffect(() => {
+      if (skipPersistRef.current) {
+        skipPersistRef.current = false;
+        return;
+      }
+      if (!sessionId || loadedForRef.current !== sessionId) return;
+      savePanelLayout(sessionId, { ...layout, expanded: open });
+    }, [sessionId, layout, open]);
 
-  if (ext === 'docx' || ext === 'doc') {
-    return { name, ext: ext.toUpperCase(), type: 'doc', label: 'DOC' };
-  }
-  if (ext === 'xlsx' || ext === 'xls' || ext === 'csv' || ext === 'tsv') {
-    return { name, ext: ext.toUpperCase(), type: 'sheet', label: ext === 'csv' ? 'CSV' : 'XLS' };
-  }
-  if (ext === 'pptx' || ext === 'ppt') {
-    return { name, ext: ext.toUpperCase(), type: 'slide', label: 'PPT' };
-  }
-  if (ext === 'pdf') {
-    return { name, ext: 'PDF', type: 'pdf', label: 'PDF' };
-  }
-  if (ext === 'md' || ext === 'markdown') {
-    return { name, ext: 'MD', type: 'text', label: 'MD' };
-  }
-  if (ext === 'txt' || ext === 'log') {
-    return { name, ext: 'TXT', type: 'text', label: 'TXT' };
-  }
-  if (['ts', 'tsx', 'js', 'jsx', 'json', 'py', 'html', 'css', 'ps1', 'sh', 'sql', 'yaml', 'yml'].includes(ext)) {
-    return { name, ext: ext.toUpperCase(), type: 'code', label: ext.toUpperCase() };
-  }
-  if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) {
-    return { name, ext: ext.toUpperCase(), type: 'zip', label: 'ZIP' };
-  }
-  return { name, ext: ext.toUpperCase() || 'FILE', type: 'file', label: ext.toUpperCase() || 'FILE' };
-}
+    // 窗口宽度断点
+    useEffect(() => {
+      const onResize = () => setNarrow(window.innerWidth < NARROW_WINDOW_PX);
+      window.addEventListener("resize", onResize);
+      return () => window.removeEventListener("resize", onResize);
+    }, []);
 
-export function RightPanel({
-  collapsed,
-  width,
-  fileChanges,
-  deliverables = [],
-  workspacePath,
-  onToggle,
-}: RightPanelProps) {
-  const [activeTab, setActiveTab] = useState<'changes' | 'deliverables'>('changes');
-  const [expandedPath, setExpandedPath] = useState<string | null>(null);
-  const [copiedPath, setCopiedPath] = useState<string | null>(null);
+    // 展开（或收起后）时保证有内容：空布局播种开始页
+    useEffect(() => {
+      if (!open || !sessionId || layout.tabs.length > 0) return;
+      setLayout((prev) =>
+        prev.tabs.length > 0
+          ? prev
+          : { ...prev, tabs: [{ id: "guide", kind: "guide" }], activeTabId: "guide" },
+      );
+    }, [open, sessionId, layout.tabs.length]);
 
-  const handleCopyPath = async (pathStr: string) => {
-    try {
-      await navigator.clipboard.writeText(pathStr);
-      setCopiedPath(pathStr);
-      window.setTimeout(() => setCopiedPath(null), 1500);
-    } catch {
-      // 忽略剪贴板不可用
-    }
-  };
+    const focusOrCreate = useCallback(
+      (tab: PanelTab, opts?: { replaceGuide?: boolean }) => {
+        setLayout((prev) => {
+          if (prev.tabs.some((t) => t.id === tab.id)) {
+            return { ...prev, activeTabId: tab.id };
+          }
+          let tabs = prev.tabs;
+          const guideIndex = opts?.replaceGuide
+            ? tabs.findIndex((t) => t.kind === "guide")
+            : -1;
+          if (guideIndex >= 0) {
+            tabs = tabs.map((t, i) => (i === guideIndex ? tab : t));
+          } else {
+            tabs = [...tabs, tab];
+          }
+          return { ...prev, tabs, activeTabId: tab.id };
+        });
+      },
+      [],
+    );
 
-  const handleOpenPath = (targetPath: string) => {
-    void window.qingwu?.openPath?.(targetPath);
-  };
+    const openFiles = useCallback(() => {
+      onOpenChange(true);
+      focusOrCreate({ id: "files", kind: "files" }, { replaceGuide: true });
+    }, [focusOrCreate, onOpenChange]);
 
-  const handleShowInFolder = (targetPath: string) => {
-    void window.qingwu?.showItemInFolder?.(targetPath);
-  };
+    const openFile = useCallback(
+      (path: string) => {
+        if (!path) return;
+        onOpenChange(true);
+        focusOrCreate({ id: `preview:${path}`, kind: "preview", path });
+      },
+      [focusOrCreate, onOpenChange],
+    );
 
-  const handleOpenTerminal = () => {
-    void window.qingwu?.openTerminal?.(workspacePath ?? undefined);
-  };
+    useImperativeHandle(ref, () => ({ openFiles, openFile }), [
+      openFiles,
+      openFile,
+    ]);
 
-  const handleOpenWorkspace = () => {
-    void window.qingwu?.openPath?.(workspacePath ?? '');
-  };
+    const closeTab = useCallback(
+      (tabId: string) => {
+        setLayout((prev) => {
+          const index = prev.tabs.findIndex((t) => t.id === tabId);
+          if (index < 0) return prev;
+          const tabs = prev.tabs.filter((t) => t.id !== tabId);
+          if (tabs.length === 0) {
+            // 官方规则：关闭最后一个非开始页时整列收起，布局保持为空
+            onOpenChange(false);
+            return { ...prev, tabs, activeTabId: null };
+          }
+          const activeTabId =
+            prev.activeTabId === tabId
+              ? tabs[Math.min(index, tabs.length - 1)].id
+              : prev.activeTabId;
+          return { ...prev, tabs, activeTabId };
+        });
+      },
+      [onOpenChange],
+    );
 
-  // 排序交付物：优先展示显式交付（presented），随后是新建全量写入
-  const sortedDeliverables = useMemo(() => {
-    return [...deliverables].sort((a, b) => {
-      if (a.source === 'presented' && b.source !== 'presented') return -1;
-      if (b.source === 'presented' && a.source !== 'presented') return 1;
-      return (b.time ?? 0) - (a.time ?? 0);
-    });
-  }, [deliverables]);
+    const fullscreen = layout.fullscreen || narrow;
 
-  if (collapsed) return null;
+    const toggleFullscreen = useCallback(() => {
+      // 窄屏下全屏是自动形态：退出即收起（变宽不重新打开已关闭的面板）
+      if (narrow) {
+        onOpenChange(false);
+        return;
+      }
+      setLayout((prev) => ({ ...prev, fullscreen: !prev.fullscreen }));
+    }, [narrow, onOpenChange]);
 
-  return (
-    <aside className="native-panel" style={{ width }} aria-label="工作区与交付成果面板">
-      {/* 紧凑 Header (36px, 对齐 Codex) */}
-      <div className="native-panel-header">
-        <div className="native-panel-tabs">
-          <button
-            type="button"
-            className={`native-panel-tab ${activeTab === 'changes' ? 'active' : ''}`}
-            onClick={() => setActiveTab('changes')}
-          >
-            <span>变更</span>
-            {fileChanges.length > 0 && (
-              <span className="native-panel-tab-badge">{fileChanges.length}</span>
-            )}
-          </button>
-          <button
-            type="button"
-            className={`native-panel-tab ${activeTab === 'deliverables' ? 'active' : ''}`}
-            onClick={() => setActiveTab('deliverables')}
-          >
-            <span>交付成果</span>
-            {sortedDeliverables.length > 0 && (
-              <span className="native-panel-tab-badge">{sortedDeliverables.length}</span>
-            )}
-          </button>
-        </div>
+    // 宽度拖拽（仅普通展开态显示）
+    const dragRef = useRef<{ startX: number; startWidth: number } | null>(null);
+    const onResizerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      dragRef.current = { startX: event.clientX, startWidth: layout.width };
+      event.currentTarget.setPointerCapture(event.pointerId);
+      setDragging(true);
+    };
+    const onResizerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+      const drag = dragRef.current;
+      if (!drag) return;
+      const max = Math.min(PANEL_MAX_WIDTH, Math.floor(window.innerWidth * 0.5));
+      const width = Math.min(
+        max,
+        Math.max(PANEL_MIN_WIDTH, drag.startWidth + (drag.startX - event.clientX)),
+      );
+      setLayout((prev) => ({ ...prev, width }));
+    };
+    const onResizerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+      dragRef.current = null;
+      setDragging(false);
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    };
 
-        <div className="native-panel-actions">
+    if (!open) return null;
+
+    return (
+      <div
+        className={`native-panel${fullscreen ? " fullscreen" : ""}${
+          dragging ? " dragging" : ""
+        }`}
+        style={fullscreen ? undefined : { width: layout.width }}
+        role="complementary"
+        aria-label="工作区面板"
+      >
+        {!fullscreen && (
+          <div
+            className="native-panel-resizer"
+            role="separator"
+            aria-orientation="vertical"
+            title="拖动调节宽度，双击复位"
+            onPointerDown={onResizerDown}
+            onPointerMove={onResizerMove}
+            onPointerUp={onResizerUp}
+            onDoubleClick={() =>
+              setLayout((prev) => ({ ...prev, width: PANEL_DEFAULT_WIDTH }))
+            }
+          />
+        )}
+        <div className="native-panel-tabstrip" role="tablist">
+          {layout.tabs.map((tab) => (
+            <TabChip
+              key={tab.id}
+              tab={tab}
+              active={tab.id === layout.activeTabId}
+              onlyTab={layout.tabs.length === 1}
+              onActivate={() =>
+                setLayout((prev) => ({ ...prev, activeTabId: tab.id }))
+              }
+              onClose={() => closeTab(tab.id)}
+            />
+          ))}
+          <span className="native-panel-strip-spacer" />
           <button
             type="button"
             className="native-icon-btn"
-            onClick={handleOpenWorkspace}
-            title="在资源管理器中打开工作区"
-            aria-label="在资源管理器中打开工作区"
+            onClick={toggleFullscreen}
+            title={fullscreen ? "退出全屏" : "全屏"}
+            aria-label={fullscreen ? "退出全屏" : "全屏"}
           >
-            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M1.5 3.5a1 1 0 0 1 1-1h3.5l1.5 2h6a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1v-8z" />
-            </svg>
+            <PanelFullscreenIcon active={fullscreen} />
           </button>
           <button
             type="button"
             className="native-icon-btn"
-            onClick={handleOpenTerminal}
-            title="在终端中打开工作区"
-            aria-label="在终端中打开工作区"
-          >
-            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M2.5 3.5h11a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1z" />
-              <path d="M5 6.5l2 1.5-2 1.5M9 9.5h2" />
-            </svg>
-          </button>
-          <button
-            type="button"
-            className="native-icon-btn"
-            onClick={onToggle}
+            onClick={() => onOpenChange(false)}
             title="收起面板"
             aria-label="收起面板"
           >
-            <PanelIcon />
+            <PanelCollapseIcon />
           </button>
         </div>
+        <div className="native-panel-body">
+          {layout.tabs.map((tab) => (
+            <div
+              key={tab.id}
+              className="native-panel-page"
+              data-active={tab.id === layout.activeTabId || undefined}
+              role="tabpanel"
+            >
+              {tab.kind === "guide" && (
+                <PanelGuide
+                  onOpenFiles={openFiles}
+                  onOpenTerminal={() =>
+                    void window.qingwu?.openTerminal?.(cwd ?? undefined)
+                  }
+                />
+              )}
+              {tab.kind === "files" && (
+                <PanelFiles
+                  sessionId={sessionId}
+                  cwd={cwd}
+                  onOpenFile={openFile}
+                />
+              )}
+              {tab.kind === "preview" && (
+                <PanelPreview
+                  sessionId={sessionId}
+                  path={tab.path}
+                  onPreviewImage={onPreviewImage}
+                />
+              )}
+            </div>
+          ))}
+        </div>
       </div>
+    );
+  },
+);
 
-      <div className="native-panel-body">
-        {activeTab === 'changes' ? (
-          /* ---------- 视图 A: Changes 变更审查 ---------- */
-          <div className="native-panel-changes">
-            {fileChanges.length > 0 ? (
-              <div className="native-panel-files">
-                {fileChanges.map((change) => {
-                  const info = getFileInfo(change.path);
-                  const isExpanded = expandedPath === change.path;
-                  const isNewWrite = change.writes > 0 && change.edits === 0;
+/** tab 条上的一枚页签：开始页永远没有关闭控件；其余页关闭按钮悬停浮现。 */
+function TabChip({
+  tab,
+  active,
+  onlyTab,
+  onActivate,
+  onClose,
+}: {
+  tab: PanelTab;
+  active: boolean;
+  onlyTab: boolean;
+  onActivate: () => void;
+  onClose: () => void;
+}) {
+  const guideQuiet = tab.kind === "guide" && onlyTab;
+  return (
+    <div
+      className={`native-panel-chip${active ? " active" : ""}${
+        guideQuiet ? " quiet" : ""
+      }`}
+      role="tab"
+      aria-selected={active}
+      onClick={onActivate}
+      title={tab.kind === "preview" ? tab.path : undefined}
+    >
+      <span className="native-panel-chip-icon">
+        {tab.kind === "guide" && <CompassIcon size={13} />}
+        {tab.kind === "files" && <FilesChipIcon />}
+        {tab.kind === "preview" && <FileGlyph info={fileInfoOf(tab.path)} size={13} />}
+      </span>
+      <span className="native-panel-chip-label">
+        {tab.kind === "guide" && "开始"}
+        {tab.kind === "files" && "工作区文件"}
+        {tab.kind === "preview" && basename(tab.path)}
+      </span>
+      {!guideQuiet && (
+        <button
+          type="button"
+          className="native-panel-chip-close"
+          onClick={(event) => {
+            event.stopPropagation();
+            onClose();
+          }}
+          title="关闭"
+          aria-label={`关闭 ${tab.kind === "preview" ? basename(tab.path) : "页签"}`}
+        >
+          <svg
+            viewBox="0 0 16 16"
+            width="10"
+            height="10"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+            aria-hidden="true"
+          >
+            <path d="m4 4 8 8M12 4l-8 8" />
+          </svg>
+        </button>
+      )}
+    </div>
+  );
+}
 
-                  return (
-                    <div key={change.path} className={`native-panel-file ${isExpanded ? 'expanded' : ''}`}>
-                      <button
-                        type="button"
-                        className="native-panel-file-row"
-                        onClick={() =>
-                          setExpandedPath((prev) => (prev === change.path ? null : change.path))
-                        }
-                        title={change.path}
-                      >
-                        <svg
-                          viewBox="0 0 16 16"
-                          width="12"
-                          height="12"
-                          fill="currentColor"
-                          className={`native-panel-chevron ${isExpanded ? 'open' : ''}`}
-                          aria-hidden="true"
-                        >
-                          <path d="M6.2 3.2a.75.75 0 0 0 0 1.1L9.4 8l-3.2 3.7a.75.75 0 1 0 1.1 1.1l3.75-4.25a.75.75 0 0 0 0-1.1L7.3 3.2a.75.75 0 0 0-1.1 0z" />
-                        </svg>
-
-                        <span className={`native-file-badge native-file-badge-xs ${info.type}`}>
-                          {info.label}
-                        </span>
-
-                        <span className="native-panel-file-name">{info.name}</span>
-
-                        <span className="native-panel-file-meta">
-                          {isNewWrite ? (
-                            <span className="native-meta-new">
-                              写入 {change.addedLines ? `${change.addedLines} 行` : ''}
-                            </span>
-                          ) : (
-                            <span className="native-meta-lines">
-                              {typeof change.addedLines === 'number' && change.addedLines > 0 && (
-                                <span className="native-diff-add-num">+{change.addedLines}</span>
-                              )}
-                              {typeof change.removedLines === 'number' && change.removedLines > 0 && (
-                                <span className="native-diff-del-num">-{change.removedLines}</span>
-                              )}
-                              {!change.addedLines && !change.removedLines && change.edits + change.writes > 1 && (
-                                <span>{change.edits + change.writes} 次</span>
-                              )}
-                            </span>
-                          )}
-                        </span>
-                      </button>
-
-                      {isExpanded && (
-                        <div className="native-panel-file-detail">
-                          <div className="native-panel-detail-bar">
-                            <span className="native-tool-filepath" title={change.path}>
-                              {change.path}
-                            </span>
-                            <div className="native-panel-detail-actions">
-                              <button
-                                type="button"
-                                className="native-btn-ghost-xs"
-                                onClick={() => void handleOpenPath(change.path)}
-                                title="用系统默认程序打开"
-                              >
-                                打开
-                              </button>
-                              <button
-                                type="button"
-                                className="native-btn-ghost-xs"
-                                onClick={() => void handleShowInFolder(change.path)}
-                                title="在资源管理器中定位"
-                              >
-                                定位
-                              </button>
-                              <button
-                                type="button"
-                                className="native-btn-ghost-xs"
-                                onClick={() => void handleCopyPath(change.path)}
-                                title="复制路径"
-                              >
-                                {copiedPath === change.path ? '已复制' : '复制'}
-                              </button>
-                            </div>
-                          </div>
-
-                          {isNewWrite && change.lastEdit?.newStr ? (
-                            <div className="native-file-write-preview">
-                              <div className="native-write-banner">
-                                <span>新建文件 · 写入 {change.addedLines ?? change.lastEdit.newStr.split('\n').length} 行</span>
-                              </div>
-                              <pre className="native-write-code">
-                                <code>{change.lastEdit.newStr}</code>
-                              </pre>
-                            </div>
-                          ) : change.lastEdit ? (
-                            <DiffView oldStr={change.lastEdit.oldStr} newStr={change.lastEdit.newStr} />
-                          ) : (
-                            <div className="native-panel-empty">已修改，无差异记录</div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="native-panel-empty">本会话暂无文件变更</div>
-            )}
-          </div>
-        ) : (
-          /* ---------- 视图 B: Deliverables 成果交付 ---------- */
-          <div className="native-panel-deliverables">
-            {sortedDeliverables.length > 0 ? (
-              <div className="native-deliverables-list">
-                {sortedDeliverables.map((item) => {
-                  const info = getFileInfo(item.path);
-                  const isCopied = copiedPath === item.path;
-
-                  return (
-                    <div key={item.path} className="native-deliverable-card">
-                      <div className="native-deliverable-header">
-                        <span className={`native-file-badge ${info.type}`}>
-                          {info.label}
-                        </span>
-                        <div className="native-deliverable-title-box">
-                          <span className="native-deliverable-title" title={info.name}>
-                            {info.name}
-                          </span>
-                          {item.description && (
-                            <span className="native-deliverable-desc" title={item.description}>
-                              {item.description}
-                            </span>
-                          )}
-                          <span className="native-deliverable-sub" title={item.path}>
-                            {item.path}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="native-deliverable-actions">
-                        <button
-                          type="button"
-                          className="native-btn-ghost-sm"
-                          onClick={() => handleOpenPath(item.path)}
-                          title="使用系统默认程序打开该文件"
-                        >
-                          <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M12 9v4a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h4" />
-                            <path d="M9 2h5v5M6.5 9.5L14 2" />
-                          </svg>
-                          <span>打开</span>
-                        </button>
-                        <button
-                          type="button"
-                          className="native-btn-ghost-sm"
-                          onClick={() => handleShowInFolder(item.path)}
-                          title="在 Windows 资源管理器中定位并高亮此文件"
-                        >
-                          <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M1.5 3.5a1 1 0 0 1 1-1h3.5l1.5 2h6a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1v-8z" />
-                          </svg>
-                          <span>定位</span>
-                        </button>
-                        <button
-                          type="button"
-                          className={`native-btn-ghost-sm ${isCopied ? 'copied' : ''}`}
-                          onClick={() => void handleCopyPath(item.path)}
-                          title="复制文件路径"
-                        >
-                          {isCopied ? (
-                            <>
-                              <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M13.5 4.5l-7 7-3.5-3.5" />
-                              </svg>
-                              <span>已复制</span>
-                            </>
-                          ) : (
-                            <>
-                              <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                                <rect x="5.5" y="5.5" width="8" height="8" rx="1.5" />
-                                <path d="M3.5 10.5h-1a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v1" />
-                              </svg>
-                              <span>复制</span>
-                            </>
-                          )}
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="native-panel-empty">本会话暂未生成交付成果</div>
-            )}
-          </div>
-        )}
-      </div>
-    </aside>
+function FilesChipIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="13"
+      height="13"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="M1.5 4.2c0-.94.76-1.7 1.7-1.7h2.9c.55 0 1.07.26 1.4.7l.55.73c.24.32.62.5 1.02.5h3.73c.94 0 1.7.77 1.7 1.7v6.17c0 .94-.76 1.7-1.7 1.7H3.2a1.7 1.7 0 0 1-1.7-1.7z"
+        fill="#F0B429"
+      />
+      <path
+        d="M1.5 5.6c0-.7.63-1.22 1.32-1.1l11.4 1.95c.51.09.88.53.88 1.05v5.8c0 .94-.76 1.7-1.7 1.7H3.2a1.7 1.7 0 0 1-1.7-1.7z"
+        fill="#F6C445"
+      />
+    </svg>
   );
 }

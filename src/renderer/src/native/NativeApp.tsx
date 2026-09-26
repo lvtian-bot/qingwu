@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChatWidth } from "../../../shared/types";
 import { Markdown } from "./markdown";
 import "./native.css";
-import { foldPanelData } from "./panel-data";
+import { foldTodos, type QueuedItem } from "./events";
 import {
   Endpoints,
   type CommandExecution,
@@ -18,7 +18,10 @@ import {
 } from "./slash-commands";
 import { type FileReferenceCandidate } from "./file-mentions";
 import { ReasoningRow } from "./ReasoningRow";
-import { PanelIcon, RightPanel } from "./RightPanel";
+import { RightPanel } from "./RightPanel";
+import type { RightPanelHandle } from "./RightPanel";
+import { PanelRightIcon } from "./panel/glyphs";
+import { loadPanelLayout } from "./panel/layout";
 import { ChevronDownIcon } from "./native-icons";
 import { TodoPanel } from "./TodoPanel";
 import { usePanelWidth } from "./usePanelWidth";
@@ -40,7 +43,6 @@ import { sessionTitle } from "./sidebar-data";
 import { TurnItems } from "./TurnItems";
 import { WorkspaceChip } from "./WorkspaceChip";
 import { SettingsPage } from "./SettingsPage";
-import type { QueuedItem } from "./events";
 import { useChatScroll, useChatScrollFollow } from "./useChatScroll";
 import { useComposerDrafts } from "./useComposerDrafts";
 import { useEngineConnection } from "./useEngineConnection";
@@ -84,8 +86,16 @@ export function NativeApp({
   const handleCloseLightbox = useCallback(() => {
     setLightboxUrl(null);
   }, []);
-  /** 右侧面板折叠态（默认收起，需要时再展开）。 */
-  const [panelCollapsed, setPanelCollapsed] = useState(true);
+  /**
+   * 右侧面板展开态（默认收起）。展开态按会话记忆：切会话时恢复该会话
+   * 上次的展开状态（存储由面板模块管理，这里只读初值、变更由面板回写）。
+   */
+  const [panelOpen, setPanelOpen] = useState(false);
+  const panelRef = useRef<RightPanelHandle>(null);
+  /** 会话流里的交付卡片、文件链接等入口：在面板中打开（预览）文件。 */
+  const openFileInPanel = useCallback((path: string) => {
+    panelRef.current?.openFile(path);
+  }, []);
   const [error, setError] = useState<string | null>(null);
   /** 正在处理的队列操作条目 id（按钮禁用态）。 */
   const [queueBusyId, setQueueBusyId] = useState<string | null>(null);
@@ -117,13 +127,6 @@ export function NativeApp({
     defaultWidth: 232,
     min: 180,
     max: 400,
-  });
-  /** 右侧面板宽度（拖拽调节，localStorage 记忆，双击复位）。 */
-  const rightPanel = usePanelWidth({
-    storageKey: "qingwu.native.panelWidth",
-    defaultWidth: 300,
-    min: 220,
-    max: 480,
   });
 
   const { dshConnected, reconnecting, handleManualReconnect } =
@@ -307,6 +310,11 @@ export function NativeApp({
     qingwu.setActiveWorkspacePath?.(activeWorkspace?.path ?? null);
   }, [activeWorkspace, qingwu]);
 
+  // 切会话恢复该会话的面板展开态（每会话独立，存储由面板模块管理）
+  useEffect(() => {
+    setPanelOpen(loadPanelLayout(currentId).expanded);
+  }, [currentId]);
+
   // 若当前打开的会话在外部被归档，清空选中态回退引导页
   useEffect(() => {
     if (currentId && archivedSet.has(currentId)) {
@@ -396,7 +404,7 @@ export function NativeApp({
     return mergeCommands(hostCommands, CLIENT_COMMANDS, skills);
   }, [hostCommands, skills]);
 
-  const panelData = useMemo(() => foldPanelData(eventsRef.current), [items]);
+  const todos = useMemo(() => foldTodos(eventsRef.current), [items]);
 
   const handleExecuteCommand = async (
     line: string,
@@ -731,6 +739,20 @@ export function NativeApp({
         return;
       }
 
+      // 打开工作区文件页：Ctrl+P（对齐官方 workspace.files 默认键）
+      if ((e.ctrlKey || e.metaKey) && (e.key === "p" || e.key === "P")) {
+        e.preventDefault();
+        panelRef.current?.openFiles();
+        return;
+      }
+
+      // 在系统终端打开会话工作区：Ctrl+`
+      if ((e.ctrlKey || e.metaKey) && e.key === "`") {
+        e.preventDefault();
+        void qingwu.openTerminal?.(currentCwd ?? activeWorkspace?.path ?? undefined);
+        return;
+      }
+
       // 连按两次 Esc 中断当前会话（对齐 Codex 等工具的快捷叫停与防误触机制）
       if (e.key === "Escape") {
         // 若事件已被内层浮层或弹层消费（如 @ 补全下拉、/ 命令菜单、大图预览或设置页），重置计数并忽略
@@ -764,7 +786,7 @@ export function NativeApp({
       unsubOpenSettings?.();
       window.removeEventListener("keydown", handleGlobalKeyDown);
     };
-  }, [settingsOpen, lightboxUrl, running, currentId]);
+  }, [settingsOpen, lightboxUrl, running, currentId, currentCwd, activeWorkspace]);
 
   // 主进程点击系统桌面通知经 IPC 调度进入对应会话
   useEffect(() => {
@@ -814,17 +836,17 @@ export function NativeApp({
     ? (workspaceOfSession.get(currentId) ?? null)
     : activeWorkspaceId;
 
-  // 面板展开后按钮由面板顶栏右缘接管，按钮始终贴窗口右缘
-  const panelToggleButton = panelCollapsed ? (
-    <button
-      className="native-icon-btn"
-      onClick={() => setPanelCollapsed((v) => !v)}
-      title="打开面板"
-      aria-label="打开面板"
-    >
-      <PanelIcon />
-    </button>
-  ) : null;
+  const panelToggleButton =
+    !panelOpen && currentId ? (
+      <button
+        className="native-icon-btn"
+        onClick={() => setPanelOpen(true)}
+        title="打开面板"
+        aria-label="打开面板"
+      >
+        <PanelRightIcon />
+      </button>
+    ) : null;
 
   return (
     <div className={`native-app${!sidebarCollapsed ? " has-sidebar" : ""}`}>
@@ -964,6 +986,8 @@ export function NativeApp({
                           ? (atSeq) => handleSessionFork(currentId, atSeq)
                           : undefined
                       }
+                      deliverables={view.deliverables}
+                      onOpenFile={openFileInPanel}
                     />
                   ))}
                   {liveReasoning && !draft && (
@@ -1028,7 +1052,7 @@ export function NativeApp({
             {/* 授权/问答等待期间顶替输入框（对齐各 harness 客户端：决策弹层占输入框的槽位） */}
             <div className="native-composer">
               <div className="native-composer-stack">
-                <TodoPanel todos={panelData.todos} />
+                <TodoPanel todos={todos} />
                 <QueueStrip
                   items={[...queue, ...echoes]}
                   running={running}
@@ -1089,23 +1113,13 @@ export function NativeApp({
         <LightboxModal src={lightboxUrl} onClose={handleCloseLightbox} />
       )}
 
-      {!panelCollapsed && (
-        <div
-          className="native-resizer"
-          role="separator"
-          aria-orientation="vertical"
-          title="拖动调节宽度，双击复位"
-          onPointerDown={(e) => rightPanel.startDrag(e, -1)}
-          onDoubleClick={rightPanel.reset}
-        />
-      )}
       <RightPanel
-        collapsed={panelCollapsed}
-        width={rightPanel.width}
-        fileChanges={panelData.fileChanges}
-        deliverables={panelData.deliverables}
-        workspacePath={activeWorkspace?.path}
-        onToggle={() => setPanelCollapsed((v) => !v)}
+        ref={panelRef}
+        sessionId={currentId}
+        cwd={currentCwd}
+        open={panelOpen}
+        onOpenChange={setPanelOpen}
+        onPreviewImage={handlePreviewImage}
       />
 
       {settingsOpen && (

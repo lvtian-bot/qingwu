@@ -13,6 +13,7 @@ const virtualPath = path.join(__dirname, "contract-installed-dsh.virtual.ts");
 const contract = `
 import type {} from '@deepseek-ai/dsh-api-session-controller/remote';
 import type {} from '@deepseek-ai/dsh-api-workspace-controller/remote';
+import type {} from '@deepseek-ai/dsh-api-workspace-files/remote';
 import type {} from '@deepseek-ai/dsh-api-settings-controller/remote';
 import type {} from '@deepseek-ai/dsh-commands/remote';
 import type {} from '@deepseek-ai/dsh-llm/remote';

@@ -45,8 +45,72 @@ export const Endpoints = {
   workspaceUnarchiveSession: 'workspace/unarchiveSession',
   directoryPickerPick: 'directoryPicker/pick',
   fileReferencesList: 'fileReferences/list',
+  workspaceFilesList: 'workspaceFiles/list',
+  workspaceFilesStat: 'workspaceFiles/stat',
+  workspaceFilesRead: 'workspaceFiles/read',
+  /** 流模式 Remote：按目标路径监听文件/直接子项变化（经 remote.mux 逻辑流）。 */
+  workspaceFilesChanges: 'workspaceFiles/changes',
   eventsResult: '$events/result',
 } as const;
+
+// ---------- workspaceFiles（引擎 workspace-files 插件的 Remote 命名空间） ----------
+
+/**
+ * workspaceFiles 各方法的首个线上参数：授权 scope，值就是会话 id
+ * （Host 按 Session 身份解析文件系统；wire 名由引擎 Typert 契约固定）。
+ */
+export interface WorkspaceFilesScope {
+  workspaceFileScopeId: string;
+}
+
+/** 一个工作区文件的身份与新鲜度（不含内容）。 */
+export interface WorkspaceFileStat {
+  /** 文件在执行环境中的绝对路径（符号链接已解析）。 */
+  absolutePath: string;
+  /** 不透明的新鲜度标记，只用于比较，绝不解析。 */
+  version: string;
+  /** 整文件字节大小（后端能报告时携带）。 */
+  bytes?: number;
+}
+
+/** 一次分页文本读取返回的行窗口。 */
+export interface WorkspaceFileTextPage extends WorkspaceFileStat {
+  /** 本页首行（1 起算，按请求回显）。 */
+  offset: number;
+  /** 本页各行以 \n 连接，末行之后无终止符。 */
+  text: string;
+  /** 本页行数。 */
+  lines: number;
+  /** 本页是否包含文件最后一行。 */
+  eof: boolean;
+}
+
+/** 一个被列举目录的直接子项。 */
+export interface WorkspaceDirectoryEntry {
+  name: string;
+  type: 'file' | 'directory' | 'other';
+  /** 普通文件且后端能报告时携带。 */
+  size?: number;
+}
+
+/** 一次目录列举的结果：工作区相对路径 + 直接子项。 */
+export interface WorkspaceDirectoryListing {
+  /** 被列举目录相对工作区根的路径，根目录本身为空串。 */
+  path: string;
+  entries: WorkspaceDirectoryEntry[];
+  /** 子项数超出引擎条目上限时为 true。 */
+  truncated: boolean;
+}
+
+/** workspaceFiles/changes 流的帧：先 ready，随后为单个失效通知。 */
+export type WorkspaceWatchFrame =
+  | { kind: 'ready' }
+  | {
+      kind: 'change';
+      change:
+        | { absolutePath: string; version: string }
+        | { absolutePath: string; absent: true };
+    };
 
 // ---------- 模型目录与选择（0.1.2 wire 实测形状） ----------
 
