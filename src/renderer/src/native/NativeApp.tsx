@@ -310,7 +310,7 @@ export function NativeApp({
 
   const sidebar = useSessionSidebar(sessions, workspaces, archivedSet);
 
-  /** 会话 id → 摘要（待处理项归位要按 parentSessionId 找根会话）。 */
+  /** 会话 id → 摘要（待处理项归位要沿 parentSessionId 找归属会话）。 */
   const sessionById = useMemo(
     () => new Map(sessions.map((s) => [s.sessionId, s])),
     [sessions],
