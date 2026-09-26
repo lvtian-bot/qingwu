@@ -19,7 +19,8 @@ description: 发布青梧 Windows 桌面客户端版本时使用；覆盖版本�
 1. 将 `docs/TODO.md` 中属于本次版本且已勾选的事项移入 `docs/TODO-ARCHIVE.md` 的 `## vX.Y.Z（YYYY-MM-DD）` 小节；未完成事项留在原处。
 2. 同步更新 `package.json`、`package-lock.json` 的版本，检查两处一致；`CHANGELOG.md` 由发布工作流中的 git-cliff 生成，不手工编辑。
 3. 运行 `npm run check`。本次改动涉及桌面交互时验证对应界面；涉及 DSH 引擎时验证青梧界面、DeepSeek 界面与命令执行。失败或无法验证的部分须查明并说明，不能仅凭构建通过宣布可发布。
-4. 仅提交本次版本变更，提交主题为 `chore: release vX.Y.Z`。推送 `master` 并确认 Quality 工作流通过，再创建与包版本一致、指向该发布提交的 `vX.Y.Z` 标签并推送。推送标签会启动对外发布。
+4. 发布产生的本地提交按提交粒度规范收敛：功能改动各自成提交，版本号与 TODO 归档并入 `chore: release vX.Y.Z` 一个提交；`CHANGELOG.md` 由发布工作流生成，不属于本地提交。推送 `master` 并确认 Quality 工作流通过，再创建与包版本一致、指向该发布提交的 `vX.Y.Z` 标签并推送。推送标签会启动对外发布。
+5. 已发布版本不作重打；缺陷通过下一个版本修复。历史遗留的 v0.2.4 标签曾脱离 `master` 历史重打，发布 v0.2.5 前先核对 CHANGELOG 的生成区间，条目重复时显式指定提交范围修正。
 
 ## 核对发布结果
 
