@@ -25,7 +25,7 @@ export type ChatWidth = 'narrow' | 'medium' | 'wide';
 
 export const CHAT_WIDTHS: readonly ChatWidth[] = ['narrow', 'medium', 'wide'];
 
-/** 青梧应用级本地配置（存储于用户数据目录 settings.json）。 */
+/** 青梧应用级配置（存储于 dsh profile 目录 app-settings.json，与引擎配置同住 ~/.dsh）。 */
 export interface AppSettings {
   /** 窗口关闭行为：true 为最小化到托盘，false 为直接退出。 */
   closeToTray: boolean;
