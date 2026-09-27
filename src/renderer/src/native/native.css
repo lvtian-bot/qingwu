@@ -2770,13 +2770,15 @@ body.native-ui-active .titlebar {
   cursor: default;
 }
 
-/* 输入框工具行选择器（权限贴左，模型与推理强度贴右） */
+/* 输入框工具行选择器（权限贴左，模型与推理强度贴右）。
+ * 自身是容器：窄宽档位按控件组实测宽度逐级收起胶囊文字（见下方 @container）。 */
 .native-composer-controls {
   display: flex;
   align-items: center;
   gap: 6px;
   flex: 1;
   min-width: 0;
+  container-type: inline-size;
 }
 
 /* 权限贴左、模型组贴右的分隔（控件组内部的弹性空隙） */
@@ -2784,8 +2786,15 @@ body.native-ui-active .titlebar {
   flex: 1;
 }
 
+/* 选择器格子声明为弹性行：胶囊按钮作为子项随格子收缩，
+ * 文字在格内截断省略。格子与按钮都要放开 min-width：
+ * nowrap 文字的固有最小宽会顺着「按钮 → 格子」逐层顶住自动最小尺寸，
+ * 任一层不放开，窄宽时都压不下去、只能溢出卡片（min-width: 0 后
+ * 下限由图标和内边距自然保证）。 */
 .native-picker {
   position: relative;
+  display: flex;
+  min-width: 0;
 }
 
 /* 右侧选择器的弹出层右对齐，避免从窗口右侧溢出 */
@@ -2794,10 +2803,40 @@ body.native-ui-active .titlebar {
   right: 0;
 }
 
+/*
+ * 窄宽下选择器逐级收成纯图标（悬停仍有 tooltip 说明当前值）：
+ * 推理强度文字最先收（信息量最低），随后模型名与权限文字一起省略号收窄，
+ * 到最窄档三者同时只剩图标，不出现「其他已是图标、权限还带文字」的状态；
+ * 极窄时连下拉箭头也收起。宽态下超长模型名由 260px 上限先做省略号截断。
+ * 档位按会话列最窄预算定：窗口最小 900 − 侧栏 400 − 面板 240 时控件组约
+ * 124px；全图标约 171px，收掉箭头后约 117px，任何合法布局都不再溢出输入框卡片。
+ */
+@container (max-width: 500px) {
+  .native-picker-effort .native-pill-text {
+    display: none;
+  }
+}
+
+@container (max-width: 320px) {
+  .native-picker-model .native-pill-text,
+  .native-picker-permission .native-pill-text {
+    display: none;
+  }
+}
+
+@container (max-width: 170px) {
+  .native-pill-chevron {
+    display: none;
+  }
+}
+
 .native-pill {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  /* 允许随所在格子收缩：不放开 min-width 的话，按钮最小宽被整行文字的
+   * 固有宽度顶住（nowrap），格子再窄按钮也压不下去，只能溢出到卡片外 */
+  min-width: 0;
   max-width: 260px;
   height: 32px;
   padding: 0 10px;

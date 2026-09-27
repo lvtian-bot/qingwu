@@ -156,7 +156,7 @@ export function ComposerControls({
   return (
     <div className="native-composer-controls" ref={rootRef}>
       {permission && (
-        <div className="native-picker">
+        <div className="native-picker native-picker-permission">
           <button
             className={`native-pill${open === "permission" ? " active" : ""}`}
             onClick={() => toggle("permission")}
@@ -253,7 +253,7 @@ export function ComposerControls({
 
       <span className="native-composer-controls-spacer" />
 
-      <div className="native-picker native-picker-end">
+      <div className="native-picker native-picker-end native-picker-model">
         <button
           className={`native-pill${open === "model" ? " active" : ""}`}
           onClick={() => toggle("model")}
@@ -323,7 +323,7 @@ export function ComposerControls({
       </div>
 
       {efforts && (
-        <div className="native-picker native-picker-end">
+        <div className="native-picker native-picker-end native-picker-effort">
           <button
             className={`native-pill${open === "effort" ? " active" : ""}`}
             onClick={() => toggle("effort")}
