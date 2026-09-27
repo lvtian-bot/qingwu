@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import type { AppSettings } from "../../../shared/types";
+import type { UiLanguage } from "../../../shared/i18n-core";
+import { useT } from "../i18n";
 import { SettingsRow, SettingsSwitch } from "./settings-ui";
 import type { DshSettingsController } from "./useDshSettings";
 
 /** 常规分区：青梧应用级设置（界面、窗口与配置文件入口）。 */
 export function GeneralTab({ dsh }: { dsh: DshSettingsController }) {
+  const t = useT();
   const [appSettings, setAppSettings] = useState<AppSettings>({
     closeToTray: true,
     collapseProcess: false,
@@ -51,29 +54,38 @@ export function GeneralTab({ dsh }: { dsh: DshSettingsController }) {
   return (
     <>
       <div className="native-settings-panel-header">
-        <h2>常规</h2>
+        <h2>{t("settings.general.title")}</h2>
         <p>
-          <span title="仅作用于青梧本应用，不影响 DSH 其他客户端。">
-            (UI 设置)
+          <span title={t("settings.general.uiBadgeTitle")}>
+            {t("settings.general.uiBadge")}
           </span>
-          界面、窗口与配置文件入口等基础选项。
+          {t("settings.general.desc")}
         </p>
       </div>
 
       <div className="native-settings-card">
         <SettingsRow
-          label="界面语言"
-          desc="当前桌面客户端与底层引擎的界面语言。"
+          label={t("settings.general.language.label")}
+          desc={t("settings.general.language.desc")}
         >
-          <select className="native-settings-select" defaultValue="zh" disabled>
-            <option value="zh">简体中文</option>
-            <option value="en">English (跟随系统)</option>
+          <select
+            className="native-settings-select"
+            value={appSettings.uiLanguage ?? "auto"}
+            onChange={(e) =>
+              void handleUpdateAppSetting({
+                uiLanguage: e.target.value as UiLanguage,
+              })
+            }
+          >
+            <option value="auto">{t("settings.general.language.auto")}</option>
+            <option value="zh-CN">简体中文</option>
+            <option value="en-US">English</option>
           </select>
         </SettingsRow>
 
         <SettingsRow
-          label="聊天区宽度"
-          desc="对话正文与会话输入框的最大列宽，首页输入框固定紧凑档；默认紧凑。"
+          label={t("settings.general.chatWidth.label")}
+          desc={t("settings.general.chatWidth.desc")}
         >
           <select
             className="native-settings-select"
@@ -84,74 +96,74 @@ export function GeneralTab({ dsh }: { dsh: DshSettingsController }) {
               })
             }
           >
-            <option value="narrow">紧凑</option>
-            <option value="medium">适中</option>
-            <option value="wide">宽敞</option>
+            <option value="narrow">{t("settings.general.chatWidth.narrow")}</option>
+            <option value="medium">{t("settings.general.chatWidth.medium")}</option>
+            <option value="wide">{t("settings.general.chatWidth.wide")}</option>
           </select>
         </SettingsRow>
 
         <SettingsRow
-          label="最小化到系统托盘"
-          desc="关闭窗口后应用常驻系统托盘，后台会话不中断；关闭后点击关闭按钮将直接退出青梧。"
+          label={t("settings.general.closeToTray.label")}
+          desc={t("settings.general.closeToTray.desc")}
         >
           <SettingsSwitch
             checked={appSettings.closeToTray}
             onChange={(next) =>
               void handleUpdateAppSetting({ closeToTray: next })
             }
-            label="最小化到系统托盘"
+            label={t("settings.general.closeToTray.label")}
           />
         </SettingsRow>
 
         <SettingsRow
-          label="折叠执行过程与工具调用"
-          desc="对话回合完成后，将思考过程与工具调用收起为单行摘要；默认关闭，平铺展开。"
+          label={t("settings.general.collapseProcess.label")}
+          desc={t("settings.general.collapseProcess.desc")}
         >
           <SettingsSwitch
             checked={Boolean(appSettings.collapseProcess)}
             onChange={(next) =>
               void handleUpdateAppSetting({ collapseProcess: next })
             }
-            label="折叠执行过程与工具调用"
+            label={t("settings.general.collapseProcess.label")}
           />
         </SettingsRow>
 
         <SettingsRow
-          label="任务完成时发送桌面通知"
-          desc="当青梧在后台运行且任务执行结束时，弹出系统桌面通知；点击通知可快速回到对应会话。"
+          label={t("settings.general.notifyOnTaskFinished.label")}
+          desc={t("settings.general.notifyOnTaskFinished.desc")}
         >
           <SettingsSwitch
             checked={appSettings.notifyOnTaskFinished ?? true}
             onChange={(next) =>
               void handleUpdateAppSetting({ notifyOnTaskFinished: next })
             }
-            label="任务完成时发送桌面通知"
+            label={t("settings.general.notifyOnTaskFinished.label")}
           />
         </SettingsRow>
 
         <SettingsRow
-          label="青梧应用配置目录"
-          desc="存放界面设置、窗口状态与运行日志的本地目录 (%APPDATA%/qingwu)。"
+          label={t("settings.general.appData.label")}
+          desc={t("settings.general.appData.desc")}
         >
           <button
             type="button"
             className="native-btn native-btn-secondary"
             onClick={handleOpenAppData}
           >
-            在文件管理器中打开
+            {t("settings.general.appData.open")}
           </button>
         </SettingsRow>
 
         <SettingsRow
-          label="底层引擎配置文件"
-          desc="DSH 引擎的全局配置文件 (~/.dsh/settings.json)，包含所有已注册的扩展参数。"
+          label={t("settings.general.dshConfig.label")}
+          desc={t("settings.general.dshConfig.desc")}
         >
           <button
             type="button"
             className="native-btn native-btn-secondary"
             onClick={() => void dsh.openDshConfig()}
           >
-            在编辑器中打开
+            {t("settings.general.dshConfig.open")}
           </button>
         </SettingsRow>
       </div>

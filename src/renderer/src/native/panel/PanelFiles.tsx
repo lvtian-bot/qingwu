@@ -4,6 +4,7 @@
  * 监听自动刷新；折叠保留缓存，再次展开重新列举。
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useT } from "../../i18n";
 import type { WorkspaceDirectoryEntry } from "../protocol";
 import { toErrMsg } from "../rpc";
 import {
@@ -31,12 +32,16 @@ function sortEntries(entries: WorkspaceDirectoryEntry[]): WorkspaceDirectoryEntr
   );
 }
 
-function dirErrorMessage(message: string): string {
-  if (message.includes("workspace-file/not-found")) return "目录不存在";
-  if (message.includes("workspace-file/outside-workspace")) return "路径超出工作区范围";
-  if (message.includes("workspace-file/not-directory")) return "路径不是目录";
-  if (message.includes("bad-request")) return "路径不合法";
-  return message;
+/** 目录列举错误码 → 词条 key；未知错误返回 null，由调用方原样透传。 */
+function dirErrorKey(message: string): string | null {
+  if (message.includes("workspace-file/not-found"))
+    return "panel.files.error.notFound";
+  if (message.includes("workspace-file/outside-workspace"))
+    return "panel.files.error.outsideWorkspace";
+  if (message.includes("workspace-file/not-directory"))
+    return "panel.files.error.notDirectory";
+  if (message.includes("bad-request")) return "panel.files.error.badRequest";
+  return null;
 }
 
 interface PanelFilesProps {
@@ -48,6 +53,7 @@ interface PanelFilesProps {
 }
 
 export function PanelFiles({ sessionId, cwd, onOpenFile }: PanelFilesProps) {
+  const t = useT();
   const [levels, setLevels] = useState<Map<string, DirLevel>>(new Map());
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
@@ -83,6 +89,8 @@ export function PanelFiles({ sessionId, cwd, onOpenFile }: PanelFilesProps) {
             return next;
           });
         } catch (err) {
+          const raw = toErrMsg(err);
+          const key = dirErrorKey(raw);
           setLevels((prev) => {
             const cur = prev.get(dirAbs);
             if (!cur || cur.status !== "loading") return prev;
@@ -91,14 +99,14 @@ export function PanelFiles({ sessionId, cwd, onOpenFile }: PanelFilesProps) {
               status: "failed",
               entries: [],
               truncated: false,
-              error: dirErrorMessage(toErrMsg(err)),
+              error: key ? t(key) : raw,
             });
             return next;
           });
         }
       })();
     },
-    [sessionId],
+    [sessionId, t],
   );
 
   // 切会话（或工作目录变化）重置整棵树
@@ -123,7 +131,7 @@ export function PanelFiles({ sessionId, cwd, onOpenFile }: PanelFilesProps) {
   if (!sessionId) {
     return (
       <div className="panel-tree">
-        <div className="panel-tree-note">选中会话后即可浏览其工作区文件</div>
+        <div className="panel-tree-note">{t("panel.files.noSessionNote")}</div>
       </div>
     );
   }
@@ -131,7 +139,7 @@ export function PanelFiles({ sessionId, cwd, onOpenFile }: PanelFilesProps) {
   if (!cwd) {
     return (
       <div className="panel-tree">
-        <div className="panel-tree-note">当前会话没有关联的工作目录</div>
+        <div className="panel-tree-note">{t("panel.files.noCwdNote")}</div>
       </div>
     );
   }
@@ -151,8 +159,8 @@ export function PanelFiles({ sessionId, cwd, onOpenFile }: PanelFilesProps) {
           type="button"
           className="native-icon-btn"
           onClick={refresh}
-          title="重新读取"
-          aria-label="重新读取目录"
+          title={t("panel.files.refreshTitle")}
+          aria-label={t("panel.files.refreshAria")}
         >
           <svg
             viewBox="0 0 16 16"
@@ -170,7 +178,11 @@ export function PanelFiles({ sessionId, cwd, onOpenFile }: PanelFilesProps) {
           </svg>
         </button>
       </div>
-      <div className="panel-tree-body" role="tree" aria-label="工作区文件树">
+      <div
+        className="panel-tree-body"
+        role="tree"
+        aria-label={t("panel.files.treeAria")}
+      >
         <DirNode
           sessionId={sessionId}
           absPath={cwd}
@@ -216,6 +228,7 @@ function DirNode({
   ensureDir: (dirAbs: string, force?: boolean) => void;
   onOpenFile: (path: string) => void;
 }) {
+  const t = useT();
   const isOpen = isRoot || expanded.has(absPath);
   const level = levels.get(absPath);
 
@@ -232,7 +245,7 @@ function DirNode({
   const childRows = useMemo(() => {
     if (!isOpen || !level || level.status !== "ready") return null;
     if (level.entries.length === 0) {
-      return <div className="panel-tree-note" style={{ paddingLeft: 6 + childDepth * 14 + 16 }}>此文件夹为空</div>;
+      return <div className="panel-tree-note" style={{ paddingLeft: 6 + childDepth * 14 + 16 }}>{t("panel.files.emptyFolder")}</div>;
     }
     return (
       <>
@@ -286,12 +299,12 @@ function DirNode({
             className="panel-tree-note"
             style={{ paddingLeft: 6 + childDepth * 14 + 16 }}
           >
-            条目过多，其余已省略
+            {t("panel.files.truncated")}
           </div>
         )}
       </>
     );
-  }, [isOpen, level, absPath, relPath, childDepth, sessionId, levels, expanded, onToggle, ensureDir, onOpenFile]);
+  }, [isOpen, level, absPath, relPath, childDepth, sessionId, levels, expanded, onToggle, ensureDir, onOpenFile, t]);
 
   return (
     <>
@@ -310,12 +323,12 @@ function DirNode({
       )}
       {isOpen && level?.status === "loading" && (level?.entries.length ?? 0) === 0 && (
         <div className="panel-tree-note" style={{ paddingLeft: 6 + childDepth * 14 + 16 }}>
-          读取中…
+          {t("panel.files.loading")}
         </div>
       )}
       {isOpen && level?.status === "failed" && (
         <div className="panel-tree-note" style={{ paddingLeft: 6 + childDepth * 14 + 16 }}>
-          {level.error ?? "读取失败"}
+          {level.error ?? t("panel.files.readFailed")}
         </div>
       )}
       {childRows}

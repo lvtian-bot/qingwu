@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { useT } from '../i18n';
 import type { FileReferenceCandidate } from './file-mentions';
 
 interface FileMentionMenuProps {
@@ -58,6 +59,7 @@ export function FileMentionMenu({
   query,
   placement = 'top',
 }: FileMentionMenuProps) {
+  const t = useT();
   const listRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -73,10 +75,12 @@ export function FileMentionMenu({
       <div
         className={`native-file-mention-menu placement-${placement}`}
         role="listbox"
-        aria-label="文件与文件夹引用"
+        aria-label={t('composer.fileMenu.ariaLabel')}
       >
         <div className="native-file-mention-empty">
-          {query ? `未找到与 "${query}" 匹配的文件` : '工作区内暂无文件'}
+          {query
+            ? t('composer.fileMenu.noMatch', { query })
+            : t('composer.fileMenu.emptyWorkspace')}
         </div>
       </div>
     );
@@ -86,10 +90,10 @@ export function FileMentionMenu({
     <div
       className={`native-file-mention-menu placement-${placement}`}
       role="listbox"
-      aria-label="文件与文件夹引用"
+      aria-label={t('composer.fileMenu.ariaLabel')}
     >
       <div className="native-file-mention-header">
-        <span>文件与文件夹</span>
+        <span>{t('composer.fileMenu.header')}</span>
         <span className="native-file-mention-header-count">{items.length}</span>
       </div>
 
@@ -131,7 +135,7 @@ export function FileMentionMenu({
                   <button
                     type="button"
                     className="native-file-mention-drill-btn"
-                    title="按 Tab 进入该目录"
+                    title={t('composer.fileMenu.drillTitle')}
                     onClick={(e) => {
                       e.stopPropagation();
                       onSelect(item, 'drill');
@@ -160,16 +164,16 @@ export function FileMentionMenu({
 
       <div className="native-file-mention-footer">
         <span className="native-file-mention-footer-hint">
-          <kbd className="native-kbd">↑↓</kbd> 移动
+          <kbd className="native-kbd">↑↓</kbd> {t('composer.fileMenu.move')}
         </span>
         <span className="native-file-mention-footer-hint">
-          <kbd className="native-kbd">↵</kbd> 引用
+          <kbd className="native-kbd">↵</kbd> {t('composer.fileMenu.reference')}
         </span>
         <span className="native-file-mention-footer-hint">
-          <kbd className="native-kbd">Tab</kbd> 下钻
+          <kbd className="native-kbd">Tab</kbd> {t('composer.fileMenu.drill')}
         </span>
         <span className="native-file-mention-footer-hint">
-          <kbd className="native-kbd">Esc</kbd> 关闭
+          <kbd className="native-kbd">Esc</kbd> {t('composer.fileMenu.close')}
         </span>
       </div>
     </div>

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useT } from "../i18n";
 import { Markdown } from "./markdown";
 import type {
   ApprovalRequestPayload,
@@ -48,6 +49,7 @@ export function QuestionCard({
   onSubmit: (answers: UserQuestionAnswer[]) => Promise<boolean>;
   onDismiss: () => Promise<boolean>;
 }) {
+  const t = useT();
   const questions = request.questions ?? [];
   const [drafts, setDrafts] = useState<QuestionDraft[]>(() =>
     questions.map(() => ({ selected: [], custom: "" })),
@@ -107,7 +109,7 @@ export function QuestionCard({
     );
     if (missing >= 0) {
       setIndex(missing);
-      setError(`请先完成第 ${missing + 1} 题`);
+      setError(t("pending.question.missingQuestion", { n: missing + 1 }));
       return;
     }
     setSubmitting(true);
@@ -175,7 +177,7 @@ export function QuestionCard({
   /** 下一题：当前题须已作答（跳过是显式出口）；最后一题直接提交。 */
   const continueFlow = () => {
     if (!answered(draft)) {
-      setError("请先选择一个选项、填写「其他」，或点「跳过本题」");
+      setError(t("pending.question.needAnswer"));
       return;
     }
     if (at < total - 1) {
@@ -200,7 +202,7 @@ export function QuestionCard({
     };
     return (
       <div className="native-card question">
-        <div className="native-card-strip">计划审批</div>
+        <div className="native-card-strip">{t("pending.plan.strip")}</div>
         {plan.item.header && (
           <div className="native-question-header">{plan.item.header}</div>
         )}
@@ -214,10 +216,10 @@ export function QuestionCard({
             type="button"
             className="native-question-dismiss"
             disabled={submitting}
-            title="不选任何选项，直接说出你的想法"
+            title={t("pending.plan.discussTitle")}
             onClick={() => void dismiss()}
           >
-            讨论一下
+            {t("pending.plan.discuss")}
           </button>
           {others.map((option) => (
             <button
@@ -252,7 +254,7 @@ export function QuestionCard({
           )}
           {total > 1 && (
             <div className="native-question-progress">
-              第 {at + 1} / {total} 题
+              {t("pending.question.progress", { current: at + 1, total })}
             </div>
           )}
         </div>
@@ -295,7 +297,11 @@ export function QuestionCard({
           className="native-question-custom"
           value={draft.custom}
           disabled={submitting}
-          placeholder={multi ? "其他（可与上面同时选）" : "其他（自行输入）"}
+          placeholder={
+            multi
+              ? t("pending.question.otherMulti")
+              : t("pending.question.otherSingle")
+          }
           onChange={(e) => setCustom(e.target.value)}
           onKeyDown={(e) => {
             if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
@@ -310,9 +316,15 @@ export function QuestionCard({
             disabled={submitting}
             onClick={skipQuestion}
           >
-            {draft.skipped ? "已跳过" : "跳过本题"}
+            {draft.skipped
+              ? t("pending.question.skipped")
+              : t("pending.question.skip")}
           </button>
-          {multi && <span className="native-question-hint">可多选</span>}
+          {multi && (
+            <span className="native-question-hint">
+              {t("pending.question.multiHint")}
+            </span>
+          )}
         </div>
       </div>
       <div className="native-card-actions native-question-submit">
@@ -321,7 +333,7 @@ export function QuestionCard({
             <span className="native-question-error">{error}</span>
           ) : total > 1 ? (
             <span className="native-question-hint">
-              已填 {completedCount} / {total}
+              {t("pending.question.filled", { count: completedCount, total })}
             </span>
           ) : null}
         </div>
@@ -331,12 +343,12 @@ export function QuestionCard({
           disabled={submitting}
           title={
             total > 1
-              ? "放弃当前所有问题，改为直接说出你的想法"
-              : "不选择预设选项，改为直接说出你的想法"
+              ? t("pending.question.dismissTitleMulti")
+              : t("pending.question.dismissTitleSingle")
           }
           onClick={() => void dismiss()}
         >
-          直接打字沟通
+          {t("pending.question.dismiss")}
         </button>
         {total > 1 && (
           <button
@@ -347,7 +359,7 @@ export function QuestionCard({
               setError(null);
             }}
           >
-            上一题
+            {t("pending.question.prev")}
           </button>
         )}
         <button
@@ -356,7 +368,11 @@ export function QuestionCard({
           disabled={submitting}
           onClick={continueFlow}
         >
-          {submitting ? "提交中…" : at < total - 1 ? "下一题" : "提交"}
+          {submitting
+            ? t("pending.question.submitting")
+            : at < total - 1
+              ? t("pending.question.next")
+              : t("pending.question.submit")}
         </button>
       </div>
     </div>
@@ -403,11 +419,11 @@ export const PENDING_PRECEDENCE: Record<PendingKind, number> = {
   "plan-review": 2,
 };
 
-/** 侧栏会话行的等待提示（对齐官方 status.waitingApproval 等口径）。 */
+/** 侧栏会话行的等待提示（对齐官方 status.waitingApproval 等口径）；值为词条 key，渲染处经 t() 取词。 */
 export const PENDING_LABELS: Record<PendingKind, string> = {
-  approval: "等待授权",
-  question: "等待回答",
-  "plan-review": "计划待审",
+  approval: "pending.status.approval",
+  question: "pending.status.question",
+  "plan-review": "pending.status.planReview",
 };
 
 /**
@@ -511,25 +527,28 @@ export function PendingInteraction({
   ) => Promise<boolean>;
   onQuestionDismiss: (question: PendingQuestion) => Promise<boolean>;
 }) {
+  const t = useT();
   return (
     <div className="native-interactions">
       {entry.kind === "approval" ? (
         <div className="native-card approval">
           <div className="native-card-title">
-            请求授权：{entry.approval.toolName ?? "工具"}
+            {t("pending.approval.title", {
+              tool: entry.approval.toolName ?? t("pending.approval.toolFallback"),
+            })}
           </div>
           {entry.approval.reason && (
             <div className="native-card-text">{entry.approval.reason}</div>
           )}
           <div className="native-card-actions">
             <button onClick={() => void onApproval(entry.approval, "rejected")}>
-              拒绝
+              {t("pending.approval.reject")}
             </button>
             <button
               className="primary"
               onClick={() => void onApproval(entry.approval, "allowed-once")}
             >
-              允许一次
+              {t("pending.approval.allowOnce")}
             </button>
           </div>
         </div>
@@ -543,7 +562,7 @@ export function PendingInteraction({
       )}
       {morePending > 0 && (
         <div className="native-pending-more">
-          另有 {morePending} 项等待处理，处理完这项后继续
+          {t("pending.more", { count: morePending })}
         </div>
       )}
     </div>

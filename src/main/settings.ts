@@ -2,6 +2,7 @@ import { app } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import { CHAT_WIDTHS, type AppSettings, type ChatWidth } from '../shared/types';
+import { UI_LANGUAGES, type UiLanguage } from '../shared/i18n-core';
 import { resolveQingwuProfileDir } from './dsh-paths';
 
 export type { AppSettings };
@@ -24,6 +25,7 @@ class SettingsManager {
       collapseProcess: false,
       chatWidth: 'narrow',
       notifyOnTaskFinished: true,
+      uiLanguage: 'auto',
     };
     this.listeners = new Set();
     this.loaded = false;
@@ -78,6 +80,9 @@ class SettingsManager {
           }
           if (typeof this.settings.notifyOnTaskFinished !== 'boolean') {
             this.settings.notifyOnTaskFinished = true;
+          }
+          if (!UI_LANGUAGES.includes(this.settings.uiLanguage as UiLanguage)) {
+            this.settings.uiLanguage = 'auto';
           }
         }
       }

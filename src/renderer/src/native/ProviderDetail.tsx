@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useT } from "../i18n";
 import { CandidateModelPicker } from "./CandidateModelPicker";
 import {
   type LlmDiscoveredModel,
@@ -42,6 +43,7 @@ export function ProviderDetail(props: {
   onUnset: (ref: string) => void;
   onDelete?: () => void;
 }) {
+  const t = useT();
   const row = props.row;
   const ref = row.apiKeyEnv ?? deriveKeyRef(row.provider);
   const configured = row.credentialConfigured === true;
@@ -64,7 +66,7 @@ export function ProviderDetail(props: {
       ? stringAt(fallback, "protocol") === "messages"
         ? "https://api.deepseek.com/anthropic"
         : "https://api.deepseek.com"
-      : (stringAt(fallback, "baseURL") ?? "提供方默认");
+      : (stringAt(fallback, "baseURL") ?? t("settings.provider.apiUrlDefault"));
 
   const declaredModels: CustomModelEntry[] = useMemo(() => {
     if (Array.isArray(props.draft.models)) {
@@ -97,7 +99,7 @@ export function ProviderDetail(props: {
         api: effectiveApi,
         ...(props.inputValue.trim() ? { apiKey: props.inputValue.trim() } : {}),
       },
-      invalidUrlMessage: "请先配置有效的 API 地址 (HTTP/HTTPS URL)",
+      invalidUrlMessage: t("settings.provider.invalidApiUrl"),
     });
 
   const handleAddCandidatesInDetail = (chosen: LlmDiscoveredModel[]) => {
@@ -113,6 +115,7 @@ export function ProviderDetail(props: {
       id,
       manualModelName.trim(),
       manualModelReasoning,
+      t,
     );
     if (!result.ok) {
       discovery.setFetchError(result.error);
@@ -148,13 +151,13 @@ export function ProviderDetail(props: {
       {row.error && <div className="native-provider-error">{row.error}</div>}
       {props.adding && (
         <div className="native-provider-card-desc">
-          该服务商还未添加，保存后会加入左侧列表。
+          {t("settings.provider.notAddedHint")}
         </div>
       )}
 
       <div className="native-provider-field">
         <div className="native-provider-field-label">
-          <span>API 密钥</span>
+          <span>{t("settings.shared.apiKey")}</span>
         </div>
         <div className="native-provider-input-wrap">
           <input
@@ -162,8 +165,8 @@ export function ProviderDetail(props: {
             className="native-settings-input"
             placeholder={
               configured
-                ? "●●●●●●●●（已保存密钥，输入新值可覆盖）"
-                : "输入 API Key 凭据"
+                ? t("settings.provider.apiKeySavedPlaceholder")
+                : t("settings.provider.apiKeyPlaceholder")
             }
             value={props.inputValue}
             onChange={(e) => props.onInputChange(ref, e.target.value)}
@@ -174,27 +177,27 @@ export function ProviderDetail(props: {
           />
         </div>
         <div className="native-provider-card-desc">
-          密钥安全保存在引擎凭据安全区，严格脱敏不回显。
+          {t("settings.provider.apiKeyDesc")}
         </div>
       </div>
 
       {family !== "unknown" && (
         <div className="native-provider-field">
           <div className="native-provider-field-label">
-            <span>API 地址</span>
+            <span>{t("settings.shared.apiUrl")}</span>
           </div>
           <input
             type="text"
             className="native-settings-input native-provider-text-input"
             placeholder={baseURLPlaceholder}
-            aria-label="API 地址"
+            aria-label={t("settings.shared.apiUrl")}
             value={draftBaseURL}
             disabled={!props.writable || props.loading}
             onChange={(e) => props.onDraftField("baseURL", e.target.value)}
           />
           {family === "deepseek" && (
             <div className="native-provider-card-desc">
-              请填写与当前连接配置兼容的 API 地址；留空使用官方默认地址。
+              {t("settings.provider.apiUrlDesc")}
             </div>
           )}
         </div>
@@ -203,17 +206,17 @@ export function ProviderDetail(props: {
       {apiChoices.length > 0 && (
         <div className="native-provider-field">
           <div className="native-provider-field-label">
-            <span>API 协议</span>
+            <span>{t("settings.shared.apiProtocol")}</span>
           </div>
           <select
             className="native-settings-select native-provider-field-select"
-            aria-label="API 协议"
+            aria-label={t("settings.shared.apiProtocol")}
             value={effectiveApi ?? ""}
             disabled={!props.writable || props.loading}
             onChange={(e) => props.onDraftField("api", e.target.value)}
           >
             {effectiveApi === undefined && (
-              <option value="">未选择（默认）</option>
+              <option value="">{t("settings.provider.protocolUnset")}</option>
             )}
             {apiChoices.map((choice) => (
               <option key={choice} value={choice}>
@@ -231,7 +234,7 @@ export function ProviderDetail(props: {
           disabled={props.loading || !props.canSave}
           onClick={props.onSave}
         >
-          保存
+          {t("settings.provider.save")}
         </button>
         {configured && (
           <button
@@ -240,7 +243,7 @@ export function ProviderDetail(props: {
             disabled={props.loading}
             onClick={() => props.onUnset(ref)}
           >
-            清除密钥
+            {t("settings.provider.clearKey")}
           </button>
         )}
         {props.onDelete && (
@@ -250,16 +253,20 @@ export function ProviderDetail(props: {
             disabled={props.loading}
             onClick={props.onDelete}
           >
-            删除此服务商
+            {t("settings.provider.deleteProvider")}
           </button>
         )}
       </div>
 
       <div className="native-provider-models">
         <div className="native-provider-models-head">
-          <span className="native-provider-models-title">模型目录</span>
+          <span className="native-provider-models-title">
+            {t("settings.provider.catalog")}
+          </span>
           <span className="native-provider-models-meta">
-            {row.declared ? declaredModels.length : props.models.length} 个
+            {t("settings.shared.modelCount", {
+              count: row.declared ? declaredModels.length : props.models.length,
+            })}
           </span>
           {row.declared && (
             <div className="native-model-actions-head">
@@ -272,11 +279,13 @@ export function ProviderDetail(props: {
                 onClick={handleDiscoverInDetail}
                 title={
                   effectiveBaseURL
-                    ? "从服务商接口拉取可用模型"
-                    : "请先填写并保存 API 地址"
+                    ? t("settings.provider.discoverTitle")
+                    : t("settings.provider.discoverNeedUrlTitle")
                 }
               >
-                {discovery.fetching ? "获取中..." : "获取可用模型"}
+                {discovery.fetching
+                  ? t("settings.shared.discovering")
+                  : t("settings.shared.discover")}
               </button>
             </div>
           )}
@@ -289,7 +298,7 @@ export function ProviderDetail(props: {
         {row.declared ? (
           declaredModels.length === 0 ? (
             <div className="native-model-empty">
-              未配置模型。请点击「获取可用模型」或在下方手动添加。
+              {t("settings.provider.emptyDeclared")}
             </div>
           ) : (
             declaredModels.map((model) => (
@@ -301,7 +310,9 @@ export function ProviderDetail(props: {
             ))
           )
         ) : props.models.length === 0 ? (
-          <div className="native-model-empty">未获取到该供应商的模型清单</div>
+          <div className="native-model-empty">
+            {t("settings.provider.emptyCatalog")}
+          </div>
         ) : (
           props.models.map((model) => (
             <div key={model.id} className="native-model-item">
@@ -319,7 +330,9 @@ export function ProviderDetail(props: {
                 )}
               </div>
               {model.reasoning && (
-                <span className="native-model-tag">推理</span>
+                <span className="native-model-tag">
+                  {t("settings.shared.reasoning")}
+                </span>
               )}
             </div>
           ))

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   getMenuItems,
+  MENU_NAME_KEYS,
   type MenuName,
   type MenuStateContext,
 } from "../../shared/menu-data";
@@ -10,6 +11,7 @@ import {
   MENU_SHADOW_INSET_BOTTOM,
 } from "../../shared/menu-layout";
 import { MenuDropdown } from "./MenuDropdown";
+import { useT } from "./i18n";
 import "./titlebar.css";
 
 interface MenuPopupPayload {
@@ -25,6 +27,7 @@ interface MenuPopupPayload {
  * 与标题栏共用同一套 MenuDropdown / Win32 规范样式。
  */
 export function MenuPopupView() {
+  const t = useT();
   const [data, setData] = useState<MenuPopupPayload | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -113,7 +116,7 @@ export function MenuPopupView() {
       <div key={data.sessionId} className="menu-popup-enter">
         <MenuDropdown
           items={items}
-          label={data.menuName}
+          label={t(MENU_NAME_KEYS[data.menuName])}
           onAction={(actionId) => {
             void window.qingwu?.executeMenuAction?.(actionId);
           }}

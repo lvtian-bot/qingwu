@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useT } from "../i18n";
 import type { LlmDiscoveredModel } from "./protocol";
 
 /** 候选模型多选弹层：从服务商接口拉取成功后供用户勾选添加。 */
@@ -7,6 +8,7 @@ export function CandidateModelPicker(props: {
   onAdd: (selected: LlmDiscoveredModel[]) => void;
   onClose: () => void;
 }) {
+  const t = useT();
   const [query, setQuery] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(
     () => new Set(props.candidates.map((c) => c.id)),
@@ -59,13 +61,16 @@ export function CandidateModelPicker(props: {
       >
         <div className="native-model-picker-header">
           <div className="native-model-picker-title">
-            选择要添加的模型 ({filtered.length} / {props.candidates.length})
+            {t("settings.models.picker.title", {
+              selected: filtered.length,
+              total: props.candidates.length,
+            })}
           </div>
           <button
             type="button"
             className="native-model-picker-close"
             onClick={props.onClose}
-            title="关闭"
+            title={t("settings.models.picker.close")}
           >
             ×
           </button>
@@ -74,7 +79,7 @@ export function CandidateModelPicker(props: {
           <input
             type="text"
             className="native-settings-input"
-            placeholder="搜索模型 ID 或名称..."
+            placeholder={t("settings.models.picker.searchPlaceholder")}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
@@ -83,12 +88,16 @@ export function CandidateModelPicker(props: {
             className="native-btn native-btn-secondary"
             onClick={toggleAllFiltered}
           >
-            {allFilteredSelected ? "取消全选" : "全选"}
+            {allFilteredSelected
+              ? t("settings.models.picker.deselectAll")
+              : t("settings.models.picker.selectAll")}
           </button>
         </div>
         <div className="native-model-picker-list">
           {filtered.length === 0 ? (
-            <div className="native-model-empty">无匹配模型</div>
+            <div className="native-model-empty">
+              {t("settings.models.picker.empty")}
+            </div>
           ) : (
             filtered.map((c) => (
               <label

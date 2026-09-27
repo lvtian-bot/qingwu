@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { useT } from "../i18n";
 import {
   Endpoints,
   type LlmDiscoveredModel,
@@ -24,6 +25,7 @@ export interface ModelDiscovery {
 
 /** 候选模型拉取与多选弹层的共用状态（自定义服务商表单与供应商详情共用）。 */
 export function useModelDiscovery(): ModelDiscovery {
+  const t = useT();
   const [candidates, setCandidates] = useState<LlmDiscoveredModel[] | null>(
     null,
   );
@@ -48,19 +50,21 @@ export function useModelDiscovery(): ModelDiscovery {
           },
         );
         if (!res || res.length === 0) {
-          setFetchError("服务商接口未返回任何候选模型，请手动输入添加");
+          setFetchError(t("settings.messages.noCandidates"));
         } else {
           setCandidates(res);
         }
       } catch (err) {
         setFetchError(
-          `获取失败: ${err instanceof Error ? err.message : String(err)}`,
+          t("settings.messages.fetchFailed", {
+            message: err instanceof Error ? err.message : String(err),
+          }),
         );
       } finally {
         setFetching(false);
       }
     },
-    [],
+    [t],
   );
 
   const closeCandidates = useCallback(() => setCandidates(null), []);

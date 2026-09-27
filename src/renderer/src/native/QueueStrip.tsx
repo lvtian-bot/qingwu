@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useT } from "../i18n";
 import type { QueuedItem } from "./events";
 import { Endpoints, type QueueAction, type SessionAttachmentResult } from "./protocol";
 import { base64ToBlobUrl, type MessageImageItem } from "./images";
@@ -22,6 +23,7 @@ function QueueImageThumb({
   image: MessageImageItem;
   sessionId?: string | null;
 }) {
+  const t = useT();
   const [src, setSrc] = useState<string | null>(image.url ?? null);
 
   useEffect(() => {
@@ -64,7 +66,7 @@ function QueueImageThumb({
   return (
     <img
       src={src}
-      alt="排队附件"
+      alt={t("chat.queue.attachmentAlt")}
       className="native-queue-thumb"
       draggable={false}
     />
@@ -89,6 +91,7 @@ export function QueueStrip({
   sessionId?: string | null;
   onAction: (item: QueuedItem, action: QueueAction) => void;
 }) {
+  const t = useT();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
 
@@ -112,7 +115,13 @@ export function QueueStrip({
           <div key={item.id} className="native-queue-row">
             <span
               className="native-queue-lead"
-              title={item.pending ? "发送中" : isNextStep ? "插话中" : "排队中"}
+              title={
+                item.pending
+                  ? t("chat.queue.sending")
+                  : isNextStep
+                    ? t("chat.queue.steering")
+                    : t("chat.queue.queued")
+              }
             >
               <QueueBubbleIcon />
             </span>
@@ -122,7 +131,7 @@ export function QueueStrip({
                 className="native-queue-editor"
                 value={editText}
                 autoFocus
-                placeholder="编辑消息正文"
+                placeholder={t("chat.queue.editPlaceholder")}
                 onChange={(e) => setEditText(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Escape") {
@@ -152,12 +161,16 @@ export function QueueStrip({
                   </span>
                 )}
                 <span className="native-queue-text" title={item.text}>
-                  {item.text || "(无文本内容)"}
+                  {item.text || t("chat.queue.noText")}
                   {item.pending && (
-                    <span className="native-queue-status">（发送中…）</span>
+                    <span className="native-queue-status">
+                      {t("chat.queue.sendingStatus")}
+                    </span>
                   )}
                   {!item.pending && isNextStep && (
-                    <span className="native-queue-status">（插话中）</span>
+                    <span className="native-queue-status">
+                      {t("chat.queue.steeringStatus")}
+                    </span>
                   )}
                 </span>
               </>
@@ -170,8 +183,8 @@ export function QueueStrip({
                     type="button"
                     className="native-queue-action-btn"
                     disabled={busy || !editText.trim()}
-                    title="保存排队消息 (Enter)"
-                    aria-label="保存排队消息"
+                    title={t("chat.queue.saveTitle")}
+                    aria-label={t("chat.queue.save")}
                     onClick={() => submitEdit(item)}
                   >
                     <QueueCheckIcon />
@@ -180,8 +193,8 @@ export function QueueStrip({
                     type="button"
                     className="native-queue-action-btn"
                     disabled={busy}
-                    title="取消编辑 (Esc)"
-                    aria-label="取消编辑"
+                    title={t("chat.queue.cancelEditTitle")}
+                    aria-label={t("chat.queue.cancelEdit")}
                     onClick={() => setEditingId(null)}
                   >
                     <QueueCloseIcon />
@@ -193,8 +206,8 @@ export function QueueStrip({
                     type="button"
                     className="native-queue-action-btn"
                     disabled={busy || item.pending}
-                    title="编辑排队消息"
-                    aria-label="编辑排队消息"
+                    title={t("chat.queue.edit")}
+                    aria-label={t("chat.queue.edit")}
                     onClick={() => {
                       setEditingId(item.id);
                       setEditText(item.text);
@@ -206,8 +219,8 @@ export function QueueStrip({
                     type="button"
                     className="native-queue-action-btn"
                     disabled={busy || item.pending}
-                    title="删除排队消息"
-                    aria-label="删除排队消息"
+                    title={t("chat.queue.remove")}
+                    aria-label={t("chat.queue.remove")}
                     onClick={() => onAction(item, { kind: "remove" })}
                   >
                     <QueueTrashIcon />
@@ -217,8 +230,8 @@ export function QueueStrip({
                       type="button"
                       className="native-queue-action-btn"
                       disabled={busy || item.pending}
-                      title="插话发送（打断当前轮，立刻按这条执行）"
-                      aria-label="插话发送"
+                      title={t("chat.queue.sendNowTitle")}
+                      aria-label={t("chat.queue.sendNow")}
                       onClick={() => onAction(item, { kind: "steer" })}
                     >
                       <QueueSteerIcon />

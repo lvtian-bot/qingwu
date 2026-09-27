@@ -112,28 +112,28 @@ function fixture() {
 }
 test("方向键请求标题栏重测目标锚点，关闭后迟到切换不得重开", () => {
   const f = fixture();
-  f.manager.open("视图", 120, 35);
+  f.manager.open("view", 120, 35);
   f.manager.switchMenu("right");
-  assert.deepEqual(f.messages.at(-1), ["titlebar:menu-switch", "帮助"]);
-  f.manager.open("帮助", 170, 35, true);
+  assert.deepEqual(f.messages.at(-1), ["titlebar:menu-switch", "help"]);
+  f.manager.open("help", 170, 35, true);
   assert.equal(f.popup.bounds.x + insetX, 355);
   f.manager.close();
   assert.equal(f.restored, 1);
   const count = f.messages.length;
-  f.manager.open("视图", 120, 35, true);
+  f.manager.open("view", 120, 35, true);
   assert.equal(f.messages.length, count);
   f.manager.destroy();
   assert.equal(f.handlers.size, 0);
 });
 test("过期菜单尺寸回报不能改变当前窗口，失焦关闭不抢焦点", () => {
   const f = fixture();
-  f.manager.open("文件", 50, 35);
+  f.manager.open("file", 50, 35);
   const first = f.messages.at(-1)[1];
-  f.manager.open("帮助", 170, 35, true);
+  f.manager.open("help", 170, 35, true);
   const before = f.popup.bounds;
   f.handlers.get("menu-popup:resize")(
     { sender: f.popup.webContents },
-    { menuName: "文件", sessionId: first.sessionId, width: 900, height: 900 },
+    { menuName: "file", sessionId: first.sessionId, width: 900, height: 900 },
   );
   assert.deepEqual(f.popup.bounds, before);
   f.manager.close("blur");
@@ -156,13 +156,13 @@ test("隐藏快捷键与自绘菜单共用定义和动作入口", () => {
   });
   createApplicationMenu({ onAction: (id) => actions.push(id) });
   const settings = template
-    .find((m) => m.label === "编辑")
-    .submenu.find((m) => m.label === "设置");
+    .find((m) => m.label === "edit")
+    .submenu.find((m) => m.label === "menu.edit.settings");
   assert.equal(settings.accelerator, "Ctrl+,");
   settings.click();
   assert.deepEqual(actions, ["settings"]);
   const zoom = template
-    .find((m) => m.label === "视图")
-    .submenu.find((m) => m.label === "放大");
+    .find((m) => m.label === "view")
+    .submenu.find((m) => m.label === "menu.view.zoomIn");
   assert.equal(zoom.accelerator, "Ctrl+Plus");
 });

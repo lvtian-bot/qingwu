@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
+import { useT } from "../i18n";
 import type { PendingKind } from "./PendingInteraction";
 import { SessionRow, WorkspaceRow } from "./SidebarRows";
 import type { SessionSummary, WorkspaceView } from "./protocol";
@@ -20,6 +21,7 @@ export function useSessionSidebar(
   workspaces: WorkspaceView[],
   archivedSet: Set<string>,
 ) {
+  const t = useT();
   /** 侧栏置顶数据（本地持久化）。 */
   const [pinnedData, setPinnedData] = useState<PinnedData>(loadPinnedData);
   const toggleWorkspacePin = useCallback((workspaceId: string) => {
@@ -95,9 +97,9 @@ export function useSessionSidebar(
     const keyword = searchText.trim().toLowerCase();
     if (!keyword) return visibleSessions;
     return visibleSessions.filter((s) =>
-      sessionTitle(s).toLowerCase().includes(keyword),
+      sessionTitle(s, t("sidebar.untitled")).toLowerCase().includes(keyword),
     );
-  }, [visibleSessions, searchText]);
+  }, [visibleSessions, searchText, t]);
 
   const filteredSessionById = useMemo(
     () => new Map(filteredVisibleSessions.map((s) => [s.sessionId, s])),
@@ -242,6 +244,7 @@ export function SessionSidebar({
     normalWorkspaces,
     normalUngroupedSessions,
   } = state;
+  const t = useT();
   const [dragWsId, setDragWsId] = useState<string | null>(null);
   const [dragOverWs, setDragOverWs] = useState<{
     id: string;
@@ -427,7 +430,7 @@ export function SessionSidebar({
         {visible.map((session) => (
           <SessionRow
             key={session.sessionId}
-            title={sessionTitle(session)}
+            title={sessionTitle(session, t("sidebar.untitled"))}
             tooltip={session.cwd ?? session.sessionId}
             active={session.sessionId === currentId}
             pinned={pinnedSessionSet.has(session.sessionId)}
@@ -463,7 +466,9 @@ export function SessionSidebar({
                 })
               }
             >
-              {hiddenCount > 0 ? "展开显示" : "收起"}
+              {hiddenCount > 0
+                ? t("sidebar.group.expand")
+                : t("sidebar.group.collapse")}
             </button>
           )}
       </>
@@ -474,14 +479,14 @@ export function SessionSidebar({
     <>
       <aside className="native-sidebar" style={{ width: sidebarPanel.width }}>
         <div className="native-sidebar-brand">
-          <span>青梧</span>
+          <span>{t("sidebar.brand")}</span>
           <button
             className="native-sidebar-search-toggle"
             onClick={() => {
               setSearchOpen((v) => !v);
               setSearchText("");
             }}
-            title="搜索会话"
+            title={t("sidebar.search.title")}
           >
             <svg
               viewBox="0 0 24 24"
@@ -505,7 +510,7 @@ export function SessionSidebar({
               autoFocus
               value={searchText}
               onChange={(e) => setSearchText(e.target.value)}
-              placeholder="搜索会话"
+              placeholder={t("sidebar.search.placeholder")}
             />
           </div>
         )}
@@ -527,14 +532,16 @@ export function SessionSidebar({
             <path d="M12 20h9" />
             <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" />
           </svg>
-          新会话
+          {t("sidebar.newChat")}
         </button>
         <div className="native-session-list">
           {/* 1. 置顶区间 */}
           {(pinnedWorkspaces.length > 0 || pinnedSessionsList.length > 0) && (
             <div className="native-sidebar-section">
               <div className="native-sidebar-section-header">
-                <span className="native-sidebar-section-title">置顶</span>
+                <span className="native-sidebar-section-title">
+                  {t("sidebar.sections.pinned")}
+                </span>
               </div>
               <div className="native-sidebar-section-content">
                 {pinnedWorkspaces.map((ws, index) => {
@@ -589,7 +596,7 @@ export function SessionSidebar({
                 {pinnedSessionsList.map((session) => (
                   <SessionRow
                     key={session.sessionId}
-                    title={sessionTitle(session)}
+                    title={sessionTitle(session, t("sidebar.untitled"))}
                     tooltip={session.cwd ?? session.sessionId}
                     active={session.sessionId === currentId}
                     pinned={true}
@@ -615,12 +622,14 @@ export function SessionSidebar({
           {/* 2. 项目区间 */}
           <div className="native-sidebar-section">
             <div className="native-sidebar-section-header">
-              <span className="native-sidebar-section-title">项目</span>
+              <span className="native-sidebar-section-title">
+                {t("sidebar.sections.projects")}
+              </span>
               <button
                 className="native-sidebar-section-act"
                 onClick={() => void handleAddWorkspace()}
-                title="添加项目"
-                aria-label="添加项目"
+                title={t("sidebar.sections.addProject")}
+                aria-label={t("sidebar.sections.addProject")}
               >
                 <svg
                   viewBox="0 0 24 24"
@@ -689,7 +698,9 @@ export function SessionSidebar({
               })}
               {normalWorkspaces.length === 0 &&
                 pinnedWorkspaces.length === 0 && (
-                  <div className="native-sidebar-empty-hint">暂无项目</div>
+                  <div className="native-sidebar-empty-hint">
+                    {t("sidebar.sections.noProjects")}
+                  </div>
                 )}
             </div>
           </div>
@@ -698,13 +709,15 @@ export function SessionSidebar({
           {normalUngroupedSessions.length > 0 && (
             <div className="native-sidebar-section">
               <div className="native-sidebar-section-header">
-                <span className="native-sidebar-section-title">会话</span>
+                <span className="native-sidebar-section-title">
+                  {t("sidebar.sections.sessions")}
+                </span>
               </div>
               <div className="native-sidebar-section-content">
                 {normalUngroupedSessions.map((session) => (
                   <SessionRow
                     key={session.sessionId}
-                    title={sessionTitle(session)}
+                    title={sessionTitle(session, t("sidebar.untitled"))}
                     tooltip={session.cwd ?? session.sessionId}
                     active={session.sessionId === currentId}
                     pinned={false}
@@ -733,7 +746,7 @@ export function SessionSidebar({
             type="button"
             className="native-sidebar-footer-btn"
             onClick={onOpenSettings}
-            title="设置 (Ctrl+,)"
+            title={`${t("sidebar.settings")} (Ctrl+,)`}
           >
             <svg
               viewBox="0 0 16 16"
@@ -745,7 +758,7 @@ export function SessionSidebar({
               <path d="M8 4.754a3.246 3.246 0 1 0 0 6.492 3.246 3.246 0 0 0 0-6.492zM9.75 8a1.75 1.75 0 1 1-3.5 0 1.75 1.75 0 0 1 3.5 0z" />
               <path d="M9.796 1.343c-.527-1.79-3.065-1.79-3.592 0l-.094.319a.873.873 0 0 1-1.255.52l-.292-.16c-1.64-.892-3.433.902-2.54 2.541l.159.292a.873.873 0 0 1-.52 1.255l-.319.094c-1.79.527-1.79 3.065 0 3.592l.319.094a.873.873 0 0 1 .52 1.255l-.16.292c-.892 1.64.901 3.434 2.541 2.54l.292-.159a.873.873 0 0 1 1.255.52l.094.319c.527 1.79 3.065 1.79 3.592 0l.094-.319a.873.873 0 0 1 1.255-.52l.292.16c1.64.893 3.434-.902 2.54-2.541l-.159-.292a.873.873 0 0 1 .52-1.255l.319-.094c1.79-.527 1.79-3.065 0-3.592l-.319-.094a.873.873 0 0 1-.52-1.255l.16-.292c.893-1.64-.902-3.433-2.541-2.54l-.292.159a.873.873 0 0 1-1.255-.52l-.094-.319zm-2.633.283c.246-.835 1.428-.835 1.674 0l.094.319a1.873 1.873 0 0 0 2.693 1.115l.291-.16c.764-.415 1.6.42 1.185 1.184l-.159.292a1.873 1.873 0 0 0 1.116 2.692l.318.094c.835.246.835 1.428 0 1.674l-.319.094a1.873 1.873 0 0 0-1.115 2.693l.16.291c.415.764-.42 1.6-1.185 1.185l-.291-.159a1.873 1.873 0 0 0-2.693 1.116l-.094.318c-.246.835-1.428.835-1.674 0l-.094-.319a1.873 1.873 0 0 0-2.692-1.115l-.292.16c-.764.415-1.6-.42-1.184-1.185l.159-.291A1.873 1.873 0 0 0 1.945 8.93l-.319-.094c-.835-.246-.835-1.428 0-1.674l.319-.094A1.873 1.873 0 0 0 3.06 4.377l-.16-.292c-.415-.764.42-1.6 1.185-1.184l.292.159a1.873 1.873 0 0 0 2.692-1.115l.094-.319z" />
             </svg>
-            <span>设置</span>
+            <span>{t("sidebar.settings")}</span>
           </button>
         </div>
       </aside>
@@ -754,7 +767,7 @@ export function SessionSidebar({
         className="native-resizer"
         role="separator"
         aria-orientation="vertical"
-        title="拖动调节宽度，双击复位"
+        title={t("sidebar.resizeTitle")}
         onPointerDown={(e) => sidebarPanel.startDrag(e, 1)}
         onDoubleClick={sidebarPanel.reset}
       />

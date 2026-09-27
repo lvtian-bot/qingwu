@@ -7,6 +7,7 @@
  * 思考收成一句稳定的话。两处都会先去 ** 标记，避免折行行首出现裸星号。
  */
 import { useState } from "react";
+import { useT } from "../i18n";
 import { ChevronDownIcon, ThinkIcon } from "./native-icons";
 
 function firstLine(text: string): string {
@@ -28,6 +29,7 @@ interface ReasoningRowProps {
 }
 
 export function ReasoningRow({ text, running = false }: ReasoningRowProps) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const summary = (running ? latestLine(text) : firstLine(text)).replaceAll(
     "**",
@@ -55,7 +57,7 @@ export function ReasoningRow({ text, running = false }: ReasoningRowProps) {
             <ChevronDownIcon />
           </span>
         </span>
-        <span className="native-reasoning-title">思考</span>
+        <span className="native-reasoning-title">{t("chat.reasoning.thinking")}</span>
         {!open && (
           <>
             <span className="native-reasoning-dot" aria-hidden="true" />

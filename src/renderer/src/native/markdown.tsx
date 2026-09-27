@@ -3,6 +3,7 @@
  * 双主题高亮。高亮器懒加载单例，就绪前代码块回退纯文本。
  */
 import { createContext, memo, useContext, useEffect, useMemo, useState } from 'react';
+import { useT } from '../i18n';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Components } from 'react-markdown';
@@ -114,6 +115,7 @@ function highlight(code: string, lang: string): string | null {
 // ---------- 代码块 ----------
 
 function CodeBlock({ code, lang }: { code: string; lang: string }) {
+  const t = useT();
   const [html, setHtml] = useState<string | null>(() => highlight(code, lang));
   const [copied, setCopied] = useState(false);
 
@@ -153,14 +155,14 @@ function CodeBlock({ code, lang }: { code: string; lang: string }) {
         <button
           className={`native-codeblock-copy ${copied ? 'copied' : ''}`}
           onClick={() => void handleCopy()}
-          title={copied ? '已复制' : '复制代码'}
+          title={copied ? t('chat.markdown.code.copiedTitle') : t('chat.markdown.code.copyTitle')}
         >
           {copied ? (
             <>
               <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <polyline points="20 6 9 17 4 12" />
               </svg>
-              <span>已复制</span>
+              <span>{t('chat.markdown.code.copied')}</span>
             </>
           ) : (
             <>
@@ -168,7 +170,7 @@ function CodeBlock({ code, lang }: { code: string; lang: string }) {
                 <rect x="9" y="9" width="13" height="13" rx="2" />
                 <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
               </svg>
-              <span>复制</span>
+              <span>{t('chat.markdown.code.copy')}</span>
             </>
           )}
         </button>
@@ -250,6 +252,7 @@ const localImageCache = new Map<string, string>();
 
 function MarkdownImage({ src, alt }: { src?: string; alt?: string }) {
   const { cwd, onPreviewImage } = useContext(MarkdownContext);
+  const t = useT();
   const resolved = useMemo(() => resolveImageTarget(src, cwd), [src, cwd]);
   const cachedDataUrl =
     resolved && !resolved.isRemote ? localImageCache.get(resolved.target) : null;
@@ -339,9 +342,9 @@ function MarkdownImage({ src, alt }: { src?: string; alt?: string }) {
               e.preventDefault();
               void window.qingwu?.showItemInFolder?.(rawTarget);
             }}
-            title="在文件夹中定位"
+            title={t('chat.markdown.image.locateTitle')}
           >
-            定位
+            {t('chat.markdown.image.locate')}
           </button>
         )}
       </span>
@@ -352,7 +355,7 @@ function MarkdownImage({ src, alt }: { src?: string; alt?: string }) {
     return (
       <span className="native-md-image-loading">
         <span className="native-spinner" />
-        <span>加载图片中…</span>
+        <span>{t('chat.markdown.image.loading')}</span>
       </span>
     );
   }
@@ -367,7 +370,7 @@ function MarkdownImage({ src, alt }: { src?: string; alt?: string }) {
         type="button"
         className="native-md-image-btn"
         onClick={handleClick}
-        title={alt ? `${alt}（点击放大）` : '点击查看大图'}
+        title={alt ? t('chat.markdown.image.clickToZoom', { alt }) : t('chat.markdown.image.viewLarge')}
       >
         <img
           src={displaySrc}

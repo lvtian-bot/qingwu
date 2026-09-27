@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
+import { fallbackTranslate } from "./i18n";
 
 interface AppErrorBoundaryProps {
   children: ReactNode;
@@ -14,6 +15,7 @@ function normalizeError(value: unknown): Error {
 
 /**
  * 顶层兜底：渲染异常必须留下可恢复界面和诊断信息，不能再把整窗清成黑底。
+ * 位于语言上下文之外，兜底取词直接按系统语言解析。
  */
 export class AppErrorBoundary extends Component<
   AppErrorBoundaryProps,
@@ -64,10 +66,10 @@ export class AppErrorBoundary extends Component<
           }}
         >
           <h1 style={{ margin: "0 0 12px", fontSize: "20px" }}>
-            界面发生错误
+            {fallbackTranslate("app.errorTitle")}
           </h1>
           <p style={{ margin: "0 0 20px", color: "#a1a1aa", lineHeight: 1.7 }}>
-            错误信息已写入应用日志。重新加载通常可以恢复当前窗口；如果问题重复出现，请保留发生时间以便继续排查。
+            {fallbackTranslate("app.errorHint")}
           </p>
           <button
             type="button"
@@ -82,7 +84,7 @@ export class AppErrorBoundary extends Component<
               cursor: "pointer",
             }}
           >
-            重新加载界面
+            {fallbackTranslate("app.reload")}
           </button>
         </section>
       </main>

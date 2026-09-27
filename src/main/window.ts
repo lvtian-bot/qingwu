@@ -4,8 +4,9 @@ import {
   dialog,
   shell,
   nativeTheme,
+  nativeImage,
 } from "electron";
-import type { WebContents } from "electron";
+import type { WebContents, NativeImage } from "electron";
 import path from "node:path";
 import fs from "node:fs";
 import { CONFIG } from "./config";
@@ -32,12 +33,14 @@ export class WindowManager {
 
   getIconPath(): string | undefined {
     const possiblePaths = [
-      path.join(app.getAppPath(), "build", "icon.ico"),
-      path.join(app.getAppPath(), "build", "icon.png"),
+      path.join(process.resourcesPath, "icon.ico"),
+      path.join(process.resourcesPath, "icon.png"),
       path.join(process.resourcesPath, "build", "icon.ico"),
       path.join(process.resourcesPath, "build", "icon.png"),
       path.join(process.cwd(), "build", "icon.ico"),
       path.join(process.cwd(), "build", "icon.png"),
+      path.join(app.getAppPath(), "build", "icon.ico"),
+      path.join(app.getAppPath(), "build", "icon.png"),
       path.join(process.cwd(), "src", "main", "assets", "icon.png"),
     ];
 
@@ -49,8 +52,19 @@ export class WindowManager {
     return undefined;
   }
 
+  getIcon(): NativeImage | undefined {
+    const iconPath = this.getIconPath();
+    if (!iconPath) return undefined;
+    try {
+      const image = nativeImage.createFromPath(iconPath);
+      return image.isEmpty() ? undefined : image;
+    } catch {
+      return undefined;
+    }
+  }
+
   createWindow(_url?: string): BrowserWindow {
-    const icon = this.getIconPath();
+    const icon = this.getIcon() || this.getIconPath();
     const lastState = this.windowState.load();
     this.wasMaximized = lastState.isMaximized;
 
@@ -81,6 +95,11 @@ export class WindowManager {
       },
     });
     this.mainWindow = win;
+
+    const iconImage = this.getIcon();
+    if (iconImage) {
+      win.setIcon(iconImage);
+    }
 
     win.setMenuBarVisibility(false);
 

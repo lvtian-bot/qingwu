@@ -1,3 +1,5 @@
+import { useT } from "../i18n";
+
 /** 引擎断连提示横条：主界面与设置页共用，含手动重连按钮。 */
 export function ConnectionBanner({
   reconnecting,
@@ -7,6 +9,7 @@ export function ConnectionBanner({
   reconnecting: boolean;
   onReconnect: () => void;
 }) {
+  const t = useT();
   return (
     <div className="native-connection-banner" role="alert">
       <span className="native-connection-icon">
@@ -26,7 +29,7 @@ export function ConnectionBanner({
         </svg>
       </span>
       <span className="native-connection-text">
-        与 DeepSeek Harness 引擎连接中断，正在尝试重新连接…
+        {t("chat.connection.disconnected")}
       </span>
       <button
         type="button"
@@ -34,7 +37,7 @@ export function ConnectionBanner({
         disabled={reconnecting}
         onClick={onReconnect}
       >
-        {reconnecting ? "正在重连…" : "立即重试"}
+        {reconnecting ? t("chat.connection.reconnecting") : t("chat.connection.retry")}
       </button>
     </div>
   );

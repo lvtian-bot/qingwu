@@ -6,6 +6,7 @@ import {
   type Dispatch,
   type SetStateAction,
 } from "react";
+import { useT } from "../i18n";
 import {
   Endpoints,
   type ConfigurableProviderEntry,
@@ -107,6 +108,7 @@ export function useProviderDirectory(options: {
   onRefreshCatalog?: () => void;
 }): ProviderDirectory {
   const { onRefreshCatalog } = options;
+  const t = useT();
 
   const [providerRows, setProviderRows] = useState<ProviderRow[]>([]);
   const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
@@ -209,18 +211,20 @@ export function useProviderDirectory(options: {
         setCredMessage(null);
         await rpc<void>(Endpoints.credentialsUnset, { ref });
         setKeyInputs((prev) => ({ ...prev, [ref]: "" }));
-        setCredMessage(`凭据 ${ref} 已清除`);
+        setCredMessage(t("settings.messages.credentialCleared", { ref }));
         await loadProviders();
         onRefreshCatalog?.();
       } catch (e) {
         setCredMessage(
-          `清除失败: ${e instanceof Error ? e.message : String(e)}`,
+          t("settings.messages.clearFailed", {
+            message: e instanceof Error ? e.message : String(e),
+          }),
         );
       } finally {
         setCredLoading(false);
       }
     },
-    [loadProviders, onRefreshCatalog],
+    [loadProviders, onRefreshCatalog, t],
   );
 
   // 添加自定义服务商保存
@@ -268,7 +272,9 @@ export function useProviderDirectory(options: {
           });
         }
         setCredMessage(
-          `自定义服务商「${data.displayName || data.route}」添加成功`,
+          t("settings.messages.customAdded", {
+            name: data.displayName || data.route,
+          }),
         );
         await loadProviders();
         onRefreshCatalog?.();
@@ -277,13 +283,15 @@ export function useProviderDirectory(options: {
         setSelectedProvider(data.route);
       } catch (err) {
         setCredMessage(
-          `添加失败: ${err instanceof Error ? err.message : String(err)}`,
+          t("settings.messages.addFailed", {
+            message: err instanceof Error ? err.message : String(err),
+          }),
         );
       } finally {
         setCredLoading(false);
       }
     },
-    [llmViews, loadProviders, onRefreshCatalog],
+    [llmViews, loadProviders, onRefreshCatalog, t],
   );
 
   // 删除服务商（包括自定义服务商与用户添加的预设服务商）
@@ -291,7 +299,7 @@ export function useProviderDirectory(options: {
     async (row: ProviderRow) => {
       const name = row.displayName || row.provider;
       const confirmed = window.confirm(
-        `确定要删除服务商「${name}」吗？相关配置与凭据将被移除。`,
+        t("settings.messages.confirmDelete", { name }),
       );
       if (!confirmed) return;
       try {
@@ -324,19 +332,21 @@ export function useProviderDirectory(options: {
           ],
           expectedRevision: view?.revision,
         });
-        setCredMessage(`服务商 ${name} 已删除`);
+        setCredMessage(t("settings.messages.providerDeleted", { name }));
         setSelectedProvider((prev) => (prev === row.provider ? null : prev));
         await loadProviders();
         onRefreshCatalog?.();
       } catch (err) {
         setCredMessage(
-          `删除失败: ${err instanceof Error ? err.message : String(err)}`,
+          t("settings.messages.deleteFailed", {
+            message: err instanceof Error ? err.message : String(err),
+          }),
         );
       } finally {
         setCredLoading(false);
       }
     },
-    [llmViews, loadProviders, onRefreshCatalog],
+    [llmViews, loadProviders, onRefreshCatalog, t],
   );
 
   // 已添加 = 引擎已注册路由，与聊天框模型选择器同一数据源
@@ -443,19 +453,23 @@ export function useProviderDirectory(options: {
           await rpc<void>(Endpoints.credentialsSet, { ref, value: rawKey });
         }
         setKeyInputs((prev) => ({ ...prev, [ref]: "" }));
-        setCredMessage(`供应商 ${row.displayName} 已保存`);
+        setCredMessage(
+          t("settings.messages.providerSaved", { name: row.displayName }),
+        );
         await loadProviders();
         onRefreshCatalog?.();
         setAddingProvider(false);
       } catch (e) {
         setCredMessage(
-          `保存失败: ${e instanceof Error ? e.message : String(e)}`,
+          t("settings.messages.saveFailed", {
+            message: e instanceof Error ? e.message : String(e),
+          }),
         );
       } finally {
         setCredLoading(false);
       }
     },
-    [draftStore, keyInputs, llmViews, loadProviders, onRefreshCatalog],
+    [draftStore, keyInputs, llmViews, loadProviders, onRefreshCatalog, t],
   );
 
   // 添加供应商流程：进入与退出（退出时回落到第一个已添加供应商）

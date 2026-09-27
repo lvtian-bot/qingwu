@@ -26,6 +26,8 @@ import {
 import { setupApplicationDiagnostics } from "./diagnostics";
 import { NotificationManager } from "./notification";
 import type { RendererErrorReport } from "../shared/types";
+import { formatMessage } from "../shared/i18n-core";
+import { tr } from "./i18n";
 
 setupFileLogging(path.join(app.getPath("userData"), "logs"));
 setupApplicationDiagnostics();
@@ -54,11 +56,10 @@ if (!gotTheLock) {
     console.error("[Main] 引擎清理失败:", redactSecrets(error));
     const { response } = await dialog.showMessageBox({
       type: "error",
-      title: "暂时无法退出青梧",
-      message:
-        "后台引擎尚未完成清理，可以重试退出。保留应用后，可从托盘选择退出；没有托盘时重新打开青梧可再次尝试退出。",
+      title: tr("dialog.quitTitle"),
+      message: tr("dialog.quitMessage"),
       detail: redactSecrets(error),
-      buttons: ["重试退出", "保留应用"],
+      buttons: [tr("dialog.quitRetry"), tr("dialog.quitKeep")],
       defaultId: 0,
       cancelId: 1,
     });
@@ -196,8 +197,13 @@ if (!gotTheLock) {
       return updated;
     },
   );
-  settings.onChange((_key, _value, all) => {
+  settings.onChange((key, _value, all) => {
     windowManager.mainWindow?.webContents.send("appSettings:changed", all);
+    // 语言切换即时生效于主进程侧的用户可见文案（托盘、关于面板）。
+    if (key === "uiLanguage") {
+      trayManager.updateContextMenu();
+      setupAboutPanel();
+    }
   });
   ipcMain.handle("appSettings:openUserData", () =>
     shell.openPath(app.getPath("userData")),
@@ -234,7 +240,7 @@ if (!gotTheLock) {
       console.log("[Main] 青梧应用启动中...");
       setupAboutPanel();
       // 启动期间也保留退出入口，清理失败时不让应用成为不可操作的后台实例。
-      trayManager.init(windowManager.getIconPath());
+      trayManager.init(windowManager.getIcon?.() || windowManager.getIconPath());
 
       await harnessManager.start();
       if (lifecycle.requested) return;
@@ -335,16 +341,19 @@ if (!gotTheLock) {
       harnessManager.onUnexpectedExit((code, signal) => {
         console.error(`[Main] 引擎异常退出: code=${code}, signal=${signal}`);
         windowManager.showErrorMessage(
-          "服务连接已中断",
-          `后台引擎服务异常退出 (退出码: ${code || "无"}, 信号: ${signal || "无"})。请尝试重启应用或重新连接。`,
+          tr("dialog.serviceDisconnected"),
+          formatMessage(tr("dialog.engineExited"), {
+            code: code || tr("about.unknown"),
+            signal: signal || tr("about.unknown"),
+          }),
         );
       });
     } catch (err) {
       if (lifecycle.requested) return;
       console.error("[Main] 启动失败:", redactSecrets(err));
       dialog.showErrorBox(
-        "青梧启动失败",
-        `无法启动内置引擎服务:\n${redactSecrets(err)}\n\n应用即将退出。`,
+        tr("dialog.startupFailed"),
+        formatMessage(tr("dialog.startupEngine"), { detail: redactSecrets(err) }),
       );
       app.quit();
     }

@@ -323,6 +323,7 @@ test("主入口先提供托盘退出入口，启动期间退出后不创建窗�
   let attempts = 0;
   const app = new EventEmitter();
   app.getPath = () => "D:/fixture";
+  app.getLocale = () => "zh-CN";
   app.requestSingleInstanceLock = () => true;
   app.setAppUserModelId = () => {};
   app.whenReady = () => Promise.resolve();
@@ -397,7 +398,7 @@ test("主入口先提供托盘退出入口，启动期间退出后不创建窗�
         }
       },
     },
-    "./settings": { settings: { onChange() {} } },
+    "./settings": { settings: { get: () => "auto", onChange() {} } },
     "./config": { CONFIG: {} },
   });
   await tick();

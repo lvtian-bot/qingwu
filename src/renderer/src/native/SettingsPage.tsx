@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
+import { useT } from "../i18n";
 import {
   type ModelCatalog,
   type SessionSummary,
@@ -35,16 +36,17 @@ export interface SettingsPageProps {
 
 type TabKey = "models" | "general" | "archivedSessions" | "permissions";
 
+// 导航文案存词条 key，渲染处经 t() 取词
 const NAV_GROUPS: {
-  title: string;
-  items: { key: TabKey; label: string; icon: ReactNode }[];
+  titleKey: string;
+  items: { key: TabKey; labelKey: string; icon: ReactNode }[];
 }[] = [
   {
-    title: "基础设置",
+    titleKey: "settings.nav.basic",
     items: [
       {
         key: "general",
-        label: "常规",
+        labelKey: "settings.nav.general",
         icon: (
           <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
             <path d="M8 4.754a3.246 3.246 0 1 0 0 6.492 3.246 3.246 0 0 0 0-6.492zM9.75 8a1.75 1.75 0 1 1-3.5 0 1.75 1.75 0 0 1 3.5 0z" />
@@ -54,7 +56,7 @@ const NAV_GROUPS: {
       },
       {
         key: "models",
-        label: "模型设置",
+        labelKey: "settings.nav.models",
         icon: (
           <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
             <path d="M6.5 1A1.5 1.5 0 0 0 5 2.5V3H2.5A1.5 1.5 0 0 0 1 4.5v9A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-9A1.5 1.5 0 0 0 13.5 3H11v-.5A1.5 1.5 0 0 0 9.5 1h-3zm0 1h3a.5.5 0 0 1 .5.5V3H6v-.5a.5.5 0 0 1 .5-.5zM2 4.5a.5.5 0 0 1 .5-.5h11a.5.5 0 0 1 .5.5V6H2V4.5zM2 7h12v6.5a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5V7z" />
@@ -64,11 +66,11 @@ const NAV_GROUPS: {
     ],
   },
   {
-    title: "Agent 能力",
+    titleKey: "settings.nav.agent",
     items: [
       {
         key: "permissions",
-        label: "权限",
+        labelKey: "settings.nav.permissions",
         icon: (
           <svg
             viewBox="0 0 16 16"
@@ -95,11 +97,11 @@ const NAV_GROUPS: {
     ],
   },
   {
-    title: "已归档",
+    titleKey: "settings.nav.archived",
     items: [
       {
         key: "archivedSessions",
-        label: "已归档会话",
+        labelKey: "settings.nav.archivedSessions",
         icon: (
           <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
             <path d="M0 2a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1v7.5a2.5 2.5 0 0 1-2.5 2.5h-9A2.5 2.5 0 0 1 1 12.5V5a1 1 0 0 1-1-1V2zm2 3v7.5A1.5 1.5 0 0 0 3.5 14h9a1.5 1.5 0 0 0 1.5-1.5V5H2zm13-3H1v2h14V2zM5 7.5a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 0 1h-5a.5.5 0 0 1-.5-.5z" />
@@ -130,6 +132,7 @@ export function SettingsPage({
 }: SettingsPageProps) {
   const [activeTab, setActiveTab] = useState<TabKey>("general");
   const dsh = useDshSettings();
+  const t = useT();
 
   // 按 Esc 键返回应用
   useEffect(() => {
@@ -146,7 +149,7 @@ export function SettingsPage({
     activeTab === key ? undefined : ({ display: "none" } as const);
 
   return (
-    <div className="native-settings-page" aria-label="设置">
+    <div className="native-settings-page" aria-label={t("settings.page.ariaLabel")}>
       {/* 左侧：返回应用 + 分类导航（复用主界面侧栏框架与同一宽度状态） */}
       <aside
         className="native-sidebar native-settings-rail"
@@ -156,7 +159,7 @@ export function SettingsPage({
           type="button"
           className="native-settings-back-btn"
           onClick={onBack}
-          title="返回应用 (Esc)"
+          title={t("settings.page.backTitle")}
         >
           <span className="native-settings-nav-icon">
             <svg
@@ -172,14 +175,14 @@ export function SettingsPage({
               <path d="M14 8H2M6.5 3.5L2 8l4.5 4.5" />
             </svg>
           </span>
-          <span>返回应用</span>
+          <span>{t("settings.page.back")}</span>
         </button>
 
         {NAV_GROUPS.map((group) => (
-          <div key={group.title} className="native-sidebar-section">
+          <div key={group.titleKey} className="native-sidebar-section">
             <div className="native-sidebar-section-header">
               <span className="native-sidebar-section-title">
-                {group.title}
+                {t(group.titleKey)}
               </span>
             </div>
             {group.items.map((item) => (
@@ -192,7 +195,7 @@ export function SettingsPage({
                 onClick={() => setActiveTab(item.key)}
               >
                 <span className="native-settings-nav-icon">{item.icon}</span>
-                <span>{item.label}</span>
+                <span>{t(item.labelKey)}</span>
               </button>
             ))}
           </div>
@@ -204,7 +207,7 @@ export function SettingsPage({
         className="native-resizer"
         role="separator"
         aria-orientation="vertical"
-        title="拖动调节宽度，双击复位"
+        title={t("settings.page.resizeHint")}
         onPointerDown={(e) => sidebarPanel.startDrag(e, 1)}
         onDoubleClick={sidebarPanel.reset}
       />
@@ -230,7 +233,7 @@ export function SettingsPage({
               </svg>
             </span>
             <span className="native-connection-text">
-              与 DeepSeek Harness 引擎连接中断，正在尝试重新连接…
+              {t("settings.connection.lost")}
             </span>
             <button
               type="button"
@@ -238,7 +241,9 @@ export function SettingsPage({
               disabled={reconnecting}
               onClick={onReconnect}
             >
-              {reconnecting ? "正在重连…" : "立即重试"}
+              {reconnecting
+                ? t("settings.connection.retrying")
+                : t("settings.connection.retry")}
             </button>
           </div>
         )}

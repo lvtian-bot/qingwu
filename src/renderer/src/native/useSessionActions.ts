@@ -4,6 +4,7 @@
  */
 import { useCallback } from "react";
 import type { Dispatch, SetStateAction } from "react";
+import { useT } from "../i18n";
 import type { ComposerDraftsApi } from "./useComposerDrafts";
 import { rpc, toErrMsg } from "./rpc";
 import { Endpoints } from "./protocol";
@@ -50,6 +51,7 @@ export function useSessionActions({
   setActiveWorkspaceId,
   setSettingsOpen,
 }: SessionActionsOptions) {
+  const t = useT();
   const openSession = (sessionId: string) => {
     setCurrentId(sessionId);
     setUnreadFinishedSessionIds((prev) => {
@@ -256,7 +258,9 @@ export function useSessionActions({
     } catch (err) {
       const message = toErrMsg(err);
       setError(
-        message.includes("fork-unavailable") ? "当前会话不支持分叉" : message,
+        message.includes("fork-unavailable")
+          ? t("sidebar.errors.forkUnavailable")
+          : message,
       );
     }
   };

@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import type { MouseEvent } from "react";
-import { MENU_NAMES, type MenuName } from "../../shared/menu-data";
+import {
+  MENU_NAME_KEYS,
+  MENU_NAMES,
+  type MenuName,
+} from "../../shared/menu-data";
+import { useT } from "./i18n";
 import "./titlebar.css";
 
 const MENU_ITEMS = MENU_NAMES;
@@ -31,6 +36,7 @@ export function TitleBar({
   sidebarCollapsed: boolean;
   onToggleSidebar: () => void;
 }) {
+  const t = useT();
   const [activeMenu, setActiveMenu] = useState<MenuName | null>(null);
   const [isFullScreen, setIsFullScreen] = useState(false);
   const menuButtonsRef = useRef<Record<string, HTMLButtonElement | null>>({});
@@ -142,8 +148,12 @@ export function TitleBar({
           type="button"
           className="titlebar-side-toggle"
           onClick={onToggleSidebar}
-          title={sidebarCollapsed ? "打开侧边栏" : "收起侧边栏"}
-          aria-label={sidebarCollapsed ? "打开侧边栏" : "收起侧边栏"}
+          title={t(
+            sidebarCollapsed ? "menu.sidebar.show" : "menu.sidebar.hide",
+          )}
+          aria-label={t(
+            sidebarCollapsed ? "menu.sidebar.show" : "menu.sidebar.hide",
+          )}
           aria-pressed={!sidebarCollapsed}
         >
           <svg
@@ -161,7 +171,7 @@ export function TitleBar({
             <path d="M9 4v16" />
           </svg>
         </button>
-        <nav className="titlebar-menu" aria-label="应用菜单">
+        <nav className="titlebar-menu" aria-label={t("menu.appMenu")}>
           {MENU_ITEMS.map((item) => (
             <button
               key={item}
@@ -187,7 +197,7 @@ export function TitleBar({
                 if (el) handleMenuMouseEnter(item, el);
               }}
             >
-              {item}
+              {t(MENU_NAME_KEYS[item])}
             </button>
           ))}
         </nav>

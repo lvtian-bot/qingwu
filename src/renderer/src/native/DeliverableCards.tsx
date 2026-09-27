@@ -5,6 +5,7 @@
  */
 import { useState } from "react";
 import type { TurnDeliverable } from "./events";
+import { useT } from "../i18n";
 import { basename, fileInfoOf, resolveAgainstCwd } from "./panel/workspace-files";
 import { FileGlyph } from "./panel/glyphs";
 
@@ -20,6 +21,7 @@ export function DeliverableCards({
   onOpenFile?: (path: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const t = useT();
   if (files.length === 0) return null;
   const visible = expanded ? files : files.slice(0, COLLAPSED_COUNT);
 
@@ -44,7 +46,9 @@ export function DeliverableCards({
           className="native-deliv-toggle"
           onClick={() => setExpanded((value) => !value)}
         >
-          {expanded ? "收起交付清单" : `展开全部交付（${files.length} 项）`}
+          {expanded
+            ? t("tools.deliverables.collapse")
+            : t("tools.deliverables.expand", { count: files.length })}
         </button>
       )}
     </div>
@@ -61,6 +65,7 @@ function DeliverableCard({
   onOpenFile?: (path: string) => void;
 }) {
   const [feedback, setFeedback] = useState<"open" | "reveal" | null>(null);
+  const t = useT();
   const info = fileInfoOf(file.path);
   const absolute = resolveAgainstCwd(cwd, file.path);
 
@@ -96,17 +101,17 @@ function DeliverableCard({
           type="button"
           className="native-btn-ghost-xs"
           onClick={() => runAction("open")}
-          title="用系统默认程序打开"
+          title={t("tools.deliverables.openTooltip")}
         >
-          {feedback === "open" ? "已打开" : "打开"}
+          {feedback === "open" ? t("tools.deliverables.opened") : t("tools.deliverables.open")}
         </button>
         <button
           type="button"
           className="native-btn-ghost-xs"
           onClick={() => runAction("reveal")}
-          title="在资源管理器中定位"
+          title={t("tools.deliverables.revealTooltip")}
         >
-          {feedback === "reveal" ? "已定位" : "定位"}
+          {feedback === "reveal" ? t("tools.deliverables.revealed") : t("tools.deliverables.reveal")}
         </button>
       </span>
     </div>

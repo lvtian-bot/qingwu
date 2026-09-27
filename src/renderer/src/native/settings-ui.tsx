@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useT } from "../i18n";
 import type { CustomModelEntry } from "./settings-domain";
 
 /** 行式设置项：标题与描述在左，控件在右。 */
@@ -53,12 +54,13 @@ export function KeyVisibilityToggle({
   visible: boolean;
   onToggle: () => void;
 }) {
+  const t = useT();
   return (
     <button
       type="button"
       className="native-provider-visible-toggle"
       onClick={onToggle}
-      title={visible ? "隐藏密钥" : "显示密钥"}
+      title={visible ? t("settings.keyToggle.hide") : t("settings.keyToggle.show")}
     >
       {visible ? (
         <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor">
@@ -83,6 +85,7 @@ export function ModelItemRow({
   model: CustomModelEntry;
   onRemove: (id: string) => void;
 }) {
+  const t = useT();
   return (
     <div className="native-model-item">
       <div className="native-settings-row-text">
@@ -94,12 +97,16 @@ export function ModelItemRow({
         </div>
       </div>
       <div className="native-model-item-side">
-        {model.reasoning && <span className="native-model-tag">推理</span>}
+        {model.reasoning && (
+          <span className="native-model-tag">
+            {t("settings.shared.reasoning")}
+          </span>
+        )}
         <button
           type="button"
           className="native-model-remove-btn"
           onClick={() => onRemove(model.id)}
-          title="移除此模型"
+          title={t("settings.modelRow.remove")}
         >
           ×
         </button>
@@ -126,19 +133,20 @@ export function ModelAddRow({
   onReasoningChange: (value: boolean) => void;
   onAdd: () => void;
 }) {
+  const t = useT();
   return (
     <div className="native-model-add-row">
       <input
         type="text"
         className="native-settings-input"
-        placeholder="模型 ID (例如 gpt-4o)"
+        placeholder={t("settings.modelRow.idPlaceholder")}
         value={idValue}
         onChange={(e) => onIdChange(e.target.value)}
       />
       <input
         type="text"
         className="native-settings-input"
-        placeholder="显示名称 (可选)"
+        placeholder={t("settings.modelRow.namePlaceholder")}
         value={nameValue}
         onChange={(e) => onNameChange(e.target.value)}
       />
@@ -148,7 +156,7 @@ export function ModelAddRow({
           checked={reasoning}
           onChange={(e) => onReasoningChange(e.target.checked)}
         />
-        <span>推理</span>
+        <span>{t("settings.shared.reasoning")}</span>
       </label>
       <button
         type="button"
@@ -156,7 +164,7 @@ export function ModelAddRow({
         disabled={!idValue.trim()}
         onClick={onAdd}
       >
-        添加模型
+        {t("settings.modelRow.add")}
       </button>
     </div>
   );

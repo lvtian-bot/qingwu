@@ -127,13 +127,19 @@ export function reorderWorkspaces(
   return orderWorkspaces(workspaces, nextIds);
 }
 
-/** 会话标题：AI 生成/用户命名的 title 投影优先，回退工作目录名。 */
-export function sessionTitle(session: SessionSummary): string {
+/**
+ * 会话标题：AI 生成/用户命名的 title 投影优先，回退工作目录名；
+ * 两者皆缺时用调用方传入的无标题文案（界面处经 t() 取词）。
+ */
+export function sessionTitle(
+  session: SessionSummary,
+  untitledLabel = "未命名",
+): string {
   const title = session.projections?.values?.title;
   if (typeof title === "string" && title.trim()) return title;
   if (session.cwd)
-    return session.cwd.split(/[\\/]/).filter(Boolean).pop() ?? "未命名";
-  return "未命名";
+    return session.cwd.split(/[\\/]/).filter(Boolean).pop() ?? untitledLabel;
+  return untitledLabel;
 }
 
 /**

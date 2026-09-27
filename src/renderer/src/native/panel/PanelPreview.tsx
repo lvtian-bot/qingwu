@@ -4,6 +4,7 @@
  * 不支持的类型给出空态与系统打开入口。stat 成功后监听文件变化自动重载。
  */
 import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { useT } from "../../i18n";
 import type { WorkspaceFileStat } from "../protocol";
 import { toErrMsg } from "../rpc";
 import { Markdown } from "../markdown";
@@ -52,6 +53,7 @@ export function PanelPreview({
   path,
   onPreviewImage,
 }: PanelPreviewProps) {
+  const t = useT();
   const [state, setState] = useState<PreviewState>({ phase: "loading" });
   const [wrap, setWrap] = useState(true);
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -68,7 +70,7 @@ export function PanelPreview({
     async (opts?: { keepScrollTop?: number }) => {
       const gen = ++genRef.current;
       if (!sessionId) {
-        setState({ phase: "failed", message: "当前没有选中的会话" });
+        setState({ phase: "failed", message: t("panel.preview.noSession") });
         return;
       }
       pendingScrollRef.current = opts?.keepScrollTop ?? null;
@@ -81,7 +83,7 @@ export function PanelPreview({
           const img = await window.qingwu?.readLocalImage?.(stat.absolutePath);
           if (gen !== genRef.current) return;
           if (!img) {
-            setState({ phase: "failed", message: "图片读取失败" });
+            setState({ phase: "failed", message: t("panel.preview.imageFailed") });
           } else {
             setState({ phase: "image", stat, dataUrl: img.dataUrl });
           }
@@ -105,16 +107,17 @@ export function PanelPreview({
         }
       } catch (err) {
         if (gen !== genRef.current) return;
-        const message = toErrMsg(err);
+        const raw = toErrMsg(err);
+        const key = friendlyFileErrorKey(raw);
         setState({
-          phase: message.includes("workspace-file/not-found")
+          phase: raw.includes("workspace-file/not-found")
             ? "missing"
             : "failed",
-          message: friendlyFileError(message),
+          message: key ? t(key) : raw,
         });
       }
     },
-    [sessionId, path],
+    [sessionId, path, t],
   );
 
   useEffect(() => {
@@ -160,13 +163,16 @@ export function PanelPreview({
           } catch (err) {
             const message = toErrMsg(err);
             if (message.includes("workspace-file/not-found")) {
-              setState({ phase: "missing", message: "文件已不存在或已被删除" });
+              setState({
+                phase: "missing",
+                message: t("panel.preview.fileVanished"),
+              });
             }
           }
         })();
       },
     });
-  }, [sessionId, path, load]);
+  }, [sessionId, path, load, t]);
 
   const loadMore = useCallback(async () => {
     const cur = stateRef.current;
@@ -245,7 +251,7 @@ export function PanelPreview({
               type="button"
               className="native-icon-btn"
               onClick={() => setWrap((v) => !v)}
-              title={wrap ? "切换为不换行" : "切换为自动换行"}
+              title={wrap ? t("panel.preview.wrapOffTitle") : t("panel.preview.wrapOnTitle")}
               aria-pressed={wrap}
             >
               <WrapIcon />
@@ -255,8 +261,8 @@ export function PanelPreview({
             type="button"
             className="native-icon-btn"
             onClick={() => void load()}
-            title="重新载入"
-            aria-label="重新载入"
+            title={t("panel.preview.reloadTitle")}
+            aria-label={t("panel.preview.reloadTitle")}
           >
             <ReloadIcon />
           </button>
@@ -264,8 +270,8 @@ export function PanelPreview({
             type="button"
             className="native-icon-btn"
             onClick={openExternal}
-            title="用系统默认程序打开"
-            aria-label="用系统默认程序打开"
+            title={t("panel.preview.openExternal")}
+            aria-label={t("panel.preview.openExternal")}
           >
             <OpenExternalIcon />
           </button>
@@ -275,7 +281,7 @@ export function PanelPreview({
         {state.phase === "loading" && (
           <div className="panel-preview-center">
             <span className="panel-spinner" aria-hidden="true" />
-            <span>文档加载中…</span>
+            <span>{t("panel.preview.loadingDoc")}</span>
           </div>
         )}
         {state.phase === "missing" && (
@@ -293,20 +299,20 @@ export function PanelPreview({
               className="native-btn-ghost-sm"
               onClick={() => void load()}
             >
-              重试
+              {t("panel.preview.retry")}
             </button>
           </div>
         )}
         {state.phase === "unsupported" && (
           <div className="panel-preview-center">
             <FileGlyph info={state.info} size={28} />
-            <span>此文件类型暂不支持在面板内预览</span>
+            <span>{t("panel.preview.unsupported")}</span>
             <button
               type="button"
               className="native-btn-ghost-sm"
               onClick={openExternal}
             >
-              用系统默认程序打开
+              {t("panel.preview.openExternal")}
             </button>
           </div>
         )}
@@ -334,7 +340,7 @@ export function PanelPreview({
             disabled={state.loadingMore}
             onClick={() => void loadMore()}
           >
-            {state.loadingMore ? "加载中…" : "加载更多"}
+            {state.loadingMore ? t("panel.preview.loadingMore") : t("panel.preview.loadMore")}
           </button>
         )}
       </div>
@@ -352,6 +358,7 @@ const CodeRows = memo(function CodeRows({
   info: FileTypeInfo;
   wrap: boolean;
 }) {
+  const t = useT();
   const allLines = text.length > 0 ? text.split("\n") : [];
   const overflow = allLines.length > MAX_RENDER_LINES;
   const lines = overflow ? allLines.slice(0, MAX_RENDER_LINES) : allLines;
@@ -367,14 +374,14 @@ const CodeRows = memo(function CodeRows({
         <div className="panel-code-row">
           <span className="panel-code-no" />
           <span className="panel-code-ln muted">
-            内容过长，仅显示前 {MAX_RENDER_LINES} 行
+            {t("panel.preview.codeOverflow", { count: MAX_RENDER_LINES })}
           </span>
         </div>
       )}
       {lines.length === 0 && (
         <div className="panel-code-row">
           <span className="panel-code-no">1</span>
-          <span className="panel-code-ln muted">（空文件）</span>
+          <span className="panel-code-ln muted">{t("panel.preview.emptyFile")}</span>
         </div>
       )}
       <span className="panel-code-kind" aria-hidden="true">
@@ -384,13 +391,19 @@ const CodeRows = memo(function CodeRows({
   );
 });
 
-function friendlyFileError(message: string): string {
-  if (message.includes("workspace-file/not-found")) return "文件不存在";
-  if (message.includes("workspace-file/not-text")) return "不是文本文件";
-  if (message.includes("workspace-file/too-large")) return "文件超出可读取的大小上限";
-  if (message.includes("not-regular-file")) return "不是普通文件";
-  if (message.includes("outside-workspace")) return "路径超出工作区范围";
-  return message;
+/** 预览读取错误码 → 词条 key；未知错误返回 null，由调用方原样透传。 */
+function friendlyFileErrorKey(message: string): string | null {
+  if (message.includes("workspace-file/not-found"))
+    return "panel.preview.error.notFound";
+  if (message.includes("workspace-file/not-text"))
+    return "panel.preview.error.notText";
+  if (message.includes("workspace-file/too-large"))
+    return "panel.preview.error.tooLarge";
+  if (message.includes("not-regular-file"))
+    return "panel.preview.error.notRegularFile";
+  if (message.includes("outside-workspace"))
+    return "panel.preview.error.outsideWorkspace";
+  return null;
 }
 
 function WrapIcon() {

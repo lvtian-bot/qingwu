@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useT } from "../i18n";
 import type {
   ContextBreakdownProjection,
   ContextPressureProjection,
@@ -35,17 +36,6 @@ function formatTokens(value: number): string {
   return `${scaled(value / 1000000)}M`;
 }
 
-/** 构成行（顺序即进度条分段顺序，颜色与图例一致）。 */
-const CONTEXT_ROWS: {
-  key: keyof ContextBreakdownProjection;
-  label: string;
-  tint: string;
-}[] = [
-  { key: "systemTokens", label: "系统提示词", tint: "system" },
-  { key: "toolsTokens", label: "工具定义", tint: "tools" },
-  { key: "messageTokens", label: "对话消息", tint: "messages" },
-];
-
 /** 环几何：与官方一致（14px 视窗、2px 描边、半径 5.5）。 */
 const METER_RADIUS = 5.5;
 
@@ -81,6 +71,7 @@ export function ContextMeter({
   pressure?: ContextPressureProjection;
   breakdown?: ContextBreakdownProjection;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLSpanElement | null>(null);
   const occupancy = contextOccupancy(pressure);
@@ -119,10 +110,20 @@ export function ContextMeter({
   const total = breakdown
     ? breakdown.systemTokens + breakdown.toolsTokens + breakdown.messageTokens
     : 0;
+  /** 构成行（顺序即进度条分段顺序，颜色与图例一致）。 */
+  const contextRows: {
+    key: keyof ContextBreakdownProjection;
+    label: string;
+    tint: string;
+  }[] = [
+    { key: "systemTokens", label: t("chat.context.systemPrompt"), tint: "system" },
+    { key: "toolsTokens", label: t("chat.context.toolDefinitions"), tint: "tools" },
+    { key: "messageTokens", label: t("chat.context.messages"), tint: "messages" },
+  ];
   const segments =
     !breakdown || total === 0
       ? [{ key: "total", tint: "", width: percent }]
-      : CONTEXT_ROWS.map((row) => ({
+      : contextRows.map((row) => ({
           key: row.key,
           tint: row.tint,
           width: (percent * breakdown[row.key]) / total,
@@ -133,10 +134,10 @@ export function ContextMeter({
       <button
         type="button"
         className="native-meter-trigger"
-        aria-label={`上下文已用 ${percent}%`}
+        aria-label={t("chat.context.usedPercent", { percent })}
         aria-haspopup="dialog"
         aria-expanded={open}
-        title={`上下文已用 ${percent}%`}
+        title={t("chat.context.usedPercent", { percent })}
         onClick={() => setOpen(!open)}
       >
         <svg viewBox="0 0 14 14" width="14" height="14" aria-hidden="true">
@@ -160,10 +161,10 @@ export function ContextMeter({
         <div
           className="native-meter-panel"
           role="dialog"
-          aria-label="上下文已用"
+          aria-label={t("chat.context.used")}
         >
           <div className="native-meter-head">
-            <span className="native-meter-headline">上下文已用</span>
+            <span className="native-meter-headline">{t("chat.context.used")}</span>
             <span className="native-meter-percent">{percent}%</span>
             <span className="native-meter-figures">
               ~{formatTokens(occupancy.usedTokens)} /{" "}
@@ -185,7 +186,7 @@ export function ContextMeter({
           </div>
           {breakdown && (
             <dl className="native-meter-rows">
-              {CONTEXT_ROWS.map((row) => (
+              {contextRows.map((row) => (
                 <div className="native-meter-row" key={row.key}>
                   <dt>
                     <span

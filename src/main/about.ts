@@ -2,6 +2,8 @@ import { app } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import { CONFIG } from './config';
+import { formatMessage } from '../shared/i18n-core';
+import { tr } from './i18n';
 
 /** 从内置引擎包读取真实版本号，避免手写字段随依赖升级漂移。 */
 function resolveDshVersion(): string {
@@ -20,15 +22,15 @@ function resolveDshVersion(): string {
       console.error('[About] 读取引擎版本失败:', err);
     }
   }
-  return '未知';
+  return tr('about.unknown');
 }
 
 export function setupAboutPanel() {
   app.setAboutPanelOptions({
     applicationName: CONFIG.appName,
-    applicationVersion: '版本: ' + app.getVersion(),
+    applicationVersion: formatMessage(tr('about.version'), { version: app.getVersion() }),
     credits: [
-      '内置引擎: @deepseek-ai/dsh ' + resolveDshVersion(),
+      formatMessage(tr('about.engine'), { name: '@deepseek-ai/dsh ' + resolveDshVersion() }),
       'Electron: ' + process.versions.electron,
       'Chromium: ' + process.versions.chrome,
       'Node.js: ' + process.versions.node,

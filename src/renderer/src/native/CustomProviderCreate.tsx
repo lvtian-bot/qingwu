@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useT } from "../i18n";
 import { CandidateModelPicker } from "./CandidateModelPicker";
 import type { CustomModelEntry } from "./settings-domain";
 import {
@@ -26,6 +27,7 @@ export function CustomProviderCreate(props: {
   }) => Promise<void>;
   onCancel: () => void;
 }) {
+  const t = useT();
   const [route, setRoute] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [api, setApi] = useState(props.protocols[0] ?? "openai-completions");
@@ -61,7 +63,7 @@ export function CustomProviderCreate(props: {
         api: api || undefined,
         ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {}),
       },
-      invalidUrlMessage: "请先输入有效的接口地址 (HTTP/HTTPS URL)",
+      invalidUrlMessage: t("settings.custom.invalidApiUrl"),
     });
 
   const handleAddCandidates = (
@@ -79,6 +81,7 @@ export function CustomProviderCreate(props: {
       id,
       newModelName.trim(),
       newModelReasoning,
+      t,
     );
     if (!result.ok) {
       discovery.setFetchError(result.error);
@@ -105,19 +108,20 @@ export function CustomProviderCreate(props: {
         />
       )}
       <div className="native-provider-head">
-        <span className="native-provider-title">添加自定义服务商</span>
+        <span className="native-provider-title">
+          {t("settings.custom.title")}
+        </span>
         <button
           type="button"
           className="native-btn native-btn-secondary native-btn-sm"
           onClick={props.onCancel}
         >
-          返回列表
+          {t("settings.custom.backToList")}
         </button>
       </div>
 
       <div className="native-provider-card-desc">
-        声明一条由用户自行配置的 LLM 路由，支持自建网关或 OpenAI / Anthropic
-        兼容端点。
+        {t("settings.custom.desc")}
       </div>
 
       {discovery.fetchError && (
@@ -126,34 +130,34 @@ export function CustomProviderCreate(props: {
 
       <div className="native-provider-field">
         <div className="native-provider-field-label">
-          <span>服务商 ID (Route)</span>
+          <span>{t("settings.custom.route.label")}</span>
         </div>
         <input
           type="text"
           className={`native-settings-input native-provider-text-input ${
             routeInvalid || routeTaken ? "input-error" : ""
           }`}
-          placeholder="例如: one-api 或 my-gateway"
+          placeholder={t("settings.custom.route.placeholder")}
           value={route}
           onChange={(e) => setRoute(e.target.value.toLowerCase())}
         />
         <div className="native-provider-card-desc">
           {routeInvalid
-            ? "服务商 ID 须以小写字母开头，仅由小写英文字母、数字和连字符（-）组成"
+            ? t("settings.custom.route.invalid")
             : routeTaken
-              ? "已存在相同 ID 的服务商"
-              : "用于唯一标识服务商并在配置与凭据中寻址，创建后不可修改"}
+              ? t("settings.custom.route.taken")
+              : t("settings.custom.route.desc")}
         </div>
       </div>
 
       <div className="native-provider-field">
         <div className="native-provider-field-label">
-          <span>显示名称</span>
+          <span>{t("settings.custom.displayName.label")}</span>
         </div>
         <input
           type="text"
           className="native-settings-input native-provider-text-input"
-          placeholder="例如: 我的自建网关（可选）"
+          placeholder={t("settings.custom.displayName.placeholder")}
           value={displayName}
           onChange={(e) => setDisplayName(e.target.value)}
         />
@@ -161,7 +165,7 @@ export function CustomProviderCreate(props: {
 
       <div className="native-provider-field">
         <div className="native-provider-field-label">
-          <span>API 协议</span>
+          <span>{t("settings.shared.apiProtocol")}</span>
         </div>
         <select
           className="native-settings-select native-provider-field-select"
@@ -178,33 +182,33 @@ export function CustomProviderCreate(props: {
 
       <div className="native-provider-field">
         <div className="native-provider-field-label">
-          <span>接口地址 (Base URL)</span>
+          <span>{t("settings.custom.baseUrl.label")}</span>
         </div>
         <input
           type="text"
           className={`native-settings-input native-provider-text-input ${
             baseUrlInvalid ? "input-error" : ""
           }`}
-          placeholder="例如: https://api.openai-proxy.com/v1"
+          placeholder={t("settings.custom.baseUrl.placeholder")}
           value={baseURL}
           onChange={(e) => setBaseURL(e.target.value)}
         />
         {baseUrlInvalid && (
           <div className="native-provider-error">
-            请输入以 http:// 或 https:// 开头的合法 URL
+            {t("settings.custom.baseUrl.invalid")}
           </div>
         )}
       </div>
 
       <div className="native-provider-field">
         <div className="native-provider-field-label">
-          <span>API 密钥</span>
+          <span>{t("settings.shared.apiKey")}</span>
         </div>
         <div className="native-provider-input-wrap">
           <input
             type={keyVisible ? "text" : "password"}
             className="native-settings-input"
-            placeholder="输入 API Key（无需鉴权可留空）"
+            placeholder={t("settings.custom.apiKeyPlaceholder")}
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
           />
@@ -217,9 +221,11 @@ export function CustomProviderCreate(props: {
 
       <div className="native-provider-models">
         <div className="native-provider-models-head">
-          <span className="native-provider-models-title">模型清单</span>
+          <span className="native-provider-models-title">
+            {t("settings.custom.modelsTitle")}
+          </span>
           <span className="native-provider-models-meta">
-            {models.length} 个
+            {t("settings.shared.modelCount", { count: models.length })}
           </span>
           <div className="native-model-actions-head">
             <button
@@ -228,17 +234,21 @@ export function CustomProviderCreate(props: {
               disabled={discovery.fetching || !cleanBaseURL || baseUrlInvalid}
               onClick={handleFetchModels}
               title={
-                cleanBaseURL ? "从接口拉取候选模型" : "请先输入有效的接口地址"
+                cleanBaseURL
+                  ? t("settings.custom.discoverTitle")
+                  : t("settings.custom.discoverNeedUrlTitle")
               }
             >
-              {discovery.fetching ? "获取中..." : "获取可用模型"}
+              {discovery.fetching
+                ? t("settings.shared.discovering")
+                : t("settings.shared.discover")}
             </button>
           </div>
         </div>
 
         {models.length === 0 ? (
           <div className="native-model-empty">
-            尚未添加模型。请点击「获取可用模型」从服务商拉取，或在下方手动添加。
+            {t("settings.custom.empty")}
           </div>
         ) : (
           models.map((model) => (
@@ -277,14 +287,14 @@ export function CustomProviderCreate(props: {
             });
           }}
         >
-          保存并添加
+          {t("settings.custom.saveAndAdd")}
         </button>
         <button
           type="button"
           className="native-btn native-btn-secondary"
           onClick={props.onCancel}
         >
-          取消
+          {t("settings.custom.cancel")}
         </button>
       </div>
     </div>

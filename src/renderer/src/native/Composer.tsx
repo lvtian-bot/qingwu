@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useT } from "../i18n";
 import { isSupportedImage, type DraftImage } from "./images";
 import { SlashMenu } from "./SlashMenu";
 import { FileMentionMenu } from "./FileMentionMenu";
@@ -80,6 +81,7 @@ export function Composer({
   onQueryFileReferences,
   menuPlacement = "top",
 }: ComposerProps) {
+  const t = useT();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [menuDismissed, setMenuDismissed] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -92,9 +94,9 @@ export function Composer({
     );
   }, []);
 
-  const steerQueueHint = isMac
-    ? "Cmd+Enter 插话发送全部排队消息"
-    : "Ctrl+Enter 插话发送全部排队消息";
+  const steerQueueHint = t("composer.steerQueueHint", {
+    key: isMac ? "Cmd" : "Ctrl",
+  });
 
   // @ 文件引用状态
   const [fileCandidates, setFileCandidates] = useState<FileReferenceCandidate[]>([]);
@@ -135,8 +137,8 @@ export function Composer({
 
   const filteredCommands = useMemo(() => {
     if (!trigger.active || !commands || commands.length === 0) return [];
-    return filterSlashCommands(commands, trigger.query, trigger.position);
-  }, [trigger.active, trigger.query, trigger.position, commands]);
+    return filterSlashCommands(commands, trigger.query, trigger.position, t);
+  }, [trigger.active, trigger.query, trigger.position, commands, t]);
 
   const isMenuOpen =
     trigger.active && !menuDismissed && filteredCommands.length > 0;
@@ -364,7 +366,7 @@ export function Composer({
                 type="button"
                 className="native-composer-thumb-btn"
                 onClick={() => onPreviewImage(img.previewUrl)}
-                title="点击预览大图"
+                title={t("composer.previewImage")}
               >
                 <img src={img.previewUrl} alt="" draggable={false} />
               </button>
@@ -375,8 +377,8 @@ export function Composer({
                   e.stopPropagation();
                   onRemoveDraftImage(img.id);
                 }}
-                title="删除图片"
-                aria-label="删除图片"
+                title={t("composer.removeImage")}
+                aria-label={t("composer.removeImage")}
               >
                 <svg
                   viewBox="0 0 24 24"
@@ -401,7 +403,7 @@ export function Composer({
         placeholder={
           canSteerQueue && !input && draftImages.length === 0
             ? steerQueueHint
-            : "询问任何问题"
+            : t("composer.placeholder")
         }
         onFocus={() => {
           if (trigger.active) setMenuDismissed(false);
@@ -551,8 +553,8 @@ export function Composer({
           type="button"
           className="native-composer-attach-btn"
           onClick={() => fileInputRef.current?.click()}
-          title="添加图片"
-          aria-label="添加图片"
+          title={t("composer.addImage")}
+          aria-label={t("composer.addImage")}
         >
           <svg
             viewBox="0 0 24 24"
@@ -573,7 +575,7 @@ export function Composer({
         {controls ?? <span style={{ flex: 1 }} />}
         {meter}
         {running && !canSend ? (
-          <button className="native-send stop" onClick={onStop} title="停止 (连按两次 Esc)">
+          <button className="native-send stop" onClick={onStop} title={t("composer.stopTitle")}>
             <svg
               viewBox="0 0 16 16"
               width="16"
@@ -592,8 +594,8 @@ export function Composer({
             // 运行中有草稿或附件时改为排队发送（与官方一致：同一位置按草稿是否可提交切换）
             title={
               running
-                ? `排队发送（${isMac ? "Cmd" : "Ctrl"}+Enter 插话发送）`
-                : "发送"
+                ? t("composer.queueSendTitle", { key: isMac ? "Cmd" : "Ctrl" })
+                : t("composer.send")
             }
           >
             <svg

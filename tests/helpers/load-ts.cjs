@@ -29,6 +29,7 @@ function loadTs(relativePath, mocks = {}) {
           `${base}.ts`,
           `${base}.tsx`,
           path.join(base, "index.ts"),
+          path.join(base, "index.tsx"),
         ];
         const source = candidates.find(
           (candidate) =>

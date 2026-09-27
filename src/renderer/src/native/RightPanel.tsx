@@ -17,6 +17,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useT } from "../i18n";
 import { basename, fileInfoOf } from "./panel/workspace-files";
 import {
   defaultPanelLayout,
@@ -72,6 +73,7 @@ export const RightPanel = forwardRef<RightPanelHandle, RightPanelProps>(
     { sessionId, cwd, open, onOpenChange, onPreviewImage },
     ref,
   ) {
+    const t = useT();
     const [layout, setLayout] = useState<PanelLayout>(defaultPanelLayout);
     const [narrow, setNarrow] = useState(
       () => window.innerWidth < NARROW_WINDOW_PX,
@@ -263,14 +265,14 @@ export const RightPanel = forwardRef<RightPanelHandle, RightPanelProps>(
         }`}
         style={fullscreen ? undefined : { width: renderWidth }}
         role="complementary"
-        aria-label="工作区面板"
+        aria-label={t("panel.shell.ariaLabel")}
       >
         {!fullscreen && (
           <div
             className="native-panel-resizer"
             role="separator"
             aria-orientation="vertical"
-            title="拖动调节宽度，双击复位"
+            title={t("panel.shell.resizerTitle")}
             onPointerDown={onResizerDown}
             onPointerMove={onResizerMove}
             onPointerUp={onResizerUp}
@@ -299,8 +301,8 @@ export const RightPanel = forwardRef<RightPanelHandle, RightPanelProps>(
             type="button"
             className="native-panel-newtab"
             onClick={openNewTab}
-            title="新建标签页"
-            aria-label="新建标签页"
+            title={t("panel.tab.newTab")}
+            aria-label={t("panel.tab.newTab")}
           >
             <svg
               viewBox="0 0 16 16"
@@ -320,8 +322,8 @@ export const RightPanel = forwardRef<RightPanelHandle, RightPanelProps>(
             type="button"
             className="native-icon-btn"
             onClick={toggleFullscreen}
-            title={fullscreen ? "退出全屏" : "全屏"}
-            aria-label={fullscreen ? "退出全屏" : "全屏"}
+            title={fullscreen ? t("panel.fullscreen.exit") : t("panel.fullscreen.enter")}
+            aria-label={fullscreen ? t("panel.fullscreen.exit") : t("panel.fullscreen.enter")}
           >
             <PanelFullscreenIcon active={fullscreen} />
           </button>
@@ -329,8 +331,8 @@ export const RightPanel = forwardRef<RightPanelHandle, RightPanelProps>(
             type="button"
             className="native-icon-btn"
             onClick={() => onOpenChange(false)}
-            title="收起面板"
-            aria-label="收起面板"
+            title={t("panel.shell.collapse")}
+            aria-label={t("panel.shell.collapse")}
           >
             <PanelCollapseIcon />
           </button>
@@ -385,6 +387,7 @@ function TabChip({
   onActivate: () => void;
   onClose: () => void;
 }) {
+  const t = useT();
   return (
     <div
       className={`native-panel-chip${active ? " active" : ""}`}
@@ -399,8 +402,8 @@ function TabChip({
         {tab.kind === "preview" && <FileGlyph info={fileInfoOf(tab.path)} size={13} />}
       </span>
       <span className="native-panel-chip-label">
-        {tab.kind === "guide" && "新标签页"}
-        {tab.kind === "files" && "工作区文件"}
+        {tab.kind === "guide" && t("panel.tab.guide")}
+        {tab.kind === "files" && t("panel.tab.files")}
         {tab.kind === "preview" && basename(tab.path)}
       </span>
       <button
@@ -410,8 +413,11 @@ function TabChip({
           event.stopPropagation();
           onClose();
         }}
-        title="关闭"
-        aria-label={`关闭 ${tab.kind === "preview" ? basename(tab.path) : "页签"}`}
+        title={t("panel.tab.closeTitle")}
+        aria-label={t("panel.tab.closeNamed", {
+          name:
+            tab.kind === "preview" ? basename(tab.path) : t("panel.tab.closeTarget"),
+        })}
       >
         <svg
           viewBox="0 0 16 16"

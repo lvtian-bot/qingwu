@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { useT } from "../i18n";
+import type { Translate } from "../i18n/core";
 import type {
   ChatItem,
   MarkedChatItem,
@@ -22,15 +24,18 @@ function formatDuration(ms: number): string {
 }
 
 /** 事件时间 → 「9月20日 16:46」；跨年补年份。 */
-function formatStamp(ms: number): string {
+function formatStamp(ms: number, t: Translate): string {
   const date = new Date(ms);
   const hhmm = `${String(date.getHours()).padStart(2, "0")}:${String(
     date.getMinutes(),
   ).padStart(2, "0")}`;
-  const md = `${date.getMonth() + 1}月${date.getDate()}日`;
+  const md = t("chat.turns.time.monthDay", {
+    month: date.getMonth() + 1,
+    day: date.getDate(),
+  });
   return date.getFullYear() === new Date().getFullYear()
     ? `${md} ${hhmm}`
-    : `${date.getFullYear()}年${md} ${hhmm}`;
+    : t("chat.turns.time.withYear", { year: date.getFullYear(), monthDay: md });
 }
 
 /** tok 数值紧凑格式：980 → 「980」，12300 → 「12.3k」。 */
@@ -66,6 +71,7 @@ function TurnMetricsCapsules({
   /** 无整轮耗时数据时回退用的答复级用时。 */
   fallbackDuration?: number;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -110,10 +116,10 @@ function TurnMetricsCapsules({
           type="button"
           className={capsuleClass}
           data-open={open || undefined}
-          title="查看用量与耗时详情"
+          title={t("chat.metrics.detailsTitle")}
           onClick={() => setOpen((value) => !value)}
         >
-          用量 {formatTokens(usage.totalTokens)} tok
+          {t("chat.metrics.usage")} {formatTokens(usage.totalTokens)} tok
         </button>
       )}
       {durationMs != null && (
@@ -121,25 +127,27 @@ function TurnMetricsCapsules({
           type="button"
           className={capsuleClass}
           data-open={open || undefined}
-          title="查看用量与耗时详情"
+          title={t("chat.metrics.detailsTitle")}
           onClick={() => setOpen((value) => !value)}
         >
-          用时 {formatDuration(durationMs)}
+          {t("chat.metrics.duration")} {formatDuration(durationMs)}
         </button>
       )}
       {open && (
         <div className="native-metrics-card" role="dialog">
           {routes && routes.length > 0 && (
             <div className="native-metrics-row">
-              <span className="native-metrics-label">模型路由</span>
+              <span className="native-metrics-label">{t("chat.metrics.modelRoute")}</span>
               <span className="native-metrics-value">
-                {routes.map((r) => `${r.provider} · ${r.model}`).join("；")}
+                {routes
+                  .map((r) => `${r.provider} · ${r.model}`)
+                  .join(t("chat.metrics.routeJoin"))}
               </span>
             </div>
           )}
           {metrics.durationMs != null && (
             <div className="native-metrics-row">
-              <span className="native-metrics-label">整轮用时</span>
+              <span className="native-metrics-label">{t("chat.metrics.turnDuration")}</span>
               <span className="native-metrics-value">
                 {formatDuration(metrics.durationMs)}
               </span>
@@ -147,7 +155,7 @@ function TurnMetricsCapsules({
           )}
           {metrics.ttftMs != null && (
             <div className="native-metrics-row">
-              <span className="native-metrics-label">首字延迟</span>
+              <span className="native-metrics-label">{t("chat.metrics.firstTokenLatency")}</span>
               <span className="native-metrics-value">
                 {formatLatency(metrics.ttftMs)}
               </span>
@@ -155,7 +163,7 @@ function TurnMetricsCapsules({
           )}
           {metrics.tokPerS != null && (
             <div className="native-metrics-row">
-              <span className="native-metrics-label">吐字速率</span>
+              <span className="native-metrics-label">{t("chat.metrics.outputSpeed")}</span>
               <span className="native-metrics-value">
                 {metrics.tokPerS >= 10
                   ? Math.round(metrics.tokPerS)
@@ -166,7 +174,7 @@ function TurnMetricsCapsules({
           )}
           {cacheRate !== undefined && Number.isFinite(cacheRate) && (
             <div className="native-metrics-row">
-              <span className="native-metrics-label">缓存命中</span>
+              <span className="native-metrics-label">{t("chat.metrics.cacheHitRate")}</span>
               <span className="native-metrics-value">
                 {Math.round(cacheRate * 100)}%
               </span>
@@ -174,16 +182,16 @@ function TurnMetricsCapsules({
           )}
           {usage && (
             <>
-              <div className="native-metrics-section">Token 明细</div>
+              <div className="native-metrics-section">{t("chat.metrics.tokenBreakdown")}</div>
               <div className="native-metrics-row">
-                <span className="native-metrics-label">未缓存输入</span>
+                <span className="native-metrics-label">{t("chat.metrics.uncachedInput")}</span>
                 <span className="native-metrics-value">
                   {formatCount(usage.uncachedInputTokens)}
                 </span>
               </div>
               {cacheRead !== undefined && (
                 <div className="native-metrics-row">
-                  <span className="native-metrics-label">缓存读取</span>
+                  <span className="native-metrics-label">{t("chat.metrics.cacheRead")}</span>
                   <span className="native-metrics-value">
                     {formatCount(cacheRead)}
                   </span>
@@ -191,22 +199,24 @@ function TurnMetricsCapsules({
               )}
               {cacheWrite !== undefined && (
                 <div className="native-metrics-row">
-                  <span className="native-metrics-label">缓存写入</span>
+                  <span className="native-metrics-label">{t("chat.metrics.cacheWrite")}</span>
                   <span className="native-metrics-value">
                     {formatCount(cacheWrite)}
                   </span>
                 </div>
               )}
               <div className="native-metrics-row">
-                <span className="native-metrics-label">输出</span>
+                <span className="native-metrics-label">{t("chat.metrics.output")}</span>
                 <span className="native-metrics-value">
                   {formatCount(usage.outputTokens)}
                   {usage.reasoningTokens !== undefined &&
-                    `（含推理 ${formatCount(usage.reasoningTokens)}）`}
+                    t("chat.metrics.inclReasoning", {
+                      count: formatCount(usage.reasoningTokens),
+                    })}
                 </span>
               </div>
               <div className="native-metrics-row">
-                <span className="native-metrics-label">合计</span>
+                <span className="native-metrics-label">{t("chat.metrics.total")}</span>
                 <span className="native-metrics-value">
                   {formatCount(usage.totalTokens)}
                 </span>
@@ -221,11 +231,12 @@ function TurnMetricsCapsules({
 
 /** 助手消息复制按钮：点击后 1.5s 内显示「已复制」。 */
 function CopyButton({ text }: { text: string }) {
+  const t = useT();
   const [copied, setCopied] = useState(false);
   return (
     <button
       className="native-msg-action"
-      title="复制回复"
+      title={t("chat.actions.copyReply")}
       onClick={() => {
         void navigator.clipboard.writeText(text).then(() => {
           setCopied(true);
@@ -247,15 +258,20 @@ function CopyButton({ text }: { text: string }) {
         <rect x="9" y="9" width="13" height="13" rx="2" />
         <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
       </svg>
-      {copied && <span>已复制</span>}
+      {copied && <span>{t("chat.actions.copied")}</span>}
     </button>
   );
 }
 
 /** 助手答复分叉按钮：从这一轮答复切分出新会话继续对话，原会话保持不动。 */
 function ForkButton({ onFork }: { onFork: () => void }) {
+  const t = useT();
   return (
-    <button className="native-msg-action" title="从这条回复分出新会话" onClick={onFork}>
+    <button
+      className="native-msg-action"
+      title={t("chat.actions.forkTitle")}
+      onClick={onFork}
+    >
       <svg
         viewBox="0 0 24 24"
         width="13"
@@ -291,9 +307,12 @@ function TurnProcessRow({
   open: boolean;
   onToggle: () => void;
 }) {
+  const t = useT();
   const labels: string[] = [];
-  if (toolCount > 0) labels.push(`${toolCount} 次工具调用`);
-  if (messageCount > 0) labels.push(`${messageCount} 条消息`);
+  if (toolCount > 0)
+    labels.push(t("chat.turns.toolCalls", { count: toolCount }));
+  if (messageCount > 0)
+    labels.push(t("chat.turns.messages", { count: messageCount }));
   return (
     <button
       type="button"
@@ -303,7 +322,7 @@ function TurnProcessRow({
       onClick={onToggle}
     >
       <span className="native-turn-process-label">
-        {labels.length === 0 ? "已思考" : labels.join(" · ")}
+        {labels.length === 0 ? t("chat.turns.thought") : labels.join(" · ")}
       </span>
       <ChevronDownIcon className="native-turn-process-chevron" />
     </button>
@@ -330,6 +349,7 @@ function AssistantBody({
   cwd?: string;
   onPreviewImage?: (url: string) => void;
 }) {
+  const t = useT();
   return (
     <>
       {(item.text || item.interrupted) && (
@@ -340,7 +360,7 @@ function AssistantBody({
             onPreviewImage={onPreviewImage}
           />
           {item.interrupted && !item.text && (
-            <span className="native-muted">（已中断）</span>
+            <span className="native-muted">{t("chat.turns.interrupted")}</span>
           )}
         </div>
       )}
@@ -350,7 +370,7 @@ function AssistantBody({
             alwaysShow ? "native-msg-meta native-msg-meta-live" : "native-msg-meta"
           }
         >
-          <span className="native-msg-time">{formatStamp(item.time)}</span>
+          <span className="native-msg-time">{formatStamp(item.time, t)}</span>
           {metrics ? (
             <TurnMetricsCapsules
               metrics={metrics}
@@ -360,7 +380,10 @@ function AssistantBody({
             />
           ) : (
             item.startTime != null && (
-              <span>用时 {formatDuration(item.time - item.startTime)}</span>
+              <span>
+                {t("chat.metrics.duration")}{" "}
+                {formatDuration(item.time - item.startTime)}
+              </span>
             )
           )}
           {forkable && onFork && <ForkButton onFork={onFork} />}

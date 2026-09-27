@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useT } from "../i18n";
+import type { Translate } from "../i18n/core";
 import type {
   ModelCatalog,
   ModelSelection,
@@ -6,44 +8,62 @@ import type {
   PresetOption,
 } from "./protocol";
 
-/** 权限预设值的中文展示（未知值原样展示）。 */
+/** 权限预设值的展示词条 key（未知值由 permissionLabel 原样展示）。 */
 const PERMISSION_LABELS: Record<string, string> = {
-  "read-only": "仅可查看",
-  "workspace-write": "工作区内修改",
-  "danger-full-access": "完全权限",
-  custom: "自定义",
+  "read-only": "composer.permission.labels.readOnly",
+  "workspace-write": "composer.permission.labels.workspaceWrite",
+  "danger-full-access": "composer.permission.labels.fullAccess",
+  custom: "composer.permission.labels.custom",
 };
 
-/** 推理强度档位的中文展示（未知档位回退目录提供的 name）。 */
+/** 推理强度档位的展示词条 key（未知档位回退目录提供的 name）。 */
 const EFFORT_LABELS: Record<string, string> = {
-  off: "关闭",
-  minimal: "最低",
-  low: "低",
-  medium: "中",
-  high: "高",
-  max: "最高",
+  off: "composer.effort.labels.off",
+  minimal: "composer.effort.labels.minimal",
+  low: "composer.effort.labels.low",
+  medium: "composer.effort.labels.medium",
+  high: "composer.effort.labels.high",
+  max: "composer.effort.labels.max",
 };
 
-function permissionLabel(value: string): string {
-  return PERMISSION_LABELS[value] ?? value;
+/** 权限预设展示：内置值查词条，未知值原样展示。 */
+function permissionLabel(t: Translate, value: string): string {
+  const key = PERMISSION_LABELS[value];
+  return key ? t(key) : value;
 }
 
-/** 默认/保底权限选项（与 DSH 核心权限预设对齐）。 */
+/** 推理强度档位展示：内置档位查词条，未知档位回退指定文本。 */
+function effortLabel(t: Translate, id: string, fallback: string): string {
+  const key = EFFORT_LABELS[id];
+  return key ? t(key) : fallback;
+}
+
+/** 权限选项描述：内置档位描述为词条 key，翻译展示；引擎目录提供的描述原样展示。 */
+function permissionOptionDescription(
+  t: Translate,
+  option: PresetOption,
+): string | undefined {
+  const desc = option.description;
+  if (desc === undefined || !desc.startsWith("composer.")) return desc;
+  return t(desc);
+}
+
+/** 默认/保底权限选项（与 DSH 核心权限预设对齐；description 为词条 key，展示时翻译）。 */
 export const DEFAULT_PERMISSION_OPTIONS: PresetOption[] = [
   {
     value: "workspace-write",
     name: "workspace-write",
-    description: "仅允许在工作区内修改；超出工作区范围的操作需要审批。",
+    description: "composer.permission.descriptions.workspaceWrite",
   },
   {
     value: "read-only",
     name: "read-only",
-    description: "安全只读模式，禁止任何文件修改和写操作。",
+    description: "composer.permission.descriptions.readOnly",
   },
   {
     value: "danger-full-access",
     name: "danger-full-access",
-    description: "完全放开读写与命令限制，不弹审批询问。",
+    description: "composer.permission.descriptions.fullAccess",
   },
 ];
 
@@ -108,6 +128,7 @@ export function ComposerControls({
   onEffortPick,
   onPermissionPick,
 }: ComposerControlsProps) {
+  const t = useT();
   const [open, setOpen] = useState<"model" | "effort" | "permission" | null>(
     null,
   );
@@ -151,7 +172,7 @@ export function ComposerControls({
   };
 
   /** 模型 pill 文案：只呈现模型名；当前思考档位由相邻的推理强度 pill 常显。 */
-  const modelPillText = model?.name ?? selection?.model ?? "选择模型";
+  const modelPillText = model?.name ?? selection?.model ?? t("composer.selectModel");
 
   return (
     <div className="native-composer-controls" ref={rootRef}>
@@ -160,7 +181,7 @@ export function ComposerControls({
           <button
             className={`native-pill${open === "permission" ? " active" : ""}`}
             onClick={() => toggle("permission")}
-            title={permissionHint ?? "权限模式"}
+            title={permissionHint ?? t("composer.permissionMode")}
           >
             <svg
               viewBox="0 0 24 24"
@@ -176,7 +197,7 @@ export function ComposerControls({
               <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" />
             </svg>
             <span className="native-pill-text">
-              {permissionLabel(permission.currentValue)}
+              {permissionLabel(t, permission.currentValue)}
             </span>
             <svg
               className="native-pill-chevron"
@@ -211,18 +232,18 @@ export function ComposerControls({
                     setOpen(null);
                     setConfirmDanger(false);
                   }}
-                  title={option.description}
+                  title={permissionOptionDescription(t, option)}
                 >
                   <span className="native-popover-item-name">
-                    {permissionLabel(option.value)}
+                    {permissionLabel(t, option.value)}
                   </span>
                 </button>
               ))}
               {confirmDanger && (
                 <div className="native-popover-confirm">
-                  <div className="native-popover-confirm-text">
-                    启用完全权限后将减少确认步骤，可直接执行敏感操作、文件修改或外部命令。仅建议在信任后续任务时使用。
-                  </div>
+                <div className="native-popover-confirm-text">
+                  {t("composer.fullAccessWarning")}
+                </div>
                   <div className="native-popover-confirm-actions">
                     <button
                       className="native-popover-confirm-cancel"
@@ -231,7 +252,7 @@ export function ComposerControls({
                         setOpen(null);
                       }}
                     >
-                      取消
+                      {t("composer.cancel")}
                     </button>
                     <button
                       className="native-popover-confirm-go"
@@ -241,7 +262,7 @@ export function ComposerControls({
                         setConfirmDanger(false);
                       }}
                     >
-                      我已了解风险，启用
+                      {t("composer.enableFullAccess")}
                     </button>
                   </div>
                 </div>
@@ -257,7 +278,7 @@ export function ComposerControls({
         <button
           className={`native-pill${open === "model" ? " active" : ""}`}
           onClick={() => toggle("model")}
-          title="选择模型"
+          title={t("composer.selectModel")}
         >
           <svg
             viewBox="0 0 24 24"
@@ -316,7 +337,9 @@ export function ComposerControls({
                 </div>
               ))
             ) : (
-              <div className="native-popover-empty">模型目录不可用</div>
+              <div className="native-popover-empty">
+                {t("composer.modelCatalogUnavailable")}
+              </div>
             )}
           </div>
         )}
@@ -327,7 +350,7 @@ export function ComposerControls({
           <button
             className={`native-pill${open === "effort" ? " active" : ""}`}
             onClick={() => toggle("effort")}
-            title="推理强度"
+            title={t("composer.reasoningEffort")}
           >
             <svg
               viewBox="0 0 24 24"
@@ -343,7 +366,9 @@ export function ComposerControls({
               <path d="M12 3a6 6 0 0 0 0 12c0 2 0 3-2 4 1-2 0-2 2-2a6 6 0 0 0 0-12Z" />
             </svg>
             <span className="native-pill-text">
-              {effortId ? (EFFORT_LABELS[effortId] ?? effortId) : "默认"}
+              {effortId
+                ? effortLabel(t, effortId, effortId)
+                : t("composer.effortDefault")}
             </span>
             <svg
               className="native-pill-chevron"
@@ -370,9 +395,11 @@ export function ComposerControls({
                     onEffortPick(undefined);
                     setOpen(null);
                   }}
-                  title="使用模型服务商默认思考行为"
+                  title={t("composer.providerEffortTitle")}
                 >
-                  <span className="native-popover-item-name">默认</span>
+                  <span className="native-popover-item-name">
+                    {t("composer.effortDefault")}
+                  </span>
                 </button>
               )}
               {efforts.map((effort) => (
@@ -386,7 +413,7 @@ export function ComposerControls({
                   title={effort.description}
                 >
                   <span className="native-popover-item-name">
-                    {EFFORT_LABELS[effort.id] ?? effort.name}
+                    {effortLabel(t, effort.id, effort.name)}
                   </span>
                 </button>
               ))}

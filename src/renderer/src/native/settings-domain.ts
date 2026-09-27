@@ -5,6 +5,7 @@ import {
   type SettingsNamespaceView,
   type SettingsPathOp,
 } from "./protocol";
+import type { Translate } from "../i18n/core";
 import { providerDisplayName } from "./provider-brand";
 
 /** 供应商目录行：官方 settings-models 的 joinProviderDirectory 语义移植。 */
@@ -182,18 +183,50 @@ export function schemaUnionChoices(schema: unknown, path: string[]): string[] {
     .map((entry) => entry.value as string);
 }
 
-export function formatRelativeTime(at: number, now = Date.now()): string {
-  if (!at || isNaN(at)) return "刚刚";
+/** 相对时间文案：不传 t 时（测试直调等场景）按中文兜底，与 zh-CN 词条保持一致。 */
+export function formatRelativeTime(
+  at: number,
+  now = Date.now(),
+  t?: Translate,
+): string {
+  const justNow = () => (t ? t("settings.relative.justNow") : "刚刚");
+  const countAt = (key: string, count: number, fallback: string) =>
+    t ? t(key, { count }) : fallback;
+  if (!at || isNaN(at)) return justNow();
   const MIN = 60 * 1000;
   const HOUR = 60 * MIN;
   const DAY = 24 * HOUR;
   const diff = Math.max(0, now - at);
-  if (diff < MIN) return "刚刚";
-  if (diff < HOUR) return `${Math.floor(diff / MIN)} 分钟前`;
-  if (diff < DAY) return `${Math.floor(diff / HOUR)} 小时前`;
-  if (diff < 30 * DAY) return `${Math.floor(diff / DAY)} 天前`;
-  if (diff < 365 * DAY) return `${Math.floor(diff / (30 * DAY))} 个月前`;
-  return `${Math.floor(diff / (365 * DAY))} 年前`;
+  if (diff < MIN) return justNow();
+  if (diff < HOUR)
+    return countAt(
+      "settings.relative.minutesAgo",
+      Math.floor(diff / MIN),
+      `${Math.floor(diff / MIN)} 分钟前`,
+    );
+  if (diff < DAY)
+    return countAt(
+      "settings.relative.hoursAgo",
+      Math.floor(diff / HOUR),
+      `${Math.floor(diff / HOUR)} 小时前`,
+    );
+  if (diff < 30 * DAY)
+    return countAt(
+      "settings.relative.daysAgo",
+      Math.floor(diff / DAY),
+      `${Math.floor(diff / DAY)} 天前`,
+    );
+  if (diff < 365 * DAY)
+    return countAt(
+      "settings.relative.monthsAgo",
+      Math.floor(diff / (30 * DAY)),
+      `${Math.floor(diff / (30 * DAY))} 个月前`,
+    );
+  return countAt(
+    "settings.relative.yearsAgo",
+    Math.floor(diff / (365 * DAY)),
+    `${Math.floor(diff / (365 * DAY))} 年前`,
+  );
 }
 
 export function isHttpUrl(value: string): boolean {
@@ -223,15 +256,21 @@ export function mergeCandidateModels(
   return merged;
 }
 
-/** 手动添加模型到清单；ID 重复时返回错误文案。入参应为已去除首尾空白的值。 */
+/** 手动添加模型到清单；ID 重复时返回错误文案。入参应为已去除首尾空白的值。不传 t 时按中文兜底。 */
 export function appendManualModel(
   existing: CustomModelEntry[],
   id: string,
   name: string,
   reasoning: boolean,
+  t?: Translate,
 ): { ok: true; models: CustomModelEntry[] } | { ok: false; error: string } {
   if (existing.some((m) => m.id === id)) {
-    return { ok: false, error: `模型 ID「${id}」已在列表中` };
+    return {
+      ok: false,
+      error: t
+        ? t("settings.provider.duplicateModelId", { id })
+        : `模型 ID「${id}」已在列表中`,
+    };
   }
   return {
     ok: true,

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useT } from "../i18n";
 import { PENDING_LABELS, type PendingKind } from "./PendingInteraction";
 import type { WorkspaceView } from "./protocol";
 
@@ -58,6 +59,7 @@ export function WorkspaceRow({
   ) => void;
   onDrop?: (e: React.DragEvent<HTMLDivElement>, workspaceId: string) => void;
 }) {
+  const t = useT();
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [renaming, setRenaming] = useState(false);
@@ -137,7 +139,7 @@ export function WorkspaceRow({
             }
           }}
           onBlur={commitRename}
-          aria-label="工作区名称"
+          aria-label={t("sidebar.workspace.renameAria")}
         />
       ) : (
         <>
@@ -184,8 +186,16 @@ export function WorkspaceRow({
                 e.stopPropagation();
                 onTogglePin();
               }}
-              title={pinned ? "取消置顶项目" : "置顶项目"}
-              aria-label={pinned ? "取消置顶项目" : "置顶项目"}
+              title={
+                pinned
+                  ? t("sidebar.workspace.unpin")
+                  : t("sidebar.workspace.pin")
+              }
+              aria-label={
+                pinned
+                  ? t("sidebar.workspace.unpin")
+                  : t("sidebar.workspace.pin")
+              }
             >
               <svg
                 viewBox="0 0 24 24"
@@ -212,8 +222,10 @@ export function WorkspaceRow({
               setMenuOpen((v) => !v);
               setConfirmDelete(false);
             }}
-            title="工作区操作"
-            aria-label={`工作区“${workspace.title}”的操作`}
+            title={t("sidebar.workspace.menuTitle")}
+            aria-label={t("sidebar.workspace.menuAria", {
+              name: workspace.title,
+            })}
           >
             <svg
               viewBox="0 0 24 24"
@@ -235,8 +247,12 @@ export function WorkspaceRow({
               e.stopPropagation();
               onNewSession();
             }}
-            title={`在“${workspace.title}”中新建会话`}
-            aria-label={`在“${workspace.title}”中新建会话`}
+            title={t("sidebar.workspace.newChatAria", {
+              name: workspace.title,
+            })}
+            aria-label={t("sidebar.workspace.newChatAria", {
+              name: workspace.title,
+            })}
           >
             <svg
               viewBox="0 0 24 24"
@@ -264,7 +280,9 @@ export function WorkspaceRow({
                   }}
                 >
                   <span className="native-popover-item-name">
-                    {pinned ? "取消置顶项目" : "置顶项目"}
+                    {pinned
+                      ? t("sidebar.workspace.unpin")
+                      : t("sidebar.workspace.pin")}
                   </span>
                 </button>
               )}
@@ -278,7 +296,9 @@ export function WorkspaceRow({
                     setMenuOpen(false);
                   }}
                 >
-                  <span className="native-popover-item-name">上移项目</span>
+                  <span className="native-popover-item-name">
+                    {t("sidebar.workspace.moveUp")}
+                  </span>
                 </button>
               )}
               {onMoveDown && (
@@ -291,7 +311,9 @@ export function WorkspaceRow({
                     setMenuOpen(false);
                   }}
                 >
-                  <span className="native-popover-item-name">下移项目</span>
+                  <span className="native-popover-item-name">
+                    {t("sidebar.workspace.moveDown")}
+                  </span>
                 </button>
               )}
               <button
@@ -302,7 +324,9 @@ export function WorkspaceRow({
                   setMenuOpen(false);
                 }}
               >
-                <span className="native-popover-item-name">在终端中打开</span>
+                <span className="native-popover-item-name">
+                  {t("sidebar.workspace.openTerminal")}
+                </span>
               </button>
               <button
                 type="button"
@@ -313,7 +337,7 @@ export function WorkspaceRow({
                 }}
               >
                 <span className="native-popover-item-name">
-                  在文件管理器中打开
+                  {t("sidebar.workspace.openFileManager")}
                 </span>
               </button>
               <button
@@ -324,22 +348,27 @@ export function WorkspaceRow({
                   setMenuOpen(false);
                 }}
               >
-                <span className="native-popover-item-name">重命名工作区</span>
+                <span className="native-popover-item-name">
+                  {t("sidebar.workspace.rename")}
+                </span>
               </button>
               <button
                 type="button"
                 className="native-popover-item native-ws-menu-delete"
                 onClick={() => setConfirmDelete(true)}
               >
-                <span className="native-popover-item-name">删除工作区</span>
+                <span className="native-popover-item-name">
+                  {t("sidebar.workspace.delete")}
+                </span>
               </button>
             </div>
           )}
           {menuOpen && confirmDelete && (
             <div className="native-ws-menu">
               <div className="native-ws-confirm-text">
-                将把“{workspace.title}
-                ”从工作区列表中移除。文件夹与会话记录会保留，其会话将显示在“未分组”下。
+                {t("sidebar.workspace.deleteConfirm", {
+                  name: workspace.title,
+                })}
               </div>
               <div className="native-ws-confirm-actions">
                 <button
@@ -349,7 +378,7 @@ export function WorkspaceRow({
                     setMenuOpen(false);
                   }}
                 >
-                  取消
+                  {t("sidebar.workspace.cancel")}
                 </button>
                 <button
                   className="native-ws-confirm-go"
@@ -359,7 +388,7 @@ export function WorkspaceRow({
                     onDelete();
                   }}
                 >
-                  删除
+                  {t("sidebar.workspace.confirmDelete")}
                 </button>
               </div>
             </div>
@@ -380,11 +409,12 @@ function SessionStatusMark({
   pending: PendingKind | null;
   unread?: boolean;
 }) {
+  const t = useT();
   if (pending) {
     return (
       <span
         className="native-status-mark native-waiting-dot"
-        title={PENDING_LABELS[pending]}
+        title={t(PENDING_LABELS[pending])}
       />
     );
   }
@@ -392,7 +422,7 @@ function SessionStatusMark({
     return (
       <span
         className="native-status-mark native-running-dot"
-        title="任务进行中"
+        title={t("sidebar.status.running")}
       />
     );
   }
@@ -400,7 +430,7 @@ function SessionStatusMark({
     return (
       <span
         className="native-status-mark native-unread-dot"
-        title="任务已完成，未查看"
+        title={t("sidebar.status.unread")}
       />
     );
   }
@@ -439,6 +469,7 @@ export function SessionRow({
   onRename?: (title: string) => void;
   onArchive?: () => void;
 }) {
+  const t = useT();
   const [menuOpen, setMenuOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [draftTitle, setDraftTitle] = useState(title);
@@ -486,7 +517,7 @@ export function SessionRow({
             }
           }}
           onBlur={commitRename}
-          aria-label="会话名称"
+          aria-label={t("sidebar.session.renameAria")}
         />
       ) : (
         <>
@@ -509,8 +540,8 @@ export function SessionRow({
               e.stopPropagation();
               setMenuOpen((v) => !v);
             }}
-            title="会话操作"
-            aria-label={`会话“${title}”的操作`}
+            title={t("sidebar.session.menuTitle")}
+            aria-label={t("sidebar.session.menuAria", { name: title })}
           >
             <svg
               viewBox="0 0 24 24"
@@ -536,7 +567,9 @@ export function SessionRow({
                   }}
                 >
                   <span className="native-popover-item-name">
-                    {pinned ? "取消置顶" : "置顶会话"}
+                    {pinned
+                      ? t("sidebar.session.unpin")
+                      : t("sidebar.session.pin")}
                   </span>
                 </button>
               )}
@@ -549,7 +582,9 @@ export function SessionRow({
                     setRenaming(true);
                   }}
                 >
-                  <span className="native-popover-item-name">重命名</span>
+                  <span className="native-popover-item-name">
+                    {t("sidebar.session.rename")}
+                  </span>
                 </button>
               )}
               {onArchive && (
@@ -561,7 +596,9 @@ export function SessionRow({
                     onArchive();
                   }}
                 >
-                  <span className="native-popover-item-name">归档会话</span>
+                  <span className="native-popover-item-name">
+                    {t("sidebar.session.archive")}
+                  </span>
                 </button>
               )}
             </div>

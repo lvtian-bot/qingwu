@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useT } from "../i18n";
 import { Endpoints, type SettingsDescribeValue } from "./protocol";
 import { rpc } from "./rpc";
 
@@ -19,6 +20,7 @@ export interface DshSettingsController {
 }
 
 export function useDshSettings(): DshSettingsController {
+  const t = useT();
   const [settingsSnapshot, setSettingsSnapshot] =
     useState<SettingsDescribeValue | null>(null);
   const [defaultPreset, setDefaultPreset] = useState<string>("workspace-write");
@@ -77,16 +79,18 @@ export function useDshSettings(): DshSettingsController {
           expectedRevision: rev,
         });
         setDefaultPreset(preset);
-        setSettingsMessage("默认权限已更新");
+        setSettingsMessage(t("settings.messages.permissionUpdated"));
         await loadSettings();
       } catch (e) {
         setSettingsMessage(
-          `更新失败: ${e instanceof Error ? e.message : String(e)}`,
+          t("settings.messages.updateFailed", {
+            message: e instanceof Error ? e.message : String(e),
+          }),
         );
         await loadSettings();
       }
     },
-    [settingsSnapshot, loadSettings],
+    [settingsSnapshot, loadSettings, t],
   );
 
   // 更新新会话默认模型（写入引擎 agent-default-model 命名空间，落盘并在重开后保持）
@@ -119,16 +123,18 @@ export function useDshSettings(): DshSettingsController {
           });
         }
         setDefaultModelKey(key);
-        setSettingsMessage("默认模型已更新");
+        setSettingsMessage(t("settings.messages.modelUpdated"));
         await loadSettings();
       } catch (e) {
         setSettingsMessage(
-          `更新失败: ${e instanceof Error ? e.message : String(e)}`,
+          t("settings.messages.updateFailed", {
+            message: e instanceof Error ? e.message : String(e),
+          }),
         );
         await loadSettings();
       }
     },
-    [settingsSnapshot, loadSettings],
+    [settingsSnapshot, loadSettings, t],
   );
 
   // 打开底层 settings.json
@@ -137,10 +143,12 @@ export function useDshSettings(): DshSettingsController {
       await rpc(Endpoints.settingsOpenSettingsDocument, {});
     } catch (e) {
       setSettingsMessage(
-        `打开配置文件异常: ${e instanceof Error ? e.message : String(e)}`,
+        t("settings.messages.openConfigFailed", {
+          message: e instanceof Error ? e.message : String(e),
+        }),
       );
     }
-  }, []);
+  }, [t]);
 
   return {
     settingsMessage,

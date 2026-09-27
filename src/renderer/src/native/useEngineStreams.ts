@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 import type { DshStreamItem } from "../../../shared/types";
+import { useT } from "../i18n";
 import { movesContextMeter } from "./ContextMeter";
 import {
   expandStreamRecords,
@@ -68,6 +69,7 @@ export function useEngineStreams({
   onSessionRemoved,
   capturePrependAnchor,
 }: EngineStreamsOptions) {
+  const t = useT();
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   /** 会话列表最新快照：切换会话时据它播种运行态，避免把 sessions 纳入 effect 依赖。 */
   const sessionsRef = useRef<SessionSummary[]>([]);
@@ -246,7 +248,7 @@ export function useEngineStreams({
   useEffect(() => {
     const openStream = (endpoint: string, payload: unknown) => {
       void qingwu.dshStreamOpen(endpoint, payload).catch((err) => {
-        setError(`打开 ${endpoint} 流失败: ${toErrMsg(err)}`);
+        setError(t("chat.errors.streamOpenFailed", { endpoint, message: toErrMsg(err) }));
       });
     };
     openStream("$events", {});
@@ -292,10 +294,10 @@ export function useEngineStreams({
                   }
                   // 仅在应用不在前台（失焦、最小化或隐藏后台）时发送系统桌面通知；前台使用时绝不弹窗打扰
                   if (!isAppFocused) {
-                    const title = sessionTitle(s);
+                    const title = sessionTitle(s, t("sidebar.untitled"));
                     void window.qingwu?.showNotification?.({
-                      title: "任务执行完成",
-                      body: `「${title}」任务已执行完成`,
+                      title: t("chat.notify.title"),
+                      body: t("chat.notify.body", { title }),
                       sessionId,
                     });
                   }
@@ -404,7 +406,14 @@ export function useEngineStreams({
     return () => {
       unsubscribe();
     };
-  }, [scheduleRefresh, setCurrentId, currentIdRef, onSessionRemoved, setError]);
+  }, [
+    scheduleRefresh,
+    setCurrentId,
+    currentIdRef,
+    onSessionRemoved,
+    setError,
+    t,
+  ]);
 
   // 选中会话：打开 session/follow 日志流（开场快照 + 实时事件）
   useEffect(() => {
@@ -508,7 +517,7 @@ export function useEngineStreams({
         })
         .catch((err) => {
           if (!cancelled && currentIdRef.current === currentId) {
-            failFollow(`加载会话历史失败：${toErrMsg(err)}`);
+            failFollow(t("chat.errors.loadHistoryFailed", { message: toErrMsg(err) }));
           }
         });
     };
@@ -565,7 +574,7 @@ export function useEngineStreams({
       if (!isRecord(value)) return;
       if (value.type === "stream/error" || value.type === "stream/end") {
         const error = value.error as { message?: string } | undefined;
-        failFollow(error?.message ?? "会话数据连接已结束，请重新打开会话重试");
+        failFollow(error?.message ?? t("chat.errors.streamEnded"));
         return;
       }
       const frame = value as unknown as SessionFollowFrame;
@@ -649,6 +658,7 @@ export function useEngineStreams({
     refreshFromEvents,
     onSessionSwitched,
     setError,
+    t,
   ]);
 
   /** 发送管线用：乐观回显上屏与失败回收。 */

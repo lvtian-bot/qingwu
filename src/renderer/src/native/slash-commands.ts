@@ -1,3 +1,4 @@
+import type { Translate } from '../i18n/core';
 import type { CommandDescriptor, SkillDescriptor } from './protocol';
 
 export type SlashSection = 'add' | 'commands' | 'skills';
@@ -6,15 +7,15 @@ export type SlashSection = 'add' | 'commands' | 'skills';
 export interface SlashCommandItem {
   /** 命令小写名称（无斜杠），如 'compact'、'plan'、技能名。 */
   name: string;
-  /** 中文标签展示名，如 '计划'、'压缩'、技能名。 */
+  /** 展示名：内置命令为词条 key（如 'composer.slash.labels.goal'），命令/技能回退为名称原文；展示经 slashItemLabel 翻译。 */
   label: string;
-  /** 描述文案（面向人类可读）。 */
+  /** 描述文案：数据层保留原文；展示与匹配经 slashItemDescription 按词条翻译。 */
   description: string;
   /** 所属分组（对齐官方 UI：'add' 为添加，'commands' 为指令，'skills' 为技能）。 */
   section: SlashSection;
   /** 搜索别名词典（中文名称、拼音简写等）。 */
   tokens: string[];
-  /** 自由输入参数的提示占位，如 '目标描述'。有 hint 时表示需要参数。 */
+  /** 自由输入参数的提示占位（词条 key，如 'composer.slash.hints.goal'）。有 hint 时表示需要参数。 */
   hint?: string;
   /** 是否接受图片等附件提交。缺省为 false。 */
   attachments?: boolean;
@@ -35,7 +36,9 @@ export interface SlashTriggerResult {
   span: { start: number; end: number };
 }
 
-/** 官方已知命令的配置字典（对齐 dsh-client-ui-commands）。 */
+/** 官方已知命令的配置字典（对齐 dsh-client-ui-commands）。
+ * label/hint 存词条 key，由展示层翻译；description 保留中文原文（过滤回退与既有
+ * 测试基线依赖该值），展示时经 slashItemDescription 按命令名查词条翻译。 */
 export interface BuiltinCommandMeta {
   label: string;
   description: string;
@@ -46,49 +49,77 @@ export interface BuiltinCommandMeta {
 
 export const BUILTIN_COMMAND_METAS: Record<string, BuiltinCommandMeta> = {
   goal: {
-    label: '目标',
+    label: 'composer.slash.labels.goal',
     description: '设置或查看长期任务目标',
     section: 'add',
     tokens: ['目标', 'mb', 'mubiao'],
-    hint: '目标描述',
+    hint: 'composer.slash.hints.goal',
   },
   plan: {
-    label: '计划',
+    label: 'composer.slash.labels.plan',
     description: '进入或退出计划模式',
     section: 'add',
     tokens: ['计划', 'jh', 'jihua'],
   },
   feedback: {
-    label: '反馈',
+    label: 'composer.slash.labels.feedback',
     description: '发送关于当前会话的反馈',
     section: 'add',
     tokens: ['反馈', 'fk', 'fankui'],
   },
   compact: {
-    label: '压缩',
+    label: 'composer.slash.labels.compact',
     description: '压缩以上对话内容',
     section: 'commands',
     tokens: ['压缩', 'ys', 'yasuo'],
   },
   permission: {
-    label: '权限',
+    label: 'composer.slash.labels.permission',
     description: '切换权限预设（沙箱模式与审批策略）',
     section: 'commands',
     tokens: ['权限', 'qx', 'quanxian'],
   },
   model: {
-    label: '模型',
+    label: 'composer.slash.labels.model',
     description: '切换当前会话或默认模型',
     section: 'commands',
     tokens: ['模型', 'mx', 'moxing'],
   },
   export: {
-    label: '下载日志',
+    label: 'composer.slash.labels.export',
     description: '将当前会话内容导出为 ZIP',
     section: 'commands',
     tokens: ['导出', '下载', '下载日志', 'dc', 'daochu'],
   },
 };
+
+/** 内置命令描述的词条 key（按命令名反查；数据层 description 保留中文原文）。 */
+const BUILTIN_DESCRIPTION_KEYS: Record<string, string> = {
+  goal: 'composer.slash.descriptions.goal',
+  plan: 'composer.slash.descriptions.plan',
+  feedback: 'composer.slash.descriptions.feedback',
+  compact: 'composer.slash.descriptions.compact',
+  permission: 'composer.slash.descriptions.permission',
+  model: 'composer.slash.descriptions.model',
+  export: 'composer.slash.descriptions.export',
+};
+
+/** 斜杠条目展示名：内置命令的 label 为词条 key，命令名/技能名等原文原样展示。 */
+export function slashItemLabel(item: SlashCommandItem, t: Translate): string {
+  return item.label.startsWith('composer.') ? t(item.label) : item.label;
+}
+
+/** 斜杠条目描述：内置命令按词条翻译，仅限用户调用的技能补充「仅限用户」前缀，其余原文展示。 */
+export function slashItemDescription(
+  item: SlashCommandItem,
+  t: Translate,
+): string {
+  if (item.isSkill && item.modelInvocable === false) {
+    return t('composer.slash.skillUserOnly', { desc: item.description });
+  }
+  const key = BUILTIN_DESCRIPTION_KEYS[item.name];
+  return key ? t(key) : item.description;
+}
 
 /** 官方预设排序顺序。未列出的命令归入 commands 并按原样追加在后。 */
 export const SECTION_ORDER: Record<SlashSection, string[]> = {
@@ -156,7 +187,7 @@ export const BASELINE_HOST_COMMANDS: SlashCommandItem[] = [
   },
 ];
 
-/** 将上游 CommandDescriptor 规范化并补充中文信息。 */
+/** 将上游 CommandDescriptor 规范化并补充内置命令的展示信息（label/hint 为词条 key）。 */
 export function normalizeCommand(descriptor: CommandDescriptor): SlashCommandItem {
   const name = descriptor.name.toLowerCase();
   const meta = BUILTIN_COMMAND_METAS[name];
@@ -173,17 +204,12 @@ export function normalizeCommand(descriptor: CommandDescriptor): SlashCommandIte
   };
 }
 
-/** 将上游 SkillDescriptor 规范化为斜杠候选。 */
+/** 将上游 SkillDescriptor 规范化为斜杠候选（「仅限用户」前缀由展示层 slashItemDescription 按词条补充）。 */
 export function normalizeSkill(skill: SkillDescriptor): SlashCommandItem {
-  const desc =
-    skill.modelInvocable === false
-      ? `仅限用户 · ${skill.description}`
-      : skill.description;
-
   return {
     name: skill.name.toLowerCase(),
     label: skill.name,
-    description: desc,
+    description: skill.description,
     section: 'skills',
     tokens: [skill.name.toLowerCase()],
     isSkill: true,
@@ -358,11 +384,13 @@ export function detectSlashTrigger(
 /**
  * 根据 query 对命令列表进行加权过滤与排序。
  * 对齐官方规则：在 inline 位置只展示无需参数的命令（hint 为空）。
+ * translate 提供时按展示文案匹配（label/描述经词条翻译），缺省按数据原文匹配。
  */
 export function filterSlashCommands(
   commands: SlashCommandItem[],
   query: string,
   position: 'leading' | 'inline' = 'leading',
+  translate?: Translate,
 ): SlashCommandItem[] {
   // 官方规则：行内触发只显示无需参数的命令
   const pool =
@@ -384,9 +412,13 @@ export function filterSlashCommands(
 
   for (const cmd of pool) {
     const name = cmd.name.toLowerCase();
-    const label = cmd.label.toLowerCase();
-    const desc = cmd.description.toLowerCase();
-    const tokens = (cmd.tokens || []).map((t) => t.toLowerCase());
+    const label = (
+      translate ? slashItemLabel(cmd, translate) : cmd.label
+    ).toLowerCase();
+    const desc = (
+      translate ? slashItemDescription(cmd, translate) : cmd.description
+    ).toLowerCase();
+    const tokens = (cmd.tokens || []).map((tok) => tok.toLowerCase());
 
     let score = 0;
 

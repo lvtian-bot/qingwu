@@ -1,6 +1,8 @@
 import { app } from 'electron';
 import type { AppUpdater, UpdateInfo, ProgressInfo } from 'electron-updater';
+import { formatMessage } from '../shared/i18n-core';
 import type { UpdateState } from '../shared/types';
+import { tr } from './i18n';
 
 function errorDetail(err: unknown): { message?: unknown; statusCode?: unknown } | null | undefined {
   return err as { message?: unknown; statusCode?: unknown } | null | undefined;
@@ -22,16 +24,16 @@ function errorText(err: unknown): string {
   const detail = errorDetail(err);
   const message = String(detail?.message || detail || '');
   if (/checksum|sha512|signature|integrity/i.test(message)) {
-    return '更新包校验失败，请稍后重试或前往发布页手动下载。';
+    return tr('update.checksumFailed');
   }
   if (/network|fetch|connect|timeout|ENOTFOUND|ECONN|ETIMEDOUT|ERR_/i.test(message)) {
-    return '网络连接异常，请检查网络后重试。';
+    return tr('update.networkError');
   }
   const firstLine = message.split('\\n')[0].trim();
   if (firstLine && firstLine.length < 120) {
-    return '更新遇到异常: ' + firstLine;
+    return formatMessage(tr('update.genericErrorDetail'), { detail: firstLine });
   }
-  return '更新遇到异常，请稍后重试。';
+  return tr('update.genericError');
 }
 
 function asVersion(payload: { version?: unknown } | null | undefined): string | null {
@@ -152,7 +154,7 @@ export class UpdateService {
             status: 'latest',
             currentVersion: this.currentVersion,
             latestVersion: this.currentVersion,
-            message: '远程仓库暂无可用的新版本。',
+            message: tr('update.noRelease'),
           }
         : {
             status: 'error',
@@ -237,7 +239,7 @@ export class UpdateService {
       this.setState({
         status: 'error',
         currentVersion: this.currentVersion,
-        message: '启动安装失败，请前往发布页手动下载。',
+        message: tr('update.installFailed'),
       });
       return false;
     }

@@ -1,17 +1,19 @@
+import { useT } from "../i18n";
 import { SettingsRow } from "./settings-ui";
 import type { DshSettingsController } from "./useDshSettings";
 
 /** 权限分区：新会话默认执行权限预设。 */
 export function PermissionsTab({ dsh }: { dsh: DshSettingsController }) {
+  const t = useT();
   return (
     <>
       <div className="native-settings-panel-header">
-        <h2>权限</h2>
+        <h2>{t("settings.permissions.title")}</h2>
         <p>
-          <span title="保存在 DSH 引擎配置目录 (~/.dsh)，与 DSH 官方桌面版及命令行共享，改动会同步影响这些客户端。">
-            (DSH 引擎设置)
+          <span title={t("settings.shared.engineBadgeTitle")}>
+            {t("settings.shared.engineBadge")}
           </span>
-          新会话执行命令与修改文件的默认审批策略。
+          {t("settings.permissions.desc")}
         </p>
       </div>
 
@@ -21,17 +23,23 @@ export function PermissionsTab({ dsh }: { dsh: DshSettingsController }) {
 
       <div className="native-settings-card">
         <SettingsRow
-          label="新会话执行权限"
-          desc="决定新建会话在执行命令与修改文件时的审批策略。"
+          label={t("settings.permissions.defaultPreset.label")}
+          desc={t("settings.permissions.defaultPreset.desc")}
         >
           <select
             className="native-settings-select"
             value={dsh.defaultPreset}
             onChange={(e) => void dsh.saveDefaultPreset(e.target.value)}
           >
-            <option value="workspace-write">工作区内修改（推荐）</option>
-            <option value="read-only">仅可查看</option>
-            <option value="danger-full-access">完全权限</option>
+            <option value="workspace-write">
+              {t("settings.permissions.defaultPreset.workspaceWrite")}
+            </option>
+            <option value="read-only">
+              {t("settings.permissions.defaultPreset.readOnly")}
+            </option>
+            <option value="danger-full-access">
+              {t("settings.permissions.defaultPreset.fullAccess")}
+            </option>
           </select>
         </SettingsRow>
       </div>

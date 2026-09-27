@@ -1,10 +1,19 @@
-export type MenuName = "文件" | "编辑" | "视图" | "帮助";
+export type MenuName = "file" | "edit" | "view" | "help";
 
 /** 顶级菜单的固定排列顺序（左右方向键穿梭与悬停切换共用）。 */
-export const MENU_NAMES: MenuName[] = ["文件", "编辑", "视图", "帮助"];
+export const MENU_NAMES: MenuName[] = ["file", "edit", "view", "help"];
+
+/** 菜单名在标题栏的显示文案 key（词条见渲染层 i18n menu 域）。 */
+export const MENU_NAME_KEYS: Record<MenuName, string> = {
+  file: "menu.file.name",
+  edit: "menu.edit.name",
+  view: "menu.view.name",
+  help: "menu.help.name",
+};
 
 export interface MenuItemData {
   id: string;
+  /** 显示文案的词条 key（menu.<group>.<item>），由渲染层 t() 翻译。 */
   label: string;
   accelerator?: string;
   type?: "normal" | "separator" | "checkbox";
@@ -19,56 +28,64 @@ export function getMenuItems(
   _context?: MenuStateContext,
 ): MenuItemData[] {
   switch (menuName) {
-    case "文件":
+    case "file":
       return [
-        { id: "reload", label: "重新加载", accelerator: "Ctrl+R" },
+        { id: "reload", label: "menu.file.reload", accelerator: "Ctrl+R" },
         {
           id: "reloadIgnoringCache",
-          label: "强制重新加载",
+          label: "menu.file.reloadIgnoringCache",
           accelerator: "Ctrl+Shift+R",
         },
         { id: "sep-1", label: "", type: "separator" },
         {
           id: "openTerminal",
-          label: "在终端中打开工作区",
+          label: "menu.file.openTerminal",
           accelerator: "Ctrl+Shift+C",
         },
-        { id: "openFolder", label: "在文件管理器中打开工作区" },
+        { id: "openFolder", label: "menu.file.openFolder" },
         { id: "sep-2", label: "", type: "separator" },
-        { id: "quit", label: "退出", accelerator: "Alt+F4" },
+        { id: "quit", label: "menu.file.quit", accelerator: "Alt+F4" },
       ];
 
-    case "编辑":
+    case "edit":
       return [
-        { id: "undo", label: "撤销", accelerator: "Ctrl+Z" },
-        { id: "redo", label: "重做", accelerator: "Ctrl+Y" },
+        { id: "undo", label: "menu.edit.undo", accelerator: "Ctrl+Z" },
+        { id: "redo", label: "menu.edit.redo", accelerator: "Ctrl+Y" },
         { id: "sep-1", label: "", type: "separator" },
-        { id: "cut", label: "剪切", accelerator: "Ctrl+X" },
-        { id: "copy", label: "复制", accelerator: "Ctrl+C" },
-        { id: "paste", label: "粘贴", accelerator: "Ctrl+V" },
-        { id: "delete", label: "删除" },
+        { id: "cut", label: "menu.edit.cut", accelerator: "Ctrl+X" },
+        { id: "copy", label: "menu.edit.copy", accelerator: "Ctrl+C" },
+        { id: "paste", label: "menu.edit.paste", accelerator: "Ctrl+V" },
+        { id: "delete", label: "menu.edit.delete" },
         { id: "sep-2", label: "", type: "separator" },
-        { id: "selectAll", label: "全选", accelerator: "Ctrl+A" },
+        { id: "selectAll", label: "menu.edit.selectAll", accelerator: "Ctrl+A" },
         { id: "sep-3", label: "", type: "separator" },
-        { id: "settings", label: "设置", accelerator: "Ctrl+," },
+        { id: "settings", label: "menu.edit.settings", accelerator: "Ctrl+," },
       ];
 
-    case "视图":
+    case "view":
       return [
-        { id: "zoomIn", label: "放大", accelerator: "Ctrl++" },
-        { id: "zoomOut", label: "缩小", accelerator: "Ctrl+-" },
-        { id: "resetZoom", label: "重置缩放", accelerator: "Ctrl+0" },
+        { id: "zoomIn", label: "menu.view.zoomIn", accelerator: "Ctrl++" },
+        { id: "zoomOut", label: "menu.view.zoomOut", accelerator: "Ctrl+-" },
+        { id: "resetZoom", label: "menu.view.resetZoom", accelerator: "Ctrl+0" },
         { id: "sep-1", label: "", type: "separator" },
-        { id: "toggleFullScreen", label: "切换全屏", accelerator: "F11" },
+        {
+          id: "toggleFullScreen",
+          label: "menu.view.toggleFullScreen",
+          accelerator: "F11",
+        },
         { id: "sep-2", label: "", type: "separator" },
-        { id: "toggleDevTools", label: "开发者工具", accelerator: "F12" },
+        {
+          id: "toggleDevTools",
+          label: "menu.view.toggleDevTools",
+          accelerator: "F12",
+        },
       ];
 
-    case "帮助":
+    case "help":
       return [
-        { id: "checkForUpdates", label: "检查更新" },
-        { id: "openGitHub", label: "GitHub 仓库" },
-        { id: "about", label: "关于 青梧" },
+        { id: "checkForUpdates", label: "menu.help.checkForUpdates" },
+        { id: "openGitHub", label: "menu.help.openGitHub" },
+        { id: "about", label: "menu.help.about" },
       ];
   }
 }

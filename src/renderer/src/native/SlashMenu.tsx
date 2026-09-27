@@ -1,5 +1,10 @@
 import React, { useEffect, useRef } from 'react';
-import type { SlashCommandItem } from './slash-commands';
+import { useT } from '../i18n';
+import {
+  slashItemDescription,
+  slashItemLabel,
+  type SlashCommandItem,
+} from './slash-commands';
 
 interface SlashMenuProps {
   items: SlashCommandItem[];
@@ -9,10 +14,11 @@ interface SlashMenuProps {
   placement?: 'top' | 'bottom';
 }
 
+/** 分组标题词条 key（未收录的分组名原样展示）。 */
 const SECTION_TITLES: Record<string, string> = {
-  add: '常用',
-  commands: '指令',
-  skills: '技能',
+  add: 'composer.slash.sections.add',
+  commands: 'composer.slash.sections.commands',
+  skills: 'composer.slash.sections.skills',
 };
 
 /** 绘制命令专属轻量线性 SVG 图标（对齐 Codex / 原生设计风格）。 */
@@ -148,6 +154,7 @@ export function SlashMenu({
   onHoverIndex,
   placement = 'top',
 }: SlashMenuProps) {
+  const t = useT();
   const listRef = useRef<HTMLDivElement | null>(null);
 
   // 保证选中项随键盘方向键滚动保持在可见视区
@@ -162,7 +169,7 @@ export function SlashMenu({
   if (items.length === 0) {
     return (
       <div className={`native-slash-menu placement-${placement}`}>
-        <div className="native-slash-empty">无匹配的斜杠命令或技能</div>
+        <div className="native-slash-empty">{t('composer.slash.noMatch')}</div>
       </div>
     );
   }
@@ -175,19 +182,21 @@ export function SlashMenu({
     <div
       className={`native-slash-menu placement-${placement}`}
       role="listbox"
-      aria-label="斜杠命令与技能列表"
+      aria-label={t('composer.slash.ariaLabel')}
     >
       <div className="native-slash-list" ref={listRef}>
         {items.map((cmd, idx) => {
           const isActive = idx === selectedIndex;
           const prevCmd = items[idx - 1];
           const isNewSection = showSections && idx > 0 && prevCmd && prevCmd.section !== cmd.section;
+          const sectionTitle = SECTION_TITLES[cmd.section];
+          const descText = slashItemDescription(cmd, t);
 
           return (
             <React.Fragment key={cmd.name}>
               {isNewSection && (
                 <div className="native-slash-section-header">
-                  {SECTION_TITLES[cmd.section] || cmd.section}
+                  {sectionTitle ? t(sectionTitle) : cmd.section}
                 </div>
               )}
               <div
@@ -202,10 +211,10 @@ export function SlashMenu({
                 }}
               >
                 <span className="native-slash-icon">{renderCommandIcon(cmd)}</span>
-                <span className="native-slash-label">{cmd.label}</span>
+                <span className="native-slash-label">{slashItemLabel(cmd, t)}</span>
                 {cmd.description && (
-                  <span className="native-slash-desc" title={cmd.description}>
-                    {cmd.description}
+                  <span className="native-slash-desc" title={descText}>
+                    {descText}
                   </span>
                 )}
               </div>

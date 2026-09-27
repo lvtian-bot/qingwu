@@ -4,6 +4,7 @@ import { UpdateWindow } from "./UpdateWindow";
 import { MenuPopupView } from "./MenuPopupView";
 import { TitleBar } from "./TitleBar";
 import { AppErrorBoundary } from "./AppErrorBoundary";
+import { I18nProvider } from "./i18n";
 import { NativeApp } from "./native/NativeApp";
 import "./update.css";
 
@@ -14,17 +15,26 @@ if (!rootElement) {
   throw new Error("未找到 #root 挂载节点");
 }
 
+/** 各窗口入口统一挂错误边界与语言上下文。 */
+function Root({ children }: { children: React.ReactNode }) {
+  return (
+    <AppErrorBoundary>
+      <I18nProvider>{children}</I18nProvider>
+    </AppErrorBoundary>
+  );
+}
+
 if (view === "update") {
   createRoot(rootElement).render(
-    <AppErrorBoundary>
+    <Root>
       <UpdateWindow />
-    </AppErrorBoundary>,
+    </Root>,
   );
 } else if (view === "menu") {
   createRoot(rootElement).render(
-    <AppErrorBoundary>
+    <Root>
       <MenuPopupView />
-    </AppErrorBoundary>,
+    </Root>,
   );
 } else {
   /** 侧栏折叠态提到入口层：开关按钮在标题栏（对齐 ChatGPT 桌面版），状态由标题栏与侧栏共用。 */
@@ -41,8 +51,8 @@ if (view === "update") {
     );
   }
   createRoot(rootElement).render(
-    <AppErrorBoundary>
+    <Root>
       <MainWindow />
-    </AppErrorBoundary>,
+    </Root>,
   );
 }

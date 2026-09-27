@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { useT } from "../i18n";
 import { CustomProviderCreate } from "./CustomProviderCreate";
 import { ProviderDetail } from "./ProviderDetail";
 import type { ModelCatalog } from "./protocol";
@@ -24,6 +25,7 @@ export function ModelsTab({
 }) {
   const dir = useProviderDirectory({ onRefreshCatalog });
   const availableProtocols = useAvailableProtocols(dir.llmViews);
+  const t = useT();
   const {
     providerRows,
     addedRows,
@@ -73,19 +75,19 @@ export function ModelsTab({
   return (
     <>
       <div className="native-settings-panel-header native-models-header">
-        <h2>模型设置</h2>
+        <h2>{t("settings.models.title")}</h2>
         <div className="native-models-header-row">
           <p>
-            <span title="保存在 DSH 引擎配置目录 (~/.dsh)，与 DSH 官方桌面版及命令行共享，改动会同步影响这些客户端。">
-              (DSH 引擎设置)
+            <span title={t("settings.shared.engineBadgeTitle")}>
+              {t("settings.shared.engineBadge")}
             </span>
-            管理各供应商的 API 地址、协议与密钥。
+            {t("settings.models.desc")}
           </p>
           <div className="native-models-actions">
             <button
               type="button"
               className="native-provider-refresh"
-              title="刷新供应商与模型目录"
+              title={t("settings.models.refreshTitle")}
               onClick={() => {
                 void loadProviders();
                 onRefreshCatalog?.();
@@ -114,7 +116,7 @@ export function ModelsTab({
               >
                 <path d="M8 2a.75.75 0 0 1 .75.75v4.5h4.5a.75.75 0 0 1 0 1.5h-4.5v4.5a.75.75 0 0 1-1.5 0v-4.5h-4.5a.75.75 0 0 1 0-1.5h4.5v-4.5A.75.75 0 0 1 8 2z" />
               </svg>
-              添加供应商
+              {t("settings.models.addProvider")}
             </button>
           </div>
         </div>
@@ -149,12 +151,16 @@ export function ModelsTab({
                 {row.displayName}
               </span>
               {row.declared && (
-                <span className="native-provider-badge">自定义</span>
+                <span className="native-provider-badge">
+                  {t("settings.models.customBadge")}
+                </span>
               )}
             </button>
           ))}
           {addedRows.length === 0 && (
-            <div className="native-provider-nav-empty">尚未添加供应商</div>
+            <div className="native-provider-nav-empty">
+              {t("settings.models.noProviders")}
+            </div>
           )}
         </nav>
 
@@ -166,8 +172,8 @@ export function ModelsTab({
                 type="button"
                 className="native-models-back"
                 onClick={exitAddingFlow}
-                title="退出添加流程"
-                aria-label="退出添加流程"
+                title={t("settings.models.exitAddFlow")}
+                aria-label={t("settings.models.exitAddFlow")}
               >
                 <svg
                   viewBox="0 0 24 24"
@@ -182,7 +188,9 @@ export function ModelsTab({
                   <path d="M19 12H5M12 19l-7-7 7-7" />
                 </svg>
               </button>
-              <span className="native-provider-flow-title">添加供应商</span>
+              <span className="native-provider-flow-title">
+                {t("settings.models.addProvider")}
+              </span>
             </div>
           )}
           {isAddingCustom ? (
@@ -258,20 +266,20 @@ export function ModelsTab({
                   setIsAddingCustom(true);
                   setSelectedProvider(null);
                 }}
-                title="添加自定义服务商"
+                title={t("settings.models.addCustom")}
               >
                 <span className="native-provider-card-body">
                   <span className="native-provider-card-name">
-                    + 添加自定义服务商
+                    + {t("settings.models.addCustom")}
                   </span>
                   <span className="native-provider-picker-hint">
-                    支持 OpenAI / Anthropic 兼容端点、自建网关或第三方 API
+                    {t("settings.models.addCustomHint")}
                   </span>
                 </span>
               </button>
               {availableRows.length === 0 ? (
                 <div className="native-model-empty">
-                  所有内置服务商都已添加，您可以添加自定义服务商
+                  {t("settings.models.allBuiltInAdded")}
                 </div>
               ) : (
                 availableRows.map((row) => {
@@ -293,7 +301,7 @@ export function ModelsTab({
                         </span>
                         {row.credentialConfigured && (
                           <span className="native-provider-card-hint">
-                            已检测到密钥
+                            {t("settings.models.keyDetected")}
                           </span>
                         )}
                       </span>
@@ -310,15 +318,17 @@ export function ModelsTab({
       {modelOptions.length > 0 && (
         <div className="native-settings-card">
           <SettingsRow
-            label="新会话默认模型"
-            desc="未指定模型的新会话默认使用此模型；选择后写入引擎设置并在重开后保持。"
+            label={t("settings.models.defaultModel.label")}
+            desc={t("settings.models.defaultModel.desc")}
           >
             <select
               className="native-settings-select"
               value={dsh.defaultModelKey}
               onChange={(e) => void dsh.saveDefaultModel(e.target.value)}
             >
-              <option value="">跟随引擎默认推选</option>
+              <option value="">
+                {t("settings.models.defaultModel.followEngine")}
+              </option>
               {modelOptions.map((opt) => (
                 <option key={opt.id} value={opt.id}>
                   {opt.label}

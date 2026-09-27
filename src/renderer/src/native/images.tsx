@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useT } from "../i18n";
 import { Endpoints, type SessionAttachmentResult } from "./protocol";
 import { rpc } from "./rpc";
 
@@ -102,6 +103,7 @@ export function MessageImageView({
   sessionId?: string | null;
   onPreview?: (url: string) => void;
 }) {
+  const t = useT();
   const [src, setSrc] = useState<string | null>(image.url ?? null);
   const [loading, setLoading] = useState(!image.url && !!image.attachmentId);
   const [error, setError] = useState(false);
@@ -155,15 +157,15 @@ export function MessageImageView({
 
   if (error) {
     return (
-      <div className="native-msg-image-error" title="图片加载失败">
-        <span>图片加载失败</span>
+      <div className="native-msg-image-error" title={t("chat.images.loadFailed")}>
+        <span>{t("chat.images.loadFailed")}</span>
       </div>
     );
   }
 
   if (loading || !src) {
     return (
-      <div className="native-msg-image-loading" title="图片加载中...">
+      <div className="native-msg-image-loading" title={t("chat.images.loadingTitle")}>
         <div className="native-spinner" />
       </div>
     );
@@ -174,7 +176,7 @@ export function MessageImageView({
       type="button"
       className="native-msg-image-btn"
       onClick={() => onPreview?.(src)}
-      title="点击查看原图"
+      title={t("chat.images.viewOriginal")}
     >
       <img src={src} alt="" draggable={false} />
     </button>
@@ -189,6 +191,7 @@ export function LightboxModal({
   src: string;
   onClose: () => void;
 }) {
+  const t = useT();
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -203,13 +206,13 @@ export function LightboxModal({
         className="native-lightbox-content"
         onClick={(e) => e.stopPropagation()}
       >
-        <img src={src} alt="图片预览" />
+        <img src={src} alt={t("chat.images.lightbox.alt")} />
         <button
           type="button"
           className="native-lightbox-close"
           onClick={onClose}
-          title="关闭 (Esc)"
-          aria-label="关闭预览"
+          title={t("chat.images.lightbox.closeTitle")}
+          aria-label={t("chat.images.lightbox.close")}
         >
           <svg
             viewBox="0 0 24 24"

@@ -1,5 +1,7 @@
 import { Tray, Menu, app } from 'electron';
+import type { NativeImage } from 'electron';
 import { CONFIG } from './config';
+import { tr } from './i18n';
 import type { WindowManager } from './window';
 import type { UpdateWindowManager } from './update-window';
 
@@ -14,11 +16,11 @@ export class TrayManager {
     this.updateWindowManager = updateWindowManager;
   }
 
-  init(iconPath: string | undefined): void {
-    if (this.tray || !iconPath) return;
+  init(icon: string | NativeImage | undefined): void {
+    if (this.tray || !icon) return;
 
     try {
-      this.tray = new Tray(iconPath);
+      this.tray = new Tray(icon);
       this.tray.setToolTip(CONFIG.appName);
 
       this.tray.on('click', () => {
@@ -40,11 +42,11 @@ export class TrayManager {
 
     const contextMenu = Menu.buildFromTemplate([
       {
-        label: '打开青梧',
+        label: tr('tray.open'),
         click: () => this.windowManager.focus(),
       },
       {
-        label: '检查更新...',
+        label: tr('tray.checkUpdates'),
         click: () => {
           if (this.updateWindowManager) {
             this.updateWindowManager.open();
@@ -53,7 +55,7 @@ export class TrayManager {
       },
       { type: 'separator' },
       {
-        label: '退出',
+        label: tr('tray.quit'),
         click: () => {
           app.quit();
         },

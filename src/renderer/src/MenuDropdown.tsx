@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import type { MenuItemData } from "../../shared/menu-data";
+import { useT } from "./i18n";
 import "./titlebar.css";
 
 interface MenuDropdownProps {
@@ -20,6 +21,7 @@ export function MenuDropdown({
   onSwitchMenu,
   style,
 }: MenuDropdownProps) {
+  const t = useT();
   const [selectedIndex, setSelectedIndex] = useState<number>(-1);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -182,7 +184,9 @@ export function MenuDropdown({
               ) : null}
             </span>
 
-            <span className="titlebar-dropdown-item-label">{item.label}</span>
+            <span className="titlebar-dropdown-item-label">
+              {t(item.label)}
+            </span>
 
             {item.accelerator && (
               <span className="titlebar-dropdown-item-shortcut">

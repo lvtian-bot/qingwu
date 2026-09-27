@@ -5,6 +5,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { DragEvent as ReactDragEvent, RefObject } from "react";
+import { useT } from "../i18n";
 import {
   fileToBase64,
   getImageMediaType,
@@ -29,6 +30,7 @@ export function useComposerDrafts({
   currentIdRef,
   setError,
 }: ComposerDraftsOptions) {
+  const t = useT();
   const [input, setInput] = useState("");
   const [draftImages, setDraftImages] = useState<DraftImage[]>([]);
   /**
@@ -72,11 +74,11 @@ export function useComposerDrafts({
       const valid: File[] = [];
       for (const f of files) {
         if (!isSupportedImage(f)) {
-          setError(`不支持的图片格式: ${f.name}。仅支持 PNG、JPEG、WebP、GIF`);
+          setError(t("composer.unsupportedImageType", { name: f.name }));
           continue;
         }
         if (f.size > MAX_IMAGE_BYTES) {
-          setError(`图片 ${f.name} 超过 20MB 上限`);
+          setError(t("composer.imageTooLarge", { name: f.name }));
           continue;
         }
         valid.push(f);
@@ -86,7 +88,7 @@ export function useComposerDrafts({
       const key = currentIdRef.current ?? "";
       const prev = composerImagesRef.current.get(key) ?? [];
       if (prev.length + valid.length > MAX_IMAGES_PER_MESSAGE) {
-        setError(`单条消息最多添加 ${MAX_IMAGES_PER_MESSAGE} 张图片`);
+        setError(t("composer.tooManyImages", { count: MAX_IMAGES_PER_MESSAGE }));
         return;
       }
       const newItems: DraftImage[] = valid.map((file) => {
@@ -112,7 +114,10 @@ export function useComposerDrafts({
               ),
             );
           })
-          .catch(() => {});
+          // 图片读取失败时上横幅提示（文案走词条，中文与 images.tsx 内原错误文案一致）
+          .catch(() => {
+            setError(t("composer.imageReadFailed"));
+          });
         return item;
       });
       const next = [...prev, ...newItems];
@@ -120,7 +125,7 @@ export function useComposerDrafts({
       composerImagesRef.current.set(key, next);
       setDraftImages(next);
     },
-    [currentIdRef, setError, touch],
+    [currentIdRef, setError, touch, t],
   );
 
   const handleRemoveDraftImage = useCallback(

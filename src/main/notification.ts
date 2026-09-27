@@ -1,5 +1,6 @@
 import { Notification } from "electron";
 import type { WindowManager } from "./window";
+import { tr } from "./i18n";
 import { settings } from "./settings";
 
 export interface TaskFinishedNotificationOptions {
@@ -31,9 +32,9 @@ export class NotificationManager {
       return;
     }
 
-    const icon = this.windowManager.getIconPath();
+    const icon = this.windowManager.getIcon?.() || this.windowManager.getIconPath();
     const notification = new Notification({
-      title: options.title || "任务执行完成",
+      title: options.title || tr("notify.taskFinished"),
       body: options.body,
       icon,
       silent: false,

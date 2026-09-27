@@ -1,3 +1,4 @@
+import type { UiLanguage } from "./i18n-core";
 import type { MenuName, MenuStateContext } from "./menu-data";
 
 export type UpdateStatus =
@@ -35,6 +36,8 @@ export interface AppSettings {
   chatWidth?: ChatWidth;
   /** 任务执行结束时是否发送桌面通知（默认 true：开启）。 */
   notifyOnTaskFinished?: boolean;
+  /** 界面语言（默认 auto：跟随系统，zh 开头为简体中文，其余英文）。 */
+  uiLanguage?: UiLanguage;
 }
 
 /** dsh RPC 业务错误（对齐 typert RemoteError 的线上形态）。 */

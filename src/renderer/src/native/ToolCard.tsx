@@ -4,6 +4,7 @@
  */
 import { useMemo, useState } from 'react';
 import { diffLines } from 'diff';
+import { useT } from '../i18n';
 import type {
   EditArgs,
   PatternArgs,
@@ -79,6 +80,7 @@ const ICONS = {
 
 /** old→new 行级 diff：红/绿背景 + -/+ 前缀。 */
 export function DiffView({ oldStr, newStr }: { oldStr: string; newStr: string }) {
+  const t = useT();
   /** 超出上限的行不再渲染，避免大 diff 拖垮面板与会话流。 */
   const MAX_DIFF_LINES = 400;
   const lines = useMemo(() => {
@@ -103,7 +105,9 @@ export function DiffView({ oldStr, newStr }: { oldStr: string; newStr: string })
         </div>
       ))}
       {lines.length > MAX_DIFF_LINES && (
-        <div className="native-diff-more">… 其余 {lines.length - MAX_DIFF_LINES} 行未显示</div>
+        <div className="native-diff-more">
+          {t('tools.diff.moreLines', { count: lines.length - MAX_DIFF_LINES })}
+        </div>
       )}
     </div>
   );
@@ -147,11 +151,12 @@ function CardShell({ icon, title, subtitle, status, detail, error }: CardShellPr
 
 /** 状态区：执行中 spinner / 失败 / 时长 + exit code。 */
 function StatusView({ tool }: { tool: ToolItem }) {
+  const t = useT();
   if (tool.pending) {
     return (
       <span className="native-tool-pending">
         <span className="native-spinner" />
-        运行中
+        {t('tools.status.running')}
       </span>
     );
   }
@@ -160,14 +165,14 @@ function StatusView({ tool }: { tool: ToolItem }) {
   if (tool.isError || (exitCode !== null && exitCode !== 0)) {
     return (
       <span className="native-tool-fail">
-        失败{exitCode !== null ? ` · exit ${exitCode}` : ''}
+        {t('tools.status.failed')}{exitCode !== null ? ` · exit ${exitCode}` : ''}
         {duration ? ` · ${duration}` : ''}
       </span>
     );
   }
   return (
     <span className="native-tool-ok">
-      {exitCode !== null ? `exit ${exitCode}` : '完成'}
+      {exitCode !== null ? `exit ${exitCode}` : t('tools.status.done')}
       {duration ? ` · ${duration}` : ''}
     </span>
   );
@@ -191,12 +196,13 @@ function parseArgs<T>(tool: ToolItem): T | null {
 }
 
 function PwshCard({ tool }: { tool: ToolItem }) {
+  const t = useT();
   const args = parseArgs<PwshArgs>(tool);
   const subtitle = args?.description?.trim() || args?.command || undefined;
   return (
     <CardShell
       icon={ICONS.terminal}
-      title="执行命令"
+      title={t('tools.cards.runCommand')}
       subtitle={subtitle}
       status={<StatusView tool={tool} />}
       error={tool.isError || (parseExitCode(tool.resultText) ?? 0) !== 0}
@@ -212,16 +218,17 @@ function PwshCard({ tool }: { tool: ToolItem }) {
 }
 
 function ReadCard({ tool, cwd }: { tool: ToolItem; cwd?: string }) {
+  const t = useT();
   const args = parseArgs<ReadArgs>(tool);
   const filePath = args?.file_path ?? '';
   const range = args?.offset !== undefined || args?.limit !== undefined
-    ? `（${args?.offset !== undefined ? `从第 ${args.offset} 行` : ''}${args?.limit !== undefined ? `${args?.offset !== undefined ? '起' : ''}取 ${args.limit} 行` : ''}）`
+    ? `（${args?.offset !== undefined ? t('tools.cards.readRange.fromLine', { offset: args.offset }) : ''}${args?.limit !== undefined ? `${args?.offset !== undefined ? t('tools.cards.readRange.starting') : ''}${t('tools.cards.readRange.takeLines', { limit: args.limit })}` : ''}）`
     : '';
   const target = filePath ? `${relPath(filePath, cwd)}${range}` : '';
   return (
     <CardShell
       icon={ICONS.file}
-      title="读取"
+      title={t('tools.cards.read')}
       subtitle={target}
       status={<StatusView tool={tool} />}
       error={tool.isError}
@@ -231,12 +238,13 @@ function ReadCard({ tool, cwd }: { tool: ToolItem; cwd?: string }) {
 }
 
 function ReadImageCard({ tool, cwd }: { tool: ToolItem; cwd?: string }) {
+  const t = useT();
   const args = parseArgs<{ file_path?: string }>(tool);
   const filePath = args?.file_path ?? '';
   return (
     <CardShell
       icon={ICONS.file}
-      title="读取图片"
+      title={t('tools.cards.readImage')}
       subtitle={filePath ? relPath(filePath, cwd) : ''}
       status={<StatusView tool={tool} />}
       error={tool.isError}
@@ -246,8 +254,9 @@ function ReadImageCard({ tool, cwd }: { tool: ToolItem; cwd?: string }) {
 }
 
 function SearchCard({ tool, cwd, kind }: { tool: ToolItem; cwd?: string; kind: 'grep' | 'glob' }) {
+  const t = useT();
   const args = parseArgs<PatternArgs>(tool);
-  const title = kind === 'grep' ? '搜索' : '匹配';
+  const title = kind === 'grep' ? t('tools.cards.search') : t('tools.cards.match');
   const pattern = args?.pattern ? `"${args.pattern}"` : '';
   const path = args?.path ? relPath(args.path, cwd) : '';
   const subtitle = pattern && path ? `${pattern}（${path}）` : pattern || path;
@@ -264,12 +273,13 @@ function SearchCard({ tool, cwd, kind }: { tool: ToolItem; cwd?: string; kind: '
 }
 
 function EditCard({ tool, cwd }: { tool: ToolItem; cwd?: string }) {
+  const t = useT();
   const args = parseArgs<EditArgs>(tool);
   const filePath = args?.file_path ?? '';
   return (
     <CardShell
       icon={ICONS.edit}
-      title="编辑"
+      title={t('tools.cards.edit')}
       subtitle={filePath ? relPath(filePath, cwd) : ''}
       status={<StatusView tool={tool} />}
       error={tool.isError}
@@ -288,12 +298,13 @@ function EditCard({ tool, cwd }: { tool: ToolItem; cwd?: string }) {
 }
 
 function WriteCard({ tool, cwd }: { tool: ToolItem; cwd?: string }) {
+  const t = useT();
   const args = parseArgs<WriteArgs>(tool);
   const filePath = args?.file_path ?? '';
   return (
     <CardShell
       icon={ICONS.write}
-      title="写入"
+      title={t('tools.cards.write')}
       subtitle={filePath ? relPath(filePath, cwd) : ''}
       status={<StatusView tool={tool} />}
       error={tool.isError}
@@ -309,6 +320,7 @@ function WriteCard({ tool, cwd }: { tool: ToolItem; cwd?: string }) {
 }
 
 function PresentCard({ tool, cwd }: { tool: ToolItem; cwd?: string }) {
+  const t = useT();
   const args = parseArgs<PresentArgs>(tool);
   const files = args?.files ?? [];
   const subtitle = files.length > 0
@@ -317,7 +329,7 @@ function PresentCard({ tool, cwd }: { tool: ToolItem; cwd?: string }) {
   return (
     <CardShell
       icon={ICONS.file}
-      title="交付成果"
+      title={t('tools.cards.deliverable')}
       subtitle={subtitle}
       status={<StatusView tool={tool} />}
       error={tool.isError}
@@ -327,8 +339,9 @@ function PresentCard({ tool, cwd }: { tool: ToolItem; cwd?: string }) {
 }
 
 function WebCard({ tool, kind }: { tool: ToolItem; kind: 'search' | 'fetch' }) {
+  const t = useT();
   const args = parseArgs<{ queries?: string[]; url?: string }>(tool);
-  const title = kind === 'search' ? '网页搜索' : '网页获取';
+  const title = kind === 'search' ? t('tools.cards.webSearch') : t('tools.cards.webFetch');
   const subtitle = kind === 'search'
     ? (args?.queries?.filter(Boolean).join(', ') ?? '')
     : (args?.url ?? '');
@@ -345,6 +358,7 @@ function WebCard({ tool, kind }: { tool: ToolItem; kind: 'search' | 'fetch' }) {
 }
 
 function TodoCard({ tool }: { tool: ToolItem }) {
+  const t = useT();
   const args = parseArgs<TodoWriteArgs>(tool);
   const todos = args?.todos ?? [];
   const doing = todos.filter((t) => t.status === 'in_progress').length;
@@ -352,8 +366,8 @@ function TodoCard({ tool }: { tool: ToolItem }) {
   return (
     <CardShell
       icon={ICONS.list}
-      title="更新任务清单"
-      subtitle={`${todos.length} 项 · ${done} 完成 · ${doing} 进行中`}
+      title={t('tools.cards.updateTodo')}
+      subtitle={`${t('tools.todo.items', { count: todos.length })} · ${t('tools.todo.done', { count: done })} · ${t('tools.todo.inProgress', { count: doing })}`}
       status={<StatusView tool={tool} />}
       error={tool.isError}
       detail={

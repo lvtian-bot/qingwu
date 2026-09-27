@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useT } from "../i18n";
 import type { SessionSummary, WorkspaceView } from "./protocol";
 import { sessionTitle } from "./sidebar-data";
 import { formatRelativeTime } from "./settings-domain";
@@ -25,6 +26,7 @@ export function ArchivedSessionsTab({
   onOpenSession?: (sessionId: string) => void | Promise<void>;
   dsh: DshSettingsController;
 }) {
+  const t = useT();
   const [archivedSearchQuery, setArchivedSearchQuery] = useState("");
   const [unarchivingIds, setUnarchivingIds] = useState<Set<string>>(new Set());
 
@@ -40,18 +42,20 @@ export function ArchivedSessionsTab({
     if (workspaces) {
       for (const ws of workspaces) {
         for (const sid of ws.sessionIds) {
-          wsMap.set(sid, ws.title || "未命名项目");
+          wsMap.set(sid, ws.title || t("sidebar.archived.untitledProject"));
         }
       }
     }
     return [...archivedSessionIds].reverse().map((id) => {
       const summary = sessionMap.get(id);
-      const title = summary ? sessionTitle(summary) : "未命名会话";
-      const workspaceName = wsMap.get(id) ?? "未分组";
+      const title = summary
+        ? sessionTitle(summary, t("sidebar.untitled"))
+        : t("sidebar.archived.untitledSession");
+      const workspaceName = wsMap.get(id) ?? t("sidebar.archived.ungrouped");
       const updatedAt = summary?.updatedAt ?? 0;
       return { id, title, workspaceName, updatedAt };
     });
-  }, [archivedSessionIds, sessions, workspaces]);
+  }, [archivedSessionIds, sessions, workspaces, t]);
 
   const filteredArchivedRows = useMemo(() => {
     const q = archivedSearchQuery.trim().toLowerCase();
@@ -72,7 +76,9 @@ export function ArchivedSessionsTab({
       }
     } catch (e) {
       dsh.reportError(
-        `取消归档失败: ${e instanceof Error ? e.message : String(e)}`,
+        t("sidebar.archived.unarchiveFailed", {
+          message: e instanceof Error ? e.message : String(e),
+        }),
       );
     } finally {
       setUnarchivingIds((prev) => {
@@ -94,8 +100,8 @@ export function ArchivedSessionsTab({
   return (
     <>
       <div className="native-settings-panel-header">
-        <h2>已归档会话</h2>
-        <p>恢复或管理已归档的会话。</p>
+        <h2>{t("sidebar.archived.title")}</h2>
+        <p>{t("sidebar.archived.subtitle")}</p>
       </div>
 
       {archivedRows.length > 0 && (
@@ -113,7 +119,7 @@ export function ArchivedSessionsTab({
             <input
               type="search"
               className="native-settings-input native-archived-search-input"
-              placeholder="搜索已归档会话（按标题或项目）..."
+              placeholder={t("sidebar.archived.searchPlaceholder")}
               value={archivedSearchQuery}
               onChange={(e) => setArchivedSearchQuery(e.target.value)}
             />
@@ -122,7 +128,7 @@ export function ArchivedSessionsTab({
                 type="button"
                 className="native-archived-search-clear"
                 onClick={() => setArchivedSearchQuery("")}
-                title="清空搜索"
+                title={t("sidebar.archived.clearSearchTitle")}
               >
                 <svg
                   viewBox="0 0 16 16"
@@ -137,8 +143,13 @@ export function ArchivedSessionsTab({
           </div>
           <span className="native-archived-count">
             {archivedSearchQuery
-              ? `匹配 ${filteredArchivedRows.length} / 共 ${archivedRows.length} 个会话`
-              : `共 ${archivedRows.length} 个已归档会话`}
+              ? t("sidebar.archived.countFiltered", {
+                  count: archivedRows.length,
+                  matched: filteredArchivedRows.length,
+                })
+              : t("sidebar.archived.countAll", {
+                  count: archivedRows.length,
+                })}
           </span>
         </div>
       )}
@@ -150,18 +161,22 @@ export function ArchivedSessionsTab({
               <path d="M0 2a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1v7.5a2.5 2.5 0 0 1-2.5 2.5h-9A2.5 2.5 0 0 1 1 12.5V5a1 1 0 0 1-1-1V2zm2 3v7.5A1.5 1.5 0 0 0 3.5 14h9a1.5 1.5 0 0 0 1.5-1.5V5H2zm13-3H1v2h14V2zM5 7.5a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 0 1h-5a.5.5 0 0 1-.5-.5z" />
             </svg>
           </div>
-          <div className="native-archived-empty-title">暂无已归档会话</div>
+          <div className="native-archived-empty-title">
+            {t("sidebar.archived.emptyTitle")}
+          </div>
           <div className="native-archived-empty-desc">
-            在侧边栏会话菜单中选择「归档会话」，即可将暂不使用的会话收纳至此处，主界面更整齐清爽。
+            {t("sidebar.archived.emptyDesc")}
           </div>
         </div>
       ) : filteredArchivedRows.length === 0 ? (
         <div className="native-archived-empty">
           <div className="native-archived-empty-title">
-            未找到匹配的已归档会话
+            {t("sidebar.archived.noMatchTitle")}
           </div>
           <div className="native-archived-empty-desc">
-            没有会话匹配关键字 “{archivedSearchQuery}”，请尝试更换搜索词。
+            {t("sidebar.archived.noMatchDesc", {
+              query: archivedSearchQuery,
+            })}
           </div>
           <button
             type="button"
@@ -169,7 +184,7 @@ export function ArchivedSessionsTab({
             style={{ marginTop: 12 }}
             onClick={() => setArchivedSearchQuery("")}
           >
-            清空搜索词
+            {t("sidebar.archived.clearQuery")}
           </button>
         </div>
       ) : (
@@ -183,13 +198,15 @@ export function ArchivedSessionsTab({
                 <div className="native-archived-row-meta">
                   <span
                     className="native-archived-tag"
-                    title={`所属项目: ${row.workspaceName}`}
+                    title={t("sidebar.archived.projectTagTitle", {
+                      name: row.workspaceName,
+                    })}
                   >
                     {row.workspaceName}
                   </span>
                   <span className="native-archived-dot">·</span>
                   <span className="native-archived-time">
-                    {formatRelativeTime(row.updatedAt)}
+                    {formatRelativeTime(row.updatedAt, Date.now(), t)}
                   </span>
                 </div>
               </div>
@@ -199,9 +216,9 @@ export function ArchivedSessionsTab({
                     type="button"
                     className="native-btn native-btn-secondary native-archived-btn"
                     onClick={() => void handleOpenArchived(row.id)}
-                    title="恢复此会话并立即打开"
+                    title={t("sidebar.archived.restoreOpenTitle")}
                   >
-                    恢复并打开
+                    {t("sidebar.archived.restoreOpen")}
                   </button>
                 )}
                 <button
@@ -209,9 +226,11 @@ export function ArchivedSessionsTab({
                   className="native-btn native-btn-secondary native-archived-btn"
                   disabled={unarchivingIds.has(row.id)}
                   onClick={() => void handleUnarchive(row.id)}
-                  title="取消归档，放回原项目或会话列表"
+                  title={t("sidebar.archived.unarchiveTitle")}
                 >
-                  {unarchivingIds.has(row.id) ? "正在恢复…" : "取消归档"}
+                  {unarchivingIds.has(row.id)
+                    ? t("sidebar.archived.restoring")
+                    : t("sidebar.archived.unarchive")}
                 </button>
               </div>
             </div>

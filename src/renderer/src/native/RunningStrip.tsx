@@ -3,18 +3,27 @@
  * 计时起点由父级传入（最近一次 turn/start 的事件时间），每秒走一次表。
  */
 import { useEffect, useState } from "react";
+import { useT } from "../i18n";
+import type { Translate } from "../i18n/core";
 
-function formatElapsed(ms: number): string {
+function formatElapsed(ms: number, t: Translate): string {
   const totalSeconds = Math.max(0, Math.floor(ms / 1000));
-  if (totalSeconds < 60) return `${totalSeconds} 秒`;
+  if (totalSeconds < 60)
+    return t("chat.strip.elapsedSeconds", { count: totalSeconds });
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
-  if (minutes < 60) return `${minutes} 分 ${seconds} 秒`;
+  if (minutes < 60)
+    return t("chat.strip.elapsedMinutes", { count: minutes, seconds });
   const hours = Math.floor(minutes / 60);
-  return `${hours} 小时 ${minutes % 60} 分 ${seconds} 秒`;
+  return t("chat.strip.elapsedHours", {
+    hours,
+    minutes: minutes % 60,
+    seconds,
+  });
 }
 
 export function RunningStrip({ startedAt }: { startedAt: number | null }) {
+  const t = useT();
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -27,8 +36,8 @@ export function RunningStrip({ startedAt }: { startedAt: number | null }) {
   const elapsed = Math.max(0, now - startedAt);
   return (
     <div className="native-running-strip" role="status">
-      <span className="native-running-strip-label">工作中</span>
-      <span className="native-running-strip-time">{formatElapsed(elapsed)}</span>
+      <span className="native-running-strip-label">{t("chat.strip.working")}</span>
+      <span className="native-running-strip-time">{formatElapsed(elapsed, t)}</span>
     </div>
   );
 }

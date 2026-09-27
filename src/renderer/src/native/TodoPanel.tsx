@@ -1,4 +1,6 @@
 import { useId, useState } from "react";
+import type { Translate } from "../i18n/core";
+import { useT } from "../i18n";
 
 export interface TodoEntry {
   content: string;
@@ -166,14 +168,18 @@ function StatusGlyph({ status }: { status: string }) {
 }
 
 /** 对齐官方统计摘要文案：X 已完成 · Y 进行中 · Z 待处理（省略 0 项） */
-export function progressLabel(todos: TodoEntry[]): string {
+export function progressLabel(todos: TodoEntry[], t?: Translate): string {
   const done = todos.filter((item) => item.status === "completed").length;
   const active = todos.filter((item) => item.status === "in_progress").length;
   const pending = todos.length - done - active;
   const parts: string[] = [];
-  if (done > 0) parts.push(`${done} 已完成`);
-  if (active > 0) parts.push(`${active} 进行中`);
-  if (pending > 0) parts.push(`${pending} 待处理`);
+  // 不传 t 时（测试直调等场景）按中文兜底，与 zh-CN 词条保持一致。
+  if (done > 0)
+    parts.push(t ? t("tools.todo.progress.done", { count: done }) : `${done} 已完成`);
+  if (active > 0)
+    parts.push(t ? t("tools.todo.progress.active", { count: active }) : `${active} 进行中`);
+  if (pending > 0)
+    parts.push(t ? t("tools.todo.progress.pending", { count: pending }) : `${pending} 待处理`);
   return parts.join(" · ");
 }
 
@@ -182,6 +188,7 @@ export function progressLabel(todos: TodoEntry[]): string {
  * 默认折叠，展示任务图标、标题与进度；点击展开任务清单与状态图符。
  */
 export function TodoPanel({ todos }: { todos: TodoEntry[] | null }) {
+  const t = useT();
   const [collapsed, setCollapsed] = useState(true);
 
   if (!todos || todos.length === 0) return null;
@@ -190,7 +197,7 @@ export function TodoPanel({ todos }: { todos: TodoEntry[] | null }) {
     <section
       className="native-todo-panel"
       data-testid="todo-panel"
-      aria-label="任务"
+      aria-label={t("tools.todo.title")}
     >
       <div className="native-todo-panel-body">
         <button
@@ -202,9 +209,9 @@ export function TodoPanel({ todos }: { todos: TodoEntry[] | null }) {
           <span className="native-todo-panel-lead" aria-hidden="true">
             <IconChecklistOutline14 />
           </span>
-          <span className="native-todo-panel-title">任务</span>
+          <span className="native-todo-panel-title">{t("tools.todo.title")}</span>
           <span className="native-todo-panel-progress">
-            {progressLabel(todos)}
+            {progressLabel(todos, t)}
           </span>
           <span className="native-todo-panel-chevron" aria-hidden="true">
             {collapsed ? (

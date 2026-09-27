@@ -5,10 +5,11 @@ import { getMenuItems, MENU_NAMES } from "../shared/menu-data";
 export function createApplicationMenu(options: {
   onAction: (id: string) => void;
 }) {
+  // 菜单在界面上不可见，label 只作内部占位；用户可见文案由渲染层按词条 key 翻译。
   const template: Electron.MenuItemConstructorOptions[] = MENU_NAMES.map(
-    (label) => ({
-      label,
-      submenu: getMenuItems(label).map((item) => ({
+    (name) => ({
+      label: name,
+      submenu: getMenuItems(name).map((item) => ({
         label: item.label,
         type: item.type ?? "normal",
         checked: item.checked,

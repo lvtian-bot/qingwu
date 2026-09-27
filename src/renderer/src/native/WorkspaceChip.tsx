@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useT } from "../i18n";
 import type { WorkspaceView } from "./protocol";
 
 /**
@@ -21,6 +22,7 @@ export function WorkspaceChip({
   onPick: (workspaceId: string) => void;
   onAdd: () => void;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
 
@@ -42,7 +44,7 @@ export function WorkspaceChip({
       <button
         className={`native-ws-chip${open ? " active" : ""}`}
         onClick={() => setOpen((v) => !v)}
-        title="选择工作区"
+        title={t("sidebar.chip.title")}
       >
         <svg
           viewBox="0 0 24 24"
@@ -76,7 +78,9 @@ export function WorkspaceChip({
       {open && (
         <div className="native-ws-chip-menu">
           {workspaces.length === 0 && (
-            <div className="native-popover-empty">暂无工作区</div>
+            <div className="native-popover-empty">
+              {t("sidebar.chip.empty")}
+            </div>
           )}
           {workspaces.map((ws) => (
             <button
@@ -99,7 +103,9 @@ export function WorkspaceChip({
               onAdd();
             }}
           >
-            <span className="native-popover-item-name">添加工作区…</span>
+            <span className="native-popover-item-name">
+              {t("sidebar.chip.add")}
+            </span>
           </button>
         </div>
       )}
