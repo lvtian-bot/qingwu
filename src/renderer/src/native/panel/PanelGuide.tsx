@@ -2,7 +2,7 @@
  * 右侧面板的「开始页」：面板展开且该格没有打开任何页时的落点。
  * 各入口以卡片呈现（图标 + 标题 + 一行描述 + 右对齐快捷键），点击即让位给对应页。
  */
-import { CompassIcon, GuideFolderArtwork, GuideTerminalArtwork } from "./glyphs";
+import { GuideFolderArtwork, GuideTerminalArtwork } from "./glyphs";
 
 export interface PanelGuideProps {
   /** 打开（或聚焦）工作区文件页，替换开始页。 */
@@ -20,9 +20,6 @@ export function PanelGuide({
 }: PanelGuideProps) {
   return (
     <div className="panel-guide">
-      <div className="panel-guide-compass">
-        <CompassIcon size={44} />
-      </div>
       <div className="panel-guide-entries">
         <button
           type="button"

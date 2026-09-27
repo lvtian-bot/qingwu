@@ -1,11 +1,13 @@
 /**
  * 右侧面板壳（对齐官方 sidebar-right 的骨架语义）：
- * - 没有标题行，tab 条就是整条上边；右上角是全屏与收起两个面板控件；
+ * - 没有标题行，tab 条就是整条上边；页签右端是「新建标签页」按钮（类浏览器，
+ *   追加一枚开始页页签），右上角是全屏与收起两个面板控件；
  * - 两种形态：普通（会话区让位，宽度可拖）与全屏覆盖（窄窗自动全屏，
  *   窄屏退出全屏即收起）；
  * - 打开的页、选中页、宽度与呈现方式按会话存 localStorage；
- * - 展开且为空时播种「开始页」；开始页是该格的落点页、不画关闭控件；
- *   关闭最后一个非开始页时整列收起，布局回到空，下次展开再播种。
+ * - 展开且为空时播种「开始页」；页签样式不分开始页与其他页，选中页显示
+ *   活动框，关闭按钮悬停浮现；从开始页打开入口替换该页签；
+ *   关闭最后一个页签时整列收起，布局回到空，下次展开再播种。
  */
 import {
   forwardRef,
@@ -56,6 +58,15 @@ export interface RightPanelProps {
 /** 窗口低于该宽度时打开面板自动进入全屏形态（对齐官方断点）。 */
 const NARROW_WINDOW_PX = 768;
 
+/** 开始页页签 id 序号：保证同毫秒内连开多枚也不重号。 */
+let guideTabSeq = 0;
+
+/** 新建一枚开始页页签（空布局播种与「新建标签页」共用）。 */
+const newGuideTab = (): PanelTab => ({
+  id: `guide:${Date.now().toString(36)}-${(guideTabSeq += 1).toString(36)}`,
+  kind: "guide",
+});
+
 export const RightPanel = forwardRef<RightPanelHandle, RightPanelProps>(
   function RightPanel(
     { sessionId, cwd, open, onOpenChange, onPreviewImage },
@@ -104,15 +115,15 @@ export const RightPanel = forwardRef<RightPanelHandle, RightPanelProps>(
       return () => window.removeEventListener("resize", onResize);
     }, []);
 
-    // 展开（或收起后）时保证有内容：空布局播种开始页
+    // 展开且为空时播种开始页（未选会话的首页同样播种；该状态不持久化）
     useEffect(() => {
-      if (!open || !sessionId || layout.tabs.length > 0) return;
-      setLayout((prev) =>
-        prev.tabs.length > 0
-          ? prev
-          : { ...prev, tabs: [{ id: "guide", kind: "guide" }], activeTabId: "guide" },
-      );
-    }, [open, sessionId, layout.tabs.length]);
+      if (!open || layout.tabs.length > 0) return;
+      setLayout((prev) => {
+        if (prev.tabs.length > 0) return prev;
+        const tab = newGuideTab();
+        return { ...prev, tabs: [tab], activeTabId: tab.id };
+      });
+    }, [open, layout.tabs.length]);
 
     const focusOrCreate = useCallback(
       (tab: PanelTab, opts?: { replaceGuide?: boolean }) => {
@@ -121,9 +132,15 @@ export const RightPanel = forwardRef<RightPanelHandle, RightPanelProps>(
             return { ...prev, activeTabId: tab.id };
           }
           let tabs = prev.tabs;
-          const guideIndex = opts?.replaceGuide
-            ? tabs.findIndex((t) => t.kind === "guide")
-            : -1;
+          // 替换开始页：优先替换当前选中的开始页页签，否则替换第一枚
+          let guideIndex = -1;
+          if (opts?.replaceGuide) {
+            const activeIndex = tabs.findIndex((t) => t.id === prev.activeTabId);
+            guideIndex =
+              activeIndex >= 0 && tabs[activeIndex].kind === "guide"
+                ? activeIndex
+                : tabs.findIndex((t) => t.kind === "guide");
+          }
           if (guideIndex >= 0) {
             tabs = tabs.map((t, i) => (i === guideIndex ? tab : t));
           } else {
@@ -161,7 +178,7 @@ export const RightPanel = forwardRef<RightPanelHandle, RightPanelProps>(
           if (index < 0) return prev;
           const tabs = prev.tabs.filter((t) => t.id !== tabId);
           if (tabs.length === 0) {
-            // 官方规则：关闭最后一个非开始页时整列收起，布局保持为空
+            // 关闭最后一个页签时整列收起，布局保持为空，下次展开再播种
             onOpenChange(false);
             return { ...prev, tabs, activeTabId: null };
           }
@@ -174,6 +191,14 @@ export const RightPanel = forwardRef<RightPanelHandle, RightPanelProps>(
       },
       [onOpenChange],
     );
+
+    // 「新建标签页」：追加一枚开始页页签并选中（类浏览器新建标签页）
+    const openNewTab = useCallback(() => {
+      setLayout((prev) => {
+        const tab = newGuideTab();
+        return { ...prev, tabs: [...prev.tabs, tab], activeTabId: tab.id };
+      });
+    }, []);
 
     const fullscreen = layout.fullscreen || narrow;
 
@@ -212,12 +237,31 @@ export const RightPanel = forwardRef<RightPanelHandle, RightPanelProps>(
 
     if (!open) return null;
 
+    // 普通形态的渲染宽度：与拖拽上限一致，不超过窗口一半
+    const renderWidth = Math.min(
+      layout.width,
+      Math.max(PANEL_MIN_WIDTH, Math.floor(window.innerWidth * 0.5)),
+    );
+
+    // 页签最小宽：正常 160px；页签多到装不下时按剩余空间均摊收窄。
+    // 128px 是新建按钮与右侧面板控件的保留宽度，2px 是每个页签占的间距。
+    const chipMinWidth = Math.max(
+      0,
+      Math.min(
+        160,
+        Math.floor(
+          (renderWidth - 128 - 2 * layout.tabs.length) /
+            Math.max(layout.tabs.length, 1),
+        ),
+      ),
+    );
+
     return (
       <div
         className={`native-panel${fullscreen ? " fullscreen" : ""}${
           dragging ? " dragging" : ""
         }`}
-        style={fullscreen ? undefined : { width: layout.width }}
+        style={fullscreen ? undefined : { width: renderWidth }}
         role="complementary"
         aria-label="工作区面板"
       >
@@ -235,19 +279,42 @@ export const RightPanel = forwardRef<RightPanelHandle, RightPanelProps>(
             }
           />
         )}
-        <div className="native-panel-tabstrip" role="tablist">
+        <div
+          className="native-panel-tabstrip"
+          role="tablist"
+          style={{ "--panel-chip-min": `${chipMinWidth}px` } as React.CSSProperties}
+        >
           {layout.tabs.map((tab) => (
             <TabChip
               key={tab.id}
               tab={tab}
               active={tab.id === layout.activeTabId}
-              onlyTab={layout.tabs.length === 1}
               onActivate={() =>
                 setLayout((prev) => ({ ...prev, activeTabId: tab.id }))
               }
               onClose={() => closeTab(tab.id)}
             />
           ))}
+          <button
+            type="button"
+            className="native-panel-newtab"
+            onClick={openNewTab}
+            title="新建标签页"
+            aria-label="新建标签页"
+          >
+            <svg
+              viewBox="0 0 16 16"
+              width="14"
+              height="14"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              aria-hidden="true"
+            >
+              <path d="M8 3.5v9M3.5 8h9" />
+            </svg>
+          </button>
           <span className="native-panel-strip-spacer" />
           <button
             type="button"
@@ -306,26 +373,21 @@ export const RightPanel = forwardRef<RightPanelHandle, RightPanelProps>(
   },
 );
 
-/** tab 条上的一枚页签：开始页永远没有关闭控件；其余页关闭按钮悬停浮现。 */
+/** tab 条上的一枚页签：选中页显示活动框；关闭按钮悬停浮现。 */
 function TabChip({
   tab,
   active,
-  onlyTab,
   onActivate,
   onClose,
 }: {
   tab: PanelTab;
   active: boolean;
-  onlyTab: boolean;
   onActivate: () => void;
   onClose: () => void;
 }) {
-  const guideQuiet = tab.kind === "guide" && onlyTab;
   return (
     <div
-      className={`native-panel-chip${active ? " active" : ""}${
-        guideQuiet ? " quiet" : ""
-      }`}
+      className={`native-panel-chip${active ? " active" : ""}`}
       role="tab"
       aria-selected={active}
       onClick={onActivate}
@@ -337,35 +399,33 @@ function TabChip({
         {tab.kind === "preview" && <FileGlyph info={fileInfoOf(tab.path)} size={13} />}
       </span>
       <span className="native-panel-chip-label">
-        {tab.kind === "guide" && "开始"}
+        {tab.kind === "guide" && "新标签页"}
         {tab.kind === "files" && "工作区文件"}
         {tab.kind === "preview" && basename(tab.path)}
       </span>
-      {!guideQuiet && (
-        <button
-          type="button"
-          className="native-panel-chip-close"
-          onClick={(event) => {
-            event.stopPropagation();
-            onClose();
-          }}
-          title="关闭"
-          aria-label={`关闭 ${tab.kind === "preview" ? basename(tab.path) : "页签"}`}
+      <button
+        type="button"
+        className="native-panel-chip-close"
+        onClick={(event) => {
+          event.stopPropagation();
+          onClose();
+        }}
+        title="关闭"
+        aria-label={`关闭 ${tab.kind === "preview" ? basename(tab.path) : "页签"}`}
+      >
+        <svg
+          viewBox="0 0 16 16"
+          width="10"
+          height="10"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+          aria-hidden="true"
         >
-          <svg
-            viewBox="0 0 16 16"
-            width="10"
-            height="10"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.6"
-            strokeLinecap="round"
-            aria-hidden="true"
-          >
-            <path d="m4 4 8 8M12 4l-8 8" />
-          </svg>
-        </button>
-      )}
+          <path d="m4 4 8 8M12 4l-8 8" />
+        </svg>
+      </button>
     </div>
   );
 }

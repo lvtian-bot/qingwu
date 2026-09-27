@@ -4,7 +4,7 @@
  * 无效数据只丢弃对应会话的记录，不影响其他会话。
  */
 export type PanelTab =
-  | { id: "guide"; kind: "guide" }
+  | { id: string; kind: "guide" }
   | { id: "files"; kind: "files" }
   | { id: string; kind: "preview"; path: string };
 
@@ -18,8 +18,8 @@ export interface PanelLayout {
 }
 
 export const PANEL_MIN_WIDTH = 240;
-export const PANEL_MAX_WIDTH = 600;
-export const PANEL_DEFAULT_WIDTH = 300;
+export const PANEL_MAX_WIDTH = 720;
+export const PANEL_DEFAULT_WIDTH = 500;
 
 const storageKeyOf = (sessionId: string) => `qingwu.panel.layout.${sessionId}`;
 
@@ -36,7 +36,7 @@ export function defaultPanelLayout(): PanelLayout {
 function isPanelTab(value: unknown): value is PanelTab {
   if (!value || typeof value !== "object") return false;
   const tab = value as Record<string, unknown>;
-  if (tab.kind === "guide") return tab.id === "guide";
+  if (tab.kind === "guide") return typeof tab.id === "string" && tab.id.length > 0;
   if (tab.kind === "files") return tab.id === "files";
   if (tab.kind === "preview")
     return typeof tab.id === "string" && typeof tab.path === "string";
@@ -59,10 +59,11 @@ export function loadPanelLayout(sessionId: string | null): PanelLayout {
     return {
       expanded: parsed.expanded === true,
       fullscreen: parsed.fullscreen === true,
+      // 默认宽度上调后，历史记录里窄于默认的宽度抬升到新默认（拖窄只在会话内生效）
       width: Math.min(
         PANEL_MAX_WIDTH,
         Math.max(
-          PANEL_MIN_WIDTH,
+          PANEL_DEFAULT_WIDTH,
           typeof parsed.width === "number" && Number.isFinite(parsed.width)
             ? Math.round(parsed.width)
             : PANEL_DEFAULT_WIDTH,

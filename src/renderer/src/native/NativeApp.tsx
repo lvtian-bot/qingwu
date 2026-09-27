@@ -836,17 +836,17 @@ export function NativeApp({
     ? (workspaceOfSession.get(currentId) ?? null)
     : activeWorkspaceId;
 
-  const panelToggleButton =
-    !panelOpen && currentId ? (
-      <button
-        className="native-icon-btn"
-        onClick={() => setPanelOpen(true)}
-        title="打开面板"
-        aria-label="打开面板"
-      >
-        <PanelRightIcon />
-      </button>
-    ) : null;
+  // 面板收起时按钮常驻（含会话引导页；面板展开后由面板右上角的收起控件接管）
+  const panelToggleButton = !panelOpen ? (
+    <button
+      className="native-icon-btn"
+      onClick={() => setPanelOpen(true)}
+      title="打开面板"
+      aria-label="打开面板"
+    >
+      <PanelRightIcon />
+    </button>
+  ) : null;
 
   return (
     <div className={`native-app${!sidebarCollapsed ? " has-sidebar" : ""}`}>
@@ -1116,7 +1116,7 @@ export function NativeApp({
       <RightPanel
         ref={panelRef}
         sessionId={currentId}
-        cwd={currentCwd}
+        cwd={currentCwd ?? activeWorkspace?.path ?? null}
         open={panelOpen}
         onOpenChange={setPanelOpen}
         onPreviewImage={handlePreviewImage}

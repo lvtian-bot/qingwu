@@ -120,6 +120,14 @@ export function PanelFiles({ sessionId, cwd, onOpenFile }: PanelFilesProps) {
     });
   }, []);
 
+  if (!sessionId) {
+    return (
+      <div className="panel-tree">
+        <div className="panel-tree-note">选中会话后即可浏览其工作区文件</div>
+      </div>
+    );
+  }
+
   if (!cwd) {
     return (
       <div className="panel-tree">
