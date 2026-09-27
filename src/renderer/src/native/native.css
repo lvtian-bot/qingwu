@@ -3200,14 +3200,15 @@ body.native-ui-active .titlebar {
   background: rgba(59, 130, 246, 0.25);
 }
 
-/* tab 条：面板的整条上边，右端搭两个面板控件 */
+/* tab 条：面板的整条上边，规格与聊天区顶栏完全一致（48px、右内边距 16px），
+   分割线连成一条，收起/展开按钮开关面板时位置不动 */
 .native-panel-tabstrip {
-  height: 36px;
-  min-height: 36px;
+  height: 48px;
+  min-height: 48px;
   display: flex;
   align-items: center;
   gap: 2px;
-  padding: 0 6px 0 8px;
+  padding: 0 16px 0 8px;
   border-bottom: 1px solid var(--native-border-subtle);
   box-sizing: border-box;
 }
@@ -3217,19 +3218,43 @@ body.native-ui-active .titlebar {
   min-width: 0;
 }
 
+/* 新建标签页：紧跟页签之后的加号，规格与页签一致 */
+.native-panel-newtab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--native-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.native-panel-newtab:hover {
+  background: var(--native-hover);
+  color: var(--native-fg);
+}
+
 .native-panel-chip {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  height: 24px;
-  padding: 0 4px 0 7px;
+  height: 28px;
+  padding: 0 4px 0 8px;
   border-radius: 7px;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--native-muted);
   background: transparent;
   cursor: pointer;
   user-select: none;
-  max-width: 170px;
+  max-width: 200px;
+  /* 正常最小 160px；页签多装不下时由 RightPanel 按剩余空间算出更小的值传入 */
+  min-width: var(--panel-chip-min, 160px);
   transition: background 0.12s ease, color 0.12s ease;
 }
 
@@ -3238,16 +3263,17 @@ body.native-ui-active .titlebar {
   color: var(--native-fg);
 }
 
+/* 选中页签底色比悬浮灰浅一档，活动页看起来更轻盈 */
 .native-panel-chip.active {
-  background: var(--native-surface-2);
+  background: #f2f2f4;
   color: var(--native-fg);
   font-weight: 500;
 }
 
-/* 作为唯一停靠页的开始页：安静样式，不抢占视觉 */
-.native-panel-chip.quiet {
-  background: transparent;
-  color: var(--native-muted);
+@media (prefers-color-scheme: dark) {
+  .native-panel-chip.active {
+    background: #26262a;
+  }
 }
 
 .native-panel-chip-icon {
@@ -3277,6 +3303,8 @@ body.native-ui-active .titlebar {
   cursor: pointer;
   opacity: 0;
   flex-shrink: 0;
+  /* 页签有富余宽度时关闭按钮靠右，标题靠左，对齐浏览器页签布局 */
+  margin-left: auto;
   transition: opacity 0.1s ease, background 0.12s ease;
 }
 
@@ -3319,13 +3347,9 @@ body.native-ui-active .titlebar {
   align-items: center;
   justify-content: center;
   gap: 28px;
-  padding: 24px;
+  /* 底部留白大于顶部：抵消几何居中的下沉感，让入口块落在视觉中心 */
+  padding: 24px 24px 120px;
   overflow-y: auto;
-}
-
-.panel-guide-compass {
-  color: var(--native-muted);
-  opacity: 0.55;
 }
 
 .panel-guide-entries {
@@ -4295,8 +4319,10 @@ body.native-resizing {
 .native-settings-content {
   flex: 1;
   min-width: 0;
-  /* 顶部留白放大：内容整体下沉，不对着窗口顶边起步 */
-  padding: 56px 48px 48px;
+  /* 顶部留白放大：内容整体下沉，不对着窗口顶边起步；
+     列宽独立加宽，不跟随主界面聊天区三档 */
+  --native-content-w: 780px;
+  padding: 72px 48px 48px;
   overflow-y: auto;
   scrollbar-gutter: stable;
   display: flex;
@@ -4312,52 +4338,17 @@ body.native-resizing {
   margin-right: auto;
 }
 
-/* 存储透明度指示横幅（中性纯粹风格，彻底去除蓝调） */
-.native-settings-storage-banner {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 14px 18px;
-  border-radius: 10px;
-  font-size: 13px;
-  line-height: 1.5;
-  background: var(--settings-sidebar-bg);
-  border: 1px solid var(--settings-border);
-  color: var(--settings-fg);
-}
-
-.native-settings-storage-icon {
-  margin-top: 2px;
-  flex-shrink: 0;
-  color: var(--settings-muted);
-}
-
-.native-settings-storage-desc {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.native-settings-storage-desc strong {
-  font-weight: 500;
-  color: var(--settings-fg);
-}
-
-.native-settings-storage-desc span {
-  color: var(--settings-muted);
-}
-
 .native-settings-panel {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 20px;
 }
 
-/* 分区标题与描述：常规字重大字号，参照系统设置页的轻标题风格 */
+/* 分区标题与描述：加粗大字号标题，与描述拉开距离 */
 .native-settings-panel-header h2 {
-  margin: 0 0 8px 0;
+  margin: 0 0 28px 0;
   font-size: 26px;
-  font-weight: 400;
+  font-weight: 600;
   line-height: 1.3;
   color: var(--settings-fg);
 }
@@ -4365,33 +4356,56 @@ body.native-resizing {
 .native-settings-panel-header p {
   margin: 0;
   font-size: 14px;
+  /* 描述行固定行高：模型页动作按钮不高于此行，四页头部节奏完全一致 */
+  line-height: 20px;
   color: var(--settings-muted);
 }
 
-/* 模型设置分区头：标题描述在左，刷新与添加动作在右 */
+/* 模型设置分区头：标题独立一行，描述与刷新、添加动作同一行 */
 .native-models-header {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
+  flex-direction: column;
 }
 
+.native-models-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  position: relative;
+}
+
+/* 动作按钮悬浮于描述行右侧，不参与撑高：
+   描述行保持 20px，与其他分区的说明→内容区间距逐像素一致 */
 .native-models-actions {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
   display: flex;
   align-items: center;
   gap: 8px;
   flex-shrink: 0;
 }
 
+/* 动作区按钮对齐 ZCode 实测规格：26px 高（截图像素 52/缩放 2.0），字体沿用 13px；
+   圆角收小更方正，内边距放宽避免局促 */
+.native-settings-page .native-models-actions .native-btn {
+  height: 26px;
+  padding: 0 8px;
+  line-height: 1;
+  border-radius: 6px;
+}
+
 .native-provider-refresh {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
+  width: 26px;
+  height: 26px;
   padding: 0;
   border: 1px solid var(--settings-border);
-  border-radius: 8px;
+  border-radius: 6px;
   background: transparent;
   color: var(--settings-muted);
   cursor: pointer;
@@ -4411,11 +4425,29 @@ body.native-resizing {
   gap: 6px;
 }
 
-/* 添加供应商子页头：返回键与子页标题同行，进入添加流程后接管分区头 */
-.native-models-title-group {
+/* 添加流程收纳在卡片内部：流程头（返回+小标题）与选择器/详情共用右列 */
+/* 右列固定高度：选择网格、详情、自定义创建共用同一容器高度，切换视图时卡片不再跳变 */
+.native-provider-pane {
+  flex: 1;
+  min-width: 0;
+  height: 520px;
   display: flex;
-  align-items: flex-start;
-  gap: 8px;
+  flex-direction: column;
+}
+
+.native-provider-flow-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 28px 0;
+  margin-bottom: 12px;
+  flex-shrink: 0;
+}
+
+.native-provider-flow-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--settings-fg);
 }
 
 .native-models-back {
@@ -4530,7 +4562,7 @@ body.native-resizing {
 }
 
 .native-switch.on {
-  background: var(--native-ok);
+  background: var(--native-send);
 }
 
 .native-switch.on .native-switch-knob {
@@ -4585,13 +4617,15 @@ body.native-resizing {
 
 .native-provider-picker {
   flex: 1;
+  min-height: 0;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(196px, 1fr));
   gap: 14px;
   align-content: start;
-  padding: 8px;
-  max-height: 520px;
+  /* 与详情区同一内容起点：左缘 28px、顶部 16px，切换视图时内容位置不跳 */
+  padding: 16px 28px 24px;
   overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 .native-provider-picker .native-model-empty {
@@ -4679,10 +4713,14 @@ body.native-resizing {
 .native-provider-detail {
   flex: 1;
   min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 18px;
-  padding: 24px 28px;
+  /* 与选择网格同一内容起点：左缘 28px、顶部 16px */
+  padding: 16px 28px 24px;
+  scrollbar-gutter: stable;
 }
 
 .native-provider-head {
@@ -5554,7 +5592,7 @@ body.native-resizing {
 }
 
 .native-archived-search-input:focus {
-  border-color: var(--native-blue);
+  border-color: var(--native-send);
   outline: none;
 }
 

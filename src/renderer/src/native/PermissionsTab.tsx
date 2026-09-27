@@ -7,7 +7,12 @@ export function PermissionsTab({ dsh }: { dsh: DshSettingsController }) {
     <>
       <div className="native-settings-panel-header">
         <h2>权限</h2>
-        <p>配置写入底层引擎配置目录。</p>
+        <p>
+          <span title="保存在 DSH 引擎配置目录 (~/.dsh)，与 DSH 官方桌面版及命令行共享，改动会同步影响这些客户端。">
+            (DSH 引擎设置)
+          </span>
+          新会话执行命令与修改文件的默认审批策略。
+        </p>
       </div>
 
       {dsh.settingsMessage && (

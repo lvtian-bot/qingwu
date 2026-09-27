@@ -95,7 +95,7 @@ export function ArchivedSessionsTab({
     <>
       <div className="native-settings-panel-header">
         <h2>已归档会话</h2>
-        <p>管理已从主列表中归档的会话，可随时恢复到对应项目或未分组列表中。</p>
+        <p>恢复或管理已归档的会话。</p>
       </div>
 
       {archivedRows.length > 0 && (

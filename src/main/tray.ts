@@ -1,6 +1,5 @@
 import { Tray, Menu, app } from 'electron';
 import { CONFIG } from './config';
-import { settings } from './settings';
 import type { WindowManager } from './window';
 import type { UpdateWindowManager } from './update-window';
 
@@ -8,13 +7,11 @@ export class TrayManager {
   private tray: Tray | null = null;
   private readonly windowManager: WindowManager;
   private readonly updateWindowManager: UpdateWindowManager;
-  private unsubscribeSettings: (() => void) | null = null;
 
   constructor(windowManager: WindowManager, updateWindowManager: UpdateWindowManager) {
     this.tray = null;
     this.windowManager = windowManager;
     this.updateWindowManager = updateWindowManager;
-    this.unsubscribeSettings = null;
   }
 
   init(iconPath: string | undefined): void {
@@ -33,12 +30,6 @@ export class TrayManager {
       });
 
       this.updateContextMenu();
-
-      this.unsubscribeSettings = settings.onChange((key) => {
-        if (key === 'closeToTray') {
-          this.updateContextMenu();
-        }
-      });
     } catch (err) {
       console.error('[Tray] 初始化托盘失败:', err);
     }
@@ -51,15 +42,6 @@ export class TrayManager {
       {
         label: '打开青梧',
         click: () => this.windowManager.focus(),
-      },
-      { type: 'separator' },
-      {
-        label: '关闭时最小化到系统托盘',
-        type: 'checkbox',
-        checked: Boolean(settings.get('closeToTray')),
-        click: (menuItem) => {
-          settings.set('closeToTray', menuItem.checked);
-        },
       },
       {
         label: '检查更新...',
@@ -82,10 +64,6 @@ export class TrayManager {
   }
 
   destroy() {
-    if (this.unsubscribeSettings) {
-      this.unsubscribeSettings();
-      this.unsubscribeSettings = null;
-    }
     if (this.tray) {
       this.tray.destroy();
       this.tray = null;

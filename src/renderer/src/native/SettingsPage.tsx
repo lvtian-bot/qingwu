@@ -142,9 +142,6 @@ export function SettingsPage({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onBack]);
 
-  // 模型与权限整页写入引擎配置目录，展示存储横幅；常规与已归档会话页不展示
-  const showDshBanner = activeTab === "models" || activeTab === "permissions";
-
   const panelStyle = (key: TabKey) =>
     activeTab === key ? undefined : ({ display: "none" } as const);
 
@@ -243,28 +240,6 @@ export function SettingsPage({
             >
               {reconnecting ? "正在重连…" : "立即重试"}
             </button>
-          </div>
-        )}
-
-        {/* 存储位置透明度横幅：仅覆盖整页写入引擎配置的分区 */}
-        {showDshBanner && (
-          <div className="native-settings-storage-banner">
-            <div className="native-settings-storage-icon">
-              <svg
-                viewBox="0 0 16 16"
-                width="16"
-                height="16"
-                fill="currentColor"
-              >
-                <path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0zm1 12H7V7h2v5zm0-6H7V4h2v2z" />
-              </svg>
-            </div>
-            <div className="native-settings-storage-desc">
-              <strong>存储位置：DSH 引擎配置目录 (~/.dsh)</strong>
-              <span>
-                此分区配置直接写入底层引擎配置目录，与 DSH 官方桌面版及命令行共享互通。
-              </span>
-            </div>
           </div>
         )}
 

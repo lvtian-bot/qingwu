@@ -52,7 +52,12 @@ export function GeneralTab({ dsh }: { dsh: DshSettingsController }) {
     <>
       <div className="native-settings-panel-header">
         <h2>常规</h2>
-        <p>界面、窗口与配置文件入口等基础选项。</p>
+        <p>
+          <span title="仅作用于青梧本应用，不影响 DSH 其他客户端。">
+            (UI 设置)
+          </span>
+          界面、窗口与配置文件入口等基础选项。
+        </p>
       </div>
 
       <div className="native-settings-card">
@@ -125,8 +130,8 @@ export function GeneralTab({ dsh }: { dsh: DshSettingsController }) {
         </SettingsRow>
 
         <SettingsRow
-          label="青梧应用数据目录"
-          desc="存放桌面窗口状态、应用配置与运行日志的本地目录 (%APPDATA%/qingwu)。"
+          label="青梧应用配置目录"
+          desc="存放界面设置、窗口状态与运行日志的本地目录 (%APPDATA%/qingwu)。"
         >
           <button
             type="button"
