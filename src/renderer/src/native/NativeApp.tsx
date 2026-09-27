@@ -1,6 +1,7 @@
 /** 界面编排：组合引擎流、草稿、滚动、模型选择与侧栏操作 hooks，负责任务发送与决策回执。 */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChatWidth } from "../../../shared/types";
+import { useT } from "../i18n";
 import { Markdown } from "./markdown";
 import "./native.css";
 import { foldTodos, type QueuedItem } from "./events";
@@ -27,7 +28,7 @@ import { TodoPanel } from "./TodoPanel";
 import { usePanelWidth } from "./usePanelWidth";
 import { ChatComposer } from "./ChatComposer";
 import { ConnectionBanner } from "./ConnectionBanner";
-import { fileToBase64, LightboxModal } from "./images";
+import { fileToBase64, LightboxModal, MessageImageView } from "./images";
 import {
   groupPendingEntries,
   PendingInteraction,
@@ -65,6 +66,7 @@ export function NativeApp({
   /** 侧栏折叠态（开关在标题栏菜单栏，状态由入口层持有，与 TitleBar 共用）。 */
   sidebarCollapsed: boolean;
 }) {
+  const t = useT();
   /** 设置面板显隐状态 */
   const [settingsOpen, setSettingsOpen] = useState(false);
   /** 是否折叠回合执行过程与工具调用（应用设置项，默认 false：平铺展开） */
@@ -222,6 +224,16 @@ export function NativeApp({
     loadingHistory,
   });
 
+  // 乐观回显分流：空闲发送入对话流（避免排队卡片闪烁与高度抖动），忙碌排队入输入框上方的排队栏
+  const queueEchoes = useMemo(
+    () => echoes.filter((e) => e.target === "queue" || (!e.target && running)),
+    [echoes, running],
+  );
+  const transcriptEchoes = useMemo(
+    () => echoes.filter((e) => e.target === "transcript"),
+    [echoes],
+  );
+
   const archivedSet = useMemo(
     () => new Set(archivedSessionIds),
     [archivedSessionIds],
@@ -377,8 +389,8 @@ export function NativeApp({
   /** 当前会话标题（聊天标题栏展示）。 */
   const currentTitle = useMemo(() => {
     const session = sessions.find((s) => s.sessionId === currentId);
-    return session ? sessionTitle(session) : "";
-  }, [sessions, currentId]);
+    return session ? sessionTitle(session, t("sidebar.untitled")) : "";
+  }, [sessions, currentId, t]);
 
   /** 当前会话摘要（新会话引导页判定需要它的 blank 标记）。 */
   const currentSession = useMemo(
@@ -416,7 +428,7 @@ export function NativeApp({
     const submittedDraft = captureForSubmit(currentId);
 
     if (!dshConnected) {
-      setError("与引擎连接中断，无法执行命令，请等待重连或点击重试");
+      setError(t("chat.errors.executeDisconnected"));
       return;
     }
 
@@ -446,7 +458,7 @@ export function NativeApp({
       (c) => c.name.toLowerCase() === parsed.name,
     );
     if (draftImages.length > 0 && !cmdDesc?.input?.attachments) {
-      setError(`/${parsed.name} 不接受附件，请先移除附件`);
+      setError(t("chat.errors.commandNoAttachments", { name: parsed.name }));
       return;
     }
 
@@ -477,7 +489,7 @@ export function NativeApp({
     if (!text && images.length === 0) return;
 
     if (!dshConnected) {
-      setError("与引擎连接中断，无法发送消息，请等待重连或点击重试");
+      setError(t("chat.errors.sendDisconnected"));
       return;
     }
 
@@ -533,7 +545,8 @@ export function NativeApp({
       ),
     );
     const submitMode = options?.mode ?? "queue";
-    // 乐观回显：提交当帧就显示，宿主落库或入队后由事件投影退休
+    // 乐观回显：空闲发送入对话流（避免排队卡片闪烁与高度抖动），忙碌发送入排队栏
+    const echoTarget = running ? "queue" : "transcript";
     const requestId = crypto.randomUUID();
     pushEcho({
       id: `echo-${requestId}`,
@@ -546,6 +559,7 @@ export function NativeApp({
         name: img.name,
       })),
       pending: true,
+      target: echoTarget,
     });
     try {
       const content: Array<
@@ -558,7 +572,11 @@ export function NativeApp({
           }
       > = [];
       for (const img of images) {
-        const base64 = img.base64 || (await fileToBase64(img.file));
+        const base64 =
+          img.base64 ||
+          (await fileToBase64(img.file).catch(() => {
+            throw new Error(t("composer.imageReadFailed"));
+          }));
         content.push({
           type: "image",
           mediaType: img.mediaType,
@@ -636,7 +654,7 @@ export function NativeApp({
     scrollToBottom("auto");
     const clientId = approval.clientId || currentEventsClientId() || "";
     if (!clientId) {
-      setError("与引擎的事件流尚未就绪，请稍后重试");
+      setError(t("chat.errors.eventStreamNotReady"));
       return;
     }
     const result = await qingwu.dshEventResult(clientId, approval.eventId, {
@@ -644,7 +662,7 @@ export function NativeApp({
       value: outcome,
     });
     if (!result.ok) {
-      setError(`授权回执提交失败：${result.error.message}`);
+      setError(t("chat.errors.approvalSubmitFailed", { message: result.error.message }));
       return;
     }
     setApprovals((prev) => prev.filter((a) => a.eventId !== approval.eventId));
@@ -661,7 +679,7 @@ export function NativeApp({
     scrollToBottom("auto");
     const clientId = question.clientId || currentEventsClientId() || "";
     if (!clientId) {
-      setError("与引擎的事件流尚未就绪，请稍后重试");
+      setError(t("chat.errors.eventStreamNotReady"));
       return false;
     }
     try {
@@ -670,7 +688,7 @@ export function NativeApp({
         value: { answers },
       });
       if (!result.ok) {
-        setError(`回答提交失败：${result.error.message}`);
+        setError(t("chat.errors.answerSubmitFailed", { message: result.error.message }));
         return false;
       }
       setQuestions((prev) =>
@@ -692,7 +710,7 @@ export function NativeApp({
   ): Promise<boolean> => {
     const clientId = question.clientId || currentEventsClientId() || "";
     if (!clientId) {
-      setError("与引擎的事件流尚未就绪，请稍后重试");
+      setError(t("chat.errors.eventStreamNotReady"));
       return false;
     }
     try {
@@ -705,7 +723,7 @@ export function NativeApp({
         },
       });
       if (!result.ok) {
-        setError(`取消失败：${result.error.message}`);
+        setError(t("chat.errors.dismissFailed", { message: result.error.message }));
         return false;
       }
       setQuestions((prev) =>
@@ -841,8 +859,8 @@ export function NativeApp({
     <button
       className="native-icon-btn"
       onClick={() => setPanelOpen(true)}
-      title="打开面板"
-      aria-label="打开面板"
+      title={t("chat.panel.open")}
+      aria-label={t("chat.panel.open")}
     >
       <PanelRightIcon />
     </button>
@@ -891,7 +909,7 @@ export function NativeApp({
               </div>
             </div>
             <div className="native-empty">
-              <div className="native-empty-title">我们要做什么？</div>
+              <div className="native-empty-title">{t("chat.composer.placeholder")}</div>
               <div className="native-composer-stack">
                 <ChatComposer
                   menuPlacement="bottom"
@@ -913,7 +931,7 @@ export function NativeApp({
                   catalog={modelCatalog}
                   selection={currentModelSelection}
                   permission={currentPermission}
-                  permissionHint={currentId ? undefined : "新会话默认权限"}
+                  permissionHint={currentId ? undefined : t("chat.composer.newSessionPermissionHint")}
                   onModelPick={handleModelPick}
                   onEffortPick={handleEffortPick}
                   onPermissionPick={handlePermissionPick}
@@ -921,7 +939,7 @@ export function NativeApp({
                 <WorkspaceChip
                   workspaces={workspaces}
                   currentId={chipWorkspaceId}
-                  fallbackLabel={activeWorkspaceId ? "未分组" : "选择工作区"}
+                  fallbackLabel={activeWorkspaceId ? t("chat.workspace.ungrouped") : t("chat.workspace.select")}
                   onPick={handleWorkspaceChipPick}
                   onAdd={() => void handleAddWorkspace()}
                 />
@@ -960,7 +978,7 @@ export function NativeApp({
               >
                 <div className="native-messages-inner">
                   {loadingHistory && (
-                    <div className="native-hint">正在加载会话历史…</div>
+                    <div className="native-hint">{t("chat.history.loading")}</div>
                   )}
                   {historyHasMore && !loadingHistory && (
                     <button
@@ -969,7 +987,9 @@ export function NativeApp({
                       disabled={loadingOlderHistory}
                       onClick={() => void loadOlderHistory()}
                     >
-                      {loadingOlderHistory ? "加载中…" : "加载更早"}
+                      {loadingOlderHistory
+                        ? t("chat.history.loadingMore")
+                        : t("chat.history.loadEarlier")}
                     </button>
                   )}
                   {items.map((view, index) => (
@@ -989,6 +1009,25 @@ export function NativeApp({
                       deliverables={view.deliverables}
                       onOpenFile={openFileInPanel}
                     />
+                  ))}
+                  {transcriptEchoes.map((echo) => (
+                    <div key={echo.id} className="native-msg user">
+                      <div className="native-msg-user-wrap">
+                        {echo.images && echo.images.length > 0 && (
+                          <div className="native-msg-images">
+                            {echo.images.map((img, idx) => (
+                              <MessageImageView
+                                key={img.id || img.attachmentId || idx}
+                                image={img}
+                                sessionId={currentId}
+                                onPreview={handlePreviewImage}
+                              />
+                            ))}
+                          </div>
+                        )}
+                        {echo.text && <div className="native-msg-body">{echo.text}</div>}
+                      </div>
+                    </div>
                   ))}
                   {liveReasoning && !draft && (
                     // 仅有思考未出正文的流式过程：直接渲染独立思考行，不包裹助手答复气泡外壳，
@@ -1036,10 +1075,10 @@ export function NativeApp({
                   onClick={() => scrollToBottom("smooth")}
                   title={
                     running || liveReasoning || draft
-                      ? "回到底部（正在生成…）"
-                      : "回到底部"
+                      ? t("chat.scroll.toBottomGenerating")
+                      : t("chat.scroll.toBottom")
                   }
-                  aria-label="回到底部"
+                  aria-label={t("chat.scroll.toBottom")}
                 >
                   <ChevronDownIcon />
                   {(running || liveReasoning || draft) && (
@@ -1054,7 +1093,7 @@ export function NativeApp({
               <div className="native-composer-stack">
                 <TodoPanel todos={todos} />
                 <QueueStrip
-                  items={[...queue, ...echoes]}
+                  items={[...queue, ...queueEchoes]}
                   running={running}
                   busyId={queueBusyId}
                   sessionId={currentId}
@@ -1104,7 +1143,8 @@ export function NativeApp({
         )}
         {error && (
           <div className="native-error" onClick={() => setError(null)}>
-            {error}（点击关闭）
+            {error}
+            {t("chat.errors.clickToClose")}
           </div>
         )}
       </main>

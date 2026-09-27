@@ -608,6 +608,8 @@ export interface QueuedItem {
   text: string;
   images?: MessageImageItem[];
   pending?: boolean;
+  /** 回显落位目标：空闲发送入对话流（transcript），忙碌发送入排队栏（queue）。未指定时默认为 queue。 */
+  target?: "queue" | "transcript";
 }
 
 /**
