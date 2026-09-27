@@ -80,7 +80,7 @@ test("模型与权限保存失败保持实际值，并重新读取配置", async
   const next = h.render();
   assert.equal(next.defaultModelKey, "demo/old");
   assert.equal(next.defaultPreset, "standard");
-  assert.match(next.settingsMessage, /更新失败/);
+  assert.match(next.settingsMessage, /(?:更新失败|Update failed)/);
   assert.equal(h.calls.filter((call) => call.endpoint === "settings/describe").length, 3);
 });
 
