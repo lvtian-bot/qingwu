@@ -56,6 +56,7 @@ export const sidebar: typeof zhSidebar = {
     title: "Select a workspace",
     empty: "No workspaces yet",
     add: "Add workspace…",
+    noWorkspace: "No workspace",
   },
   archived: {
     title: "Archived sessions",

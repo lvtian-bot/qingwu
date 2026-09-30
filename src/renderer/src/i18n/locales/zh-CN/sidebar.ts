@@ -66,6 +66,7 @@ export const sidebar = {
     title: "选择工作区",
     empty: "暂无工作区",
     add: "添加工作区…",
+    noWorkspace: "无工作区",
   },
   /** 已归档会话页（ArchivedSessionsTab） */
   archived: {

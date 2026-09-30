@@ -307,11 +307,14 @@ export function NativeApp({
     };
   }, []);
 
+  const hasInitializedWorkspaceRef = useRef(false);
   useEffect(() => {
-    if (workspaces.length > 0 && !activeWorkspaceId) {
+    if (hasInitializedWorkspaceRef.current) return;
+    if (workspaces.length > 0) {
+      hasInitializedWorkspaceRef.current = true;
       setActiveWorkspaceId(workspaces[0].workspaceId);
     }
-  }, [workspaces, activeWorkspaceId]);
+  }, [workspaces]);
 
   const activeWorkspace = useMemo(
     () => workspaces.find((w) => w.workspaceId === activeWorkspaceId),
@@ -441,13 +444,8 @@ export function NativeApp({
 
     let targetSessionId = currentId;
     if (!targetSessionId) {
-      let wsId = activeWorkspaceId;
-      if (!wsId) {
-        wsId = await handleAddWorkspace();
-        if (!wsId) return;
-      }
       try {
-        targetSessionId = await createSessionIn(wsId);
+        targetSessionId = await createSessionIn(activeWorkspaceId);
       } catch (err) {
         setError(toErrMsg(err));
         return;
@@ -511,13 +509,8 @@ export function NativeApp({
 
     let sessionId = currentId;
     if (!sessionId) {
-      let wsId = activeWorkspaceId;
-      if (!wsId) {
-        wsId = await handleAddWorkspace();
-        if (!wsId) return;
-      }
       try {
-        sessionId = await createSessionIn(wsId);
+        sessionId = await createSessionIn(activeWorkspaceId);
       } catch (err) {
         setError(toErrMsg(err));
         return;
@@ -939,7 +932,7 @@ export function NativeApp({
                 <WorkspaceChip
                   workspaces={workspaces}
                   currentId={chipWorkspaceId}
-                  fallbackLabel={activeWorkspaceId ? t("chat.workspace.ungrouped") : t("chat.workspace.select")}
+                  fallbackLabel={t("chat.workspace.select")}
                   onPick={handleWorkspaceChipPick}
                   onAdd={() => void handleAddWorkspace()}
                 />

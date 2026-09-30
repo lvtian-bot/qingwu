@@ -15,11 +15,11 @@ export function WorkspaceChip({
   onAdd,
 }: {
   workspaces: WorkspaceView[];
-  /** 当前绑定（空态为待落点）工作区 id；null 表示未绑定/未选择。 */
+  /** 当前绑定（空态为待落点）工作区 id；null 表示未绑定/无工作区。 */
   currentId: string | null;
-  /** 无绑定时的展示文案（未分组 / 选择工作区）。 */
+  /** 无绑定时的展示文案（默认为选择工作区）。 */
   fallbackLabel: string;
-  onPick: (workspaceId: string) => void;
+  onPick: (workspaceId: string | null) => void;
   onAdd: () => void;
 }) {
   const t = useT();
@@ -77,11 +77,6 @@ export function WorkspaceChip({
       </button>
       {open && (
         <div className="native-ws-chip-menu">
-          {workspaces.length === 0 && (
-            <div className="native-popover-empty">
-              {t("sidebar.chip.empty")}
-            </div>
-          )}
           {workspaces.map((ws) => (
             <button
               key={ws.workspaceId}
@@ -95,7 +90,7 @@ export function WorkspaceChip({
               <span className="native-popover-item-name">{ws.title}</span>
             </button>
           ))}
-          <div className="native-ws-chip-menu-sep" />
+          {workspaces.length > 0 && <div className="native-ws-chip-menu-sep" />}
           <button
             className="native-popover-item"
             onClick={() => {
@@ -105,6 +100,18 @@ export function WorkspaceChip({
           >
             <span className="native-popover-item-name">
               {t("sidebar.chip.add")}
+            </span>
+          </button>
+          <div className="native-ws-chip-menu-sep" />
+          <button
+            className={`native-popover-item${currentId === null ? " active" : ""}`}
+            onClick={() => {
+              setOpen(false);
+              onPick(null);
+            }}
+          >
+            <span className="native-popover-item-name">
+              {t("sidebar.chip.noWorkspace")}
             </span>
           </button>
         </div>

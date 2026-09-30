@@ -60,25 +60,37 @@ export function useSessionActions({
       next.delete(sessionId);
       return next;
     });
-    const wsId = workspaceOfSession.get(sessionId);
-    if (wsId) setActiveWorkspaceId(wsId);
+    const wsId = workspaceOfSession.get(sessionId) ?? null;
+    setActiveWorkspaceId(wsId);
   };
 
-  /** 在指定项目下落一个新会话：优先复用其空白会话（官方 connectWorkspace 语义）。返回会话 id。 */
-  const createSessionIn = async (wsId: string): Promise<string> => {
-    const ws = workspaces.find((w) => w.workspaceId === wsId);
-    const reusable = ws?.sessionIds
-      .map((id) => sessions.find((s) => s.sessionId === id))
-      .find(
+  /** 在指定项目或无工作区下落一个新会话：优先复用其空白会话。返回会话 id。 */
+  const createSessionIn = async (wsId: string | null): Promise<string> => {
+    let reusable: SessionSummary | undefined;
+    if (wsId) {
+      const ws = workspaces.find((w) => w.workspaceId === wsId);
+      reusable = ws?.sessionIds
+        .map((id) => sessions.find((s) => s.sessionId === id))
+        .find(
+          (s) =>
+            s?.blank && s.origin !== "subagent" && !archivedSet.has(s.sessionId),
+        );
+    } else {
+      const allWsSessionIds = new Set(workspaces.flatMap((w) => w.sessionIds));
+      reusable = sessions.find(
         (s) =>
-          s?.blank && s.origin !== "subagent" && !archivedSet.has(s.sessionId),
+          !allWsSessionIds.has(s.sessionId) &&
+          s.blank &&
+          s.origin !== "subagent" &&
+          !archivedSet.has(s.sessionId),
       );
+    }
     if (reusable) {
       setCurrentId(reusable.sessionId);
       return reusable.sessionId;
     }
     const value = await rpc<{ sessionId: string }>(Endpoints.sessionCreate, {
-      request: { workspaceId: wsId },
+      request: wsId ? { workspaceId: wsId } : {},
     });
     await refreshSessions();
     setCurrentId(value.sessionId);
@@ -86,17 +98,11 @@ export function useSessionActions({
   };
 
   /**
-   * 新会话：对齐官方 startSession 语义——落在当前/最近活跃项目并复用空白会话；
-   * 零项目时先添加第一个项目（添加工作区统一收口到聊天框 chip，这里是兜底）。
+   * 新会话：落在当前/最近活跃项目（或无工作区），并优先复用空白会话。
    */
   const handleNewSession = async () => {
-    let wsId = activeWorkspaceId;
-    if (!wsId) {
-      wsId = await handleAddWorkspace();
-      if (!wsId) return;
-    }
     try {
-      await createSessionIn(wsId);
+      await createSessionIn(activeWorkspaceId);
     } catch (err) {
       setError(toErrMsg(err));
     }
@@ -298,12 +304,13 @@ export function useSessionActions({
    * 因此这里对齐官方 openWorkspace 语义——换的是落点而不是会话本身：未发送的草稿随人迁移，
    * 原来那个空白会话留在原工作区，下次进入该工作区时被复用。
    */
-  const handleWorkspaceChipPick = (workspaceId: string) => {
+  const handleWorkspaceChipPick = (workspaceId: string | null) => {
     if (!currentId) {
       setActiveWorkspaceId(workspaceId);
       return;
     }
-    if (workspaceOfSession.get(currentId) === workspaceId) return;
+    const currentWsId = workspaceOfSession.get(currentId) ?? null;
+    if (currentWsId === workspaceId) return;
     void (async () => {
       const previousId = currentId;
       const nextId = await createSessionIn(workspaceId);
