@@ -23,6 +23,7 @@ import {
   setActiveWorkspacePath,
   readLocalImage,
 } from "./terminal";
+import { renderDocumentPreview } from "./document-preview";
 import { setupApplicationDiagnostics } from "./diagnostics";
 import { NotificationManager } from "./notification";
 import type { RendererErrorReport } from "../shared/types";
@@ -220,6 +221,10 @@ if (!gotTheLock) {
   );
   ipcMain.handle("workspace:readLocalImage", (_event, targetPath: string) =>
     readLocalImage(targetPath),
+  );
+  ipcMain.handle(
+    "workspace:renderDocumentPreview",
+    (_event, targetPath: string) => renderDocumentPreview(targetPath),
   );
   ipcMain.handle("workspace:setActivePath", (_event, targetPath: string | null) => {
     setActiveWorkspacePath(targetPath);

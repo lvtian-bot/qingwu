@@ -164,6 +164,15 @@ export interface QingwuApi {
   readLocalImage: (
     targetPath: string,
   ) => Promise<{ dataUrl: string; mimeType: string } | null>;
+  /** 将 Office/PDF 渲染为预览页面（Data URL 图片数组与总页数）。 */
+  renderDocumentPreview: (
+    targetPath: string,
+  ) => Promise<{
+    success: boolean;
+    error?: string;
+    pageCount?: number;
+    pages?: string[];
+  }>;
   /** 通知主进程当前活跃的工作区路径，以便全局菜单与快捷键呼出。 */
   setActiveWorkspacePath: (targetPath: string | null) => void;
   /** 请求发送任务完成等系统桌面通知。 */

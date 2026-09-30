@@ -168,6 +168,8 @@ const api: QingwuApi = {
   openPath: (targetPath) => ipcRenderer.invoke('workspace:openPath', targetPath),
   showItemInFolder: (targetPath) => ipcRenderer.invoke('workspace:showItemInFolder', targetPath),
   readLocalImage: (targetPath) => ipcRenderer.invoke('workspace:readLocalImage', targetPath),
+  renderDocumentPreview: (targetPath) =>
+    ipcRenderer.invoke('workspace:renderDocumentPreview', targetPath),
   setActiveWorkspacePath: (targetPath) => {
     void ipcRenderer.invoke('workspace:setActivePath', targetPath);
   },

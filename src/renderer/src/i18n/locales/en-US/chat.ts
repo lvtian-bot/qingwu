@@ -71,6 +71,7 @@ export const chat: typeof zhChat = {
   },
   actions: {
     copyReply: "Copy reply",
+    copyMessage: "Copy message",
     copied: "Copied",
     forkTitle: "Fork a new session from this reply",
   },

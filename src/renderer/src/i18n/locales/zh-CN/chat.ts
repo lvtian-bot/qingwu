@@ -66,6 +66,7 @@ export const chat = {
   },
   actions: {
     copyReply: "复制回复",
+    copyMessage: "复制内容",
     copied: "已复制",
     forkTitle: "从这条回复分出新会话",
   },

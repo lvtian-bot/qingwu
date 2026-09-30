@@ -1076,9 +1076,7 @@ textarea {
 }
 
 /*
- * 助手消息操作栏：完成时间戳 + 分叉 + 复制，紧凑横排。
- * 历史轮次默认隐藏、悬停所在回复时浮现；最新轮次带 native-msg-meta-live 常驻。
- * 用 visibility + opacity 而非 display，保留占位避免悬停出现时布局跳动。
+ * 助手消息操作栏：完成时间戳 + 分叉 + 复制，紧凑横排，常驻显示。
  */
 .native-msg-meta {
   display: flex;
@@ -1087,17 +1085,18 @@ textarea {
   margin-top: 6px;
   font-size: 12px;
   color: var(--native-muted);
-  opacity: 0;
-  visibility: hidden;
-  transition:
-    opacity 0.15s ease,
-    visibility 0.15s ease;
 }
 
-.native-msg.assistant:hover .native-msg-meta,
-.native-msg-meta.native-msg-meta-live {
-  opacity: 1;
-  visibility: visible;
+/*
+ * 用户消息操作栏：发送时间戳 + 复制，紧凑横排，常驻显示。
+ */
+.native-msg-user-meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--native-muted);
 }
 
 .native-msg-time {
@@ -3681,6 +3680,57 @@ body.native-ui-active .titlebar {
   cursor: zoom-in;
 }
 
+.panel-preview-document {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 16px 28px;
+}
+
+.panel-preview-doc-meta {
+  width: 100%;
+  max-width: 680px;
+  display: flex;
+  justify-content: flex-end;
+  color: var(--native-muted);
+  font-size: 11.5px;
+}
+
+.panel-preview-doc-page {
+  position: relative;
+  width: 100%;
+  max-width: 680px;
+  background-color: #ffffff;
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08), 0 0 1px rgba(0, 0, 0, 0.15);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  overflow: hidden;
+}
+
+.panel-preview-doc-page img {
+  display: block;
+  width: 100%;
+  height: auto;
+  cursor: zoom-in;
+}
+
+.panel-preview-page-no {
+  align-self: center;
+  padding: 4px 10px;
+  margin-top: -24px;
+  margin-bottom: 6px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #ffffff;
+  border-radius: 12px;
+  font-size: 11px;
+  font-family: var(--native-mono);
+  user-select: none;
+  pointer-events: none;
+}
+
 .panel-preview-md {
   padding: 12px 14px 20px;
 }
@@ -3759,26 +3809,27 @@ body.native-ui-active .titlebar {
 /* ---------- 会话流收尾交付卡片 ---------- */
 
 .native-deliv {
-  margin-top: 10px;
+  margin-top: 14px;
+  margin-bottom: 4px;
 }
 
 .native-deliv-grid {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
 .native-deliv-grid[data-multiple] {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  gap: 10px;
 }
 
 .native-deliv-card {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 7px 8px 7px 9px;
+  gap: 6px;
+  padding: 10px 12px 10px 12px;
   border: 1px solid var(--native-card-border);
   border-radius: 12px;
   background: var(--native-bg);
@@ -3796,7 +3847,7 @@ body.native-ui-active .titlebar {
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 10px;
   border: none;
   background: transparent;
   padding: 0;
@@ -3808,9 +3859,9 @@ body.native-ui-active .titlebar {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 7px;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
   background: var(--native-surface);
   flex-shrink: 0;
 }
@@ -3820,11 +3871,11 @@ body.native-ui-active .titlebar {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 2px;
 }
 
 .native-deliv-name {
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 500;
   color: var(--native-fg);
   overflow: hidden;

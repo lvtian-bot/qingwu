@@ -26,8 +26,16 @@ const MAX_RENDER_LINES = 20000;
 
 type PreviewState =
   | { phase: "loading" }
+  | { phase: "converting"; stat: WorkspaceFileStat; info: FileTypeInfo }
   | { phase: "unsupported"; stat: WorkspaceFileStat; info: FileTypeInfo }
   | { phase: "image"; stat: WorkspaceFileStat; dataUrl: string }
+  | {
+      phase: "document";
+      stat: WorkspaceFileStat;
+      info: FileTypeInfo;
+      pages: string[];
+      pageCount: number;
+    }
   | {
       phase: "text";
       stat: WorkspaceFileStat;
@@ -87,6 +95,25 @@ export function PanelPreview({
           } else {
             setState({ phase: "image", stat, dataUrl: img.dataUrl });
           }
+        } else if (kind === "document") {
+          setState({ phase: "converting", stat, info: fileInfoOf(path) });
+          const rendered = await window.qingwu?.renderDocumentPreview?.(stat.absolutePath);
+          if (gen !== genRef.current) return;
+          if (!rendered || !rendered.success || !rendered.pages || rendered.pages.length === 0) {
+            setState({
+              phase: "unsupported",
+              stat,
+              info: fileInfoOf(path),
+            });
+          } else {
+            setState({
+              phase: "document",
+              stat,
+              info: fileInfoOf(path),
+              pages: rendered.pages,
+              pageCount: rendered.pageCount || rendered.pages.length,
+            });
+          }
         } else if (kind === "unsupported") {
           setState({ phase: "unsupported", stat, info: fileInfoOf(path) });
         } else {
@@ -127,7 +154,7 @@ export function PanelPreview({
   // 内容渲染完成后恢复自动刷新保留的滚动位置
   useEffect(() => {
     if (pendingScrollRef.current == null) return;
-    if (state.phase !== "text" && state.phase !== "image") {
+    if (state.phase !== "text" && state.phase !== "image" && state.phase !== "document") {
       pendingScrollRef.current = null;
       return;
     }
@@ -155,6 +182,8 @@ export function PanelPreview({
             const curVersion =
               cur.phase === "text" ||
               cur.phase === "image" ||
+              cur.phase === "document" ||
+              cur.phase === "converting" ||
               cur.phase === "unsupported"
                 ? cur.stat.version
                 : null;
@@ -225,6 +254,8 @@ export function PanelPreview({
     const abs =
       state.phase === "text" ||
       state.phase === "image" ||
+      state.phase === "document" ||
+      state.phase === "converting" ||
       state.phase === "unsupported"
         ? state.stat.absolutePath
         : null;
@@ -235,6 +266,8 @@ export function PanelPreview({
   const displayPath =
     state.phase === "text" ||
     state.phase === "image" ||
+    state.phase === "document" ||
+    state.phase === "converting" ||
     state.phase === "unsupported"
       ? state.stat.absolutePath
       : path;
@@ -284,6 +317,12 @@ export function PanelPreview({
             <span>{t("panel.preview.loadingDoc")}</span>
           </div>
         )}
+        {state.phase === "converting" && (
+          <div className="panel-preview-center">
+            <span className="panel-spinner" aria-hidden="true" />
+            <span>{t("panel.preview.convertingDoc")}</span>
+          </div>
+        )}
         {state.phase === "missing" && (
           <div className="panel-preview-center">
             <FileGlyph info={info} size={28} />
@@ -306,7 +345,11 @@ export function PanelPreview({
         {state.phase === "unsupported" && (
           <div className="panel-preview-center">
             <FileGlyph info={state.info} size={28} />
-            <span>{t("panel.preview.unsupported")}</span>
+            <span>
+              {state.info.kind === "document"
+                ? t("panel.preview.convertFailed")
+                : t("panel.preview.unsupported")}
+            </span>
             <button
               type="button"
               className="native-btn-ghost-sm"
@@ -323,6 +366,26 @@ export function PanelPreview({
               alt={basename(path)}
               onClick={() => onPreviewImage?.(state.dataUrl)}
             />
+          </div>
+        )}
+        {state.phase === "document" && (
+          <div className="panel-preview-document">
+            <div className="panel-preview-doc-meta">
+              <span className="panel-preview-page-count">
+                {t("panel.preview.pageCount", { count: state.pageCount })}
+              </span>
+            </div>
+            {state.pages.map((dataUrl, idx) => (
+              <div className="panel-preview-doc-page" key={idx}>
+                <img
+                  src={dataUrl}
+                  alt={`${basename(path)} - page ${idx + 1}`}
+                  onClick={() => onPreviewImage?.(dataUrl)}
+                  loading="lazy"
+                />
+                <span className="panel-preview-page-no">{idx + 1}</span>
+              </div>
+            ))}
           </div>
         )}
         {state.phase === "text" && state.info.kind === "markdown" && (

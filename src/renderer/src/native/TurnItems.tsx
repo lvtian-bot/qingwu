@@ -229,14 +229,14 @@ function TurnMetricsCapsules({
   );
 }
 
-/** 助手消息复制按钮：点击后 1.5s 内显示「已复制」。 */
-function CopyButton({ text }: { text: string }) {
+/** 消息复制按钮：点击后 1.5s 内显示「已复制」。 */
+function CopyButton({ text, title }: { text: string; title?: string }) {
   const t = useT();
   const [copied, setCopied] = useState(false);
   return (
     <button
       className="native-msg-action"
-      title={t("chat.actions.copyReply")}
+      title={title || t("chat.actions.copyReply")}
       onClick={() => {
         void navigator.clipboard.writeText(text).then(() => {
           setCopied(true);
@@ -338,6 +338,8 @@ function AssistantBody({
   metrics,
   cwd,
   onPreviewImage,
+  deliverables,
+  onOpenFile,
 }: {
   item: Extract<ChatItem, { kind: "assistant" }>;
   forkable?: boolean;
@@ -348,6 +350,8 @@ function AssistantBody({
   metrics?: TurnMetrics;
   cwd?: string;
   onPreviewImage?: (url: string) => void;
+  deliverables?: TurnDeliverable[];
+  onOpenFile?: (path: string) => void;
 }) {
   const t = useT();
   return (
@@ -363,6 +367,13 @@ function AssistantBody({
             <span className="native-muted">{t("chat.turns.interrupted")}</span>
           )}
         </div>
+      )}
+      {deliverables && deliverables.length > 0 && (
+        <DeliverableCards
+          files={deliverables}
+          cwd={cwd}
+          onOpenFile={onOpenFile}
+        />
       )}
       {item.text && (
         <div
@@ -424,6 +435,7 @@ export function TurnItems({
   onOpenFile?: (path: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const t = useT();
   const renderItem = (item: MarkedChatItem, showReasoning = true) => {
     if (item.kind === "tool") {
       return <ToolCard key={item.key} tool={item.tool} cwd={cwd} />;
@@ -461,6 +473,8 @@ export function TurnItems({
             onFork={isAnswer && onFork ? () => onFork(item.seq) : undefined}
             cwd={cwd}
             onPreviewImage={onPreviewImage}
+            deliverables={isAnswer ? deliverables : undefined}
+            onOpenFile={onOpenFile}
           />
         </div>
       );
@@ -481,6 +495,15 @@ export function TurnItems({
             </div>
           )}
           {item.text && <div className="native-msg-body">{item.text}</div>}
+          <div className="native-msg-user-meta">
+            <span className="native-msg-time">{formatStamp(item.time, t)}</span>
+            {item.text && (
+              <CopyButton
+                text={item.text}
+                title={t("chat.actions.copyMessage")}
+              />
+            )}
+          </div>
         </div>
       </div>
     );
@@ -491,7 +514,9 @@ export function TurnItems({
     return (
       <>
         {view.items.map((item) => renderItem(item))}
-        <DeliverableCards files={deliverables ?? []} cwd={cwd} onOpenFile={onOpenFile} />
+        {!view.answer && deliverables && deliverables.length > 0 && (
+          <DeliverableCards files={deliverables} cwd={cwd} onOpenFile={onOpenFile} />
+        )}
       </>
     );
   }
@@ -523,7 +548,6 @@ export function TurnItems({
       {/* 折叠行收起时思考由它代表，展开后答复里的思考行照常显示 */}
       {renderItem(view.answer, open)}
       {trailingItems.map((item) => renderItem(item))}
-      <DeliverableCards files={deliverables ?? []} cwd={cwd} onOpenFile={onOpenFile} />
     </>
   );
 }

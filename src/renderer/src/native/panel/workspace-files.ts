@@ -156,7 +156,7 @@ export function splitPathDisplay(path: string): { dir: string; base: string } {
 
 // ---------- 预览分类 ----------
 
-export type PreviewKind = "markdown" | "code" | "text" | "image" | "unsupported";
+export type PreviewKind = "markdown" | "code" | "text" | "image" | "document" | "unsupported";
 
 const MARKDOWN_EXTS = new Set(["md", "markdown"]);
 const CODE_EXTS = new Set([
@@ -187,16 +187,18 @@ export function fileInfoOf(path: string): FileTypeInfo {
   const ext = match ? match[1].toLowerCase() : "";
   const upper = ext.toUpperCase();
 
-  if (ext === "doc" || ext === "docx" || ext === "rtf" || ext === "odt")
+  if (ext === "doc" || ext === "docx" || ext === "odt")
+    return { name, ext, kind: "document", badge: "doc", label: "DOC" };
+  if (ext === "rtf")
     return { name, ext, kind: "unsupported", badge: "doc", label: "DOC" };
   if (ext === "xls" || ext === "xlsx" || ext === "ods")
-    return { name, ext, kind: "unsupported", badge: "sheet", label: "XLS" };
+    return { name, ext, kind: "document", badge: "sheet", label: "XLS" };
   if (ext === "csv" || ext === "tsv")
     return { name, ext, kind: "text", badge: "sheet", label: upper };
   if (ext === "ppt" || ext === "pptx" || ext === "odp")
-    return { name, ext, kind: "unsupported", badge: "slide", label: "PPT" };
+    return { name, ext, kind: "document", badge: "slide", label: "PPT" };
   if (ext === "pdf")
-    return { name, ext, kind: "unsupported", badge: "pdf", label: "PDF" };
+    return { name, ext, kind: "document", badge: "pdf", label: "PDF" };
   if (IMAGE_EXTS.has(ext))
     return { name, ext, kind: "image", badge: "image", label: upper || "IMG" };
   if (MARKDOWN_EXTS.has(ext))
