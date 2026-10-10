@@ -40,7 +40,6 @@ if (!gotTheLock) {
   app.quit();
 } else {
   const hasConsole = acquireHiddenConsole();
-  app.setAppUserModelId(CONFIG.appId || "com.qingwu.desktop");
   const windowManager = new WindowManager();
   const notificationManager = new NotificationManager(windowManager);
   const harnessManager = new HarnessManager({ hasConsole });

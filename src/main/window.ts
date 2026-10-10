@@ -33,15 +33,11 @@ export class WindowManager {
 
   getIconPath(): string | undefined {
     const possiblePaths = [
-      path.join(process.resourcesPath, "icon.ico"),
-      path.join(process.resourcesPath, "icon.png"),
-      path.join(process.resourcesPath, "build", "icon.ico"),
-      path.join(process.resourcesPath, "build", "icon.png"),
-      path.join(process.cwd(), "build", "icon.ico"),
-      path.join(process.cwd(), "build", "icon.png"),
-      path.join(app.getAppPath(), "build", "icon.ico"),
       path.join(app.getAppPath(), "build", "icon.png"),
+      path.join(process.cwd(), "build", "icon.png"),
       path.join(process.cwd(), "src", "main", "assets", "icon.png"),
+      path.join(app.getAppPath(), "build", "icon.ico"),
+      path.join(process.cwd(), "build", "icon.ico"),
     ];
 
     for (const p of possiblePaths) {
@@ -64,7 +60,10 @@ export class WindowManager {
   }
 
   createWindow(_url?: string): BrowserWindow {
-    const icon = this.getIcon() || this.getIconPath();
+    // 行业标准实践：打包后 Windows 窗口图标由 qingwu.exe 的 PE 内嵌资源原生接管，
+    // 不额外传 icon 也绝不调用 win.setIcon，让 Windows 任务栏直接与 exe 建立进程关联；
+    // 仅在开发调试模式（!app.isPackaged）下传入开发图标，避免调试时显示框架默认图标。
+    const devIcon = !app.isPackaged ? (this.getIcon() || this.getIconPath()) : undefined;
     const lastState = this.windowState.load();
     this.wasMaximized = lastState.isMaximized;
 
@@ -85,7 +84,7 @@ export class WindowManager {
       },
       autoHideMenuBar: true,
       show: false,
-      icon,
+      ...(devIcon ? { icon: devIcon } : {}),
       webPreferences: {
         preload: path.join(__dirname, "../preload/index.js"),
         nodeIntegration: false,
@@ -95,11 +94,6 @@ export class WindowManager {
       },
     });
     this.mainWindow = win;
-
-    const iconImage = this.getIcon();
-    if (iconImage) {
-      win.setIcon(iconImage);
-    }
 
     win.setMenuBarVisibility(false);
 
