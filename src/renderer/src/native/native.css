@@ -94,6 +94,9 @@ textarea {
   --native-warn: #d97706;
   --native-user-bubble: #e8f3fe;
   --native-user-bubble-fg: #0c274a;
+  /* 官方对齐品牌蓝与链接蓝（--dsw-static-deepseek-500: #4176e6） */
+  --native-link: #4176e6;
+  --native-link-hover: #2563eb;
   --native-send: #3A83F7;
   --native-send-fg: #ffffff;
   --native-card-border: #dcdce0;
@@ -139,6 +142,9 @@ textarea {
     --native-warn: #fbbf24;
     --native-user-bubble: #26364a;
     --native-user-bubble-fg: #ececec;
+    /* 暗色对齐品牌蓝与链接蓝（--dsw-static-deepseek-400: #7aaaff） */
+    --native-link: #7aaaff;
+    --native-link-hover: #93c5fd;
     --native-send: #3A83F7;
     --native-send-fg: #ffffff;
     --native-card-border: #2e2e33;
@@ -1059,6 +1065,42 @@ textarea {
   word-break: break-word;
 }
 
+/* 用户消息中的 @引用 内联药丸（完全融入气泡底色：无突兀背景，纯内联文本流） */
+.native-ref-chip {
+  display: inline;
+  padding: 0;
+  margin: 0 2px;
+  border: none;
+  background: transparent;
+  color: var(--native-link);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  text-decoration: underline dotted var(--native-link);
+  text-underline-offset: 3px;
+  user-select: text;
+  transition: color 0.15s ease, text-decoration-color 0.15s ease;
+}
+
+.native-ref-chip:hover,
+.native-ref-chip:focus-visible {
+  color: var(--native-link-hover);
+  text-decoration-style: solid;
+}
+
+.native-ref-chip-icon {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  margin-right: 3px;
+  vertical-align: -0.15em;
+  opacity: 0.9;
+}
+
+.native-ref-chip-label {
+  display: inline;
+}
+
 /* 助手消息：纯文本无气泡 */
 .native-msg.assistant {
   margin: 18px 0;
@@ -1509,9 +1551,35 @@ textarea {
 }
 
 .native-md a {
-  color: var(--native-fg);
+  color: var(--native-link);
   text-decoration: underline;
   text-underline-offset: 2px;
+}
+
+.native-md a:hover {
+  color: var(--native-link-hover);
+}
+
+/* 本地文件与行号链接（对齐 DSH 官方 .fileMention / .fileLink：品牌蓝与虚线下划线） */
+.native-md-file-link {
+  display: inline;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-weight: 500;
+  color: var(--native-link);
+  text-decoration: underline dotted var(--native-link);
+  text-underline-offset: 3px;
+  cursor: pointer;
+  transition: color 0.15s ease, text-decoration-color 0.15s ease;
+}
+
+.native-md-file-link:hover,
+.native-md-file-link:focus-visible {
+  color: var(--native-link-hover);
+  text-decoration-style: solid;
 }
 
 .native-md hr {

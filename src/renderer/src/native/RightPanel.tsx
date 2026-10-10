@@ -18,7 +18,7 @@ import {
   useState,
 } from "react";
 import { useT } from "../i18n";
-import { basename, fileInfoOf } from "./panel/workspace-files";
+import { basename, fileInfoOf, isSameWorkspacePath } from "./panel/workspace-files";
 import {
   defaultPanelLayout,
   loadPanelLayout,
@@ -130,9 +130,22 @@ export const RightPanel = forwardRef<RightPanelHandle, RightPanelProps>(
     const focusOrCreate = useCallback(
       (tab: PanelTab, opts?: { replaceGuide?: boolean }) => {
         setLayout((prev) => {
-          if (prev.tabs.some((t) => t.id === tab.id)) {
-            return { ...prev, activeTabId: tab.id };
+          const exactHit = prev.tabs.find((t) => t.id === tab.id);
+          if (exactHit) {
+            return { ...prev, activeTabId: exactHit.id };
           }
+
+          if (tab.kind === "preview") {
+            const sameFileHit = prev.tabs.find(
+              (t) =>
+                t.kind === "preview" &&
+                isSameWorkspacePath(t.path, tab.path, cwd),
+            );
+            if (sameFileHit) {
+              return { ...prev, activeTabId: sameFileHit.id };
+            }
+          }
+
           let tabs = prev.tabs;
           // 替换开始页：优先替换当前选中的开始页页签，否则替换第一枚
           let guideIndex = -1;
@@ -151,7 +164,7 @@ export const RightPanel = forwardRef<RightPanelHandle, RightPanelProps>(
           return { ...prev, tabs, activeTabId: tab.id };
         });
       },
-      [],
+      [cwd],
     );
 
     const openFiles = useCallback(() => {
@@ -363,8 +376,10 @@ export const RightPanel = forwardRef<RightPanelHandle, RightPanelProps>(
               {tab.kind === "preview" && (
                 <PanelPreview
                   sessionId={sessionId}
+                  cwd={cwd}
                   path={tab.path}
                   onPreviewImage={onPreviewImage}
+                  onOpenFile={openFile}
                 />
               )}
             </div>

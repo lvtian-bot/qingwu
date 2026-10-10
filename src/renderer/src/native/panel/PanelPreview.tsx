@@ -11,7 +11,9 @@ import { Markdown } from "../markdown";
 import {
   basename,
   fileInfoOf,
+  getDirectoryPath,
   readTextPage,
+  resolveAgainstCwd,
   statFile,
   watchWorkspacePath,
   type FileTypeInfo,
@@ -50,16 +52,22 @@ type PreviewState =
 
 interface PanelPreviewProps {
   sessionId: string | null;
+  /** 会话工作目录（文件树根、终端打开目标）。 */
+  cwd?: string | null;
   /** 要预览的文件路径（绝对或相对会话工作区根）。 */
   path: string;
   /** 点击图片时把原图交给应用的大图浮层。 */
   onPreviewImage?: (url: string) => void;
+  /** 点击文件链接时在面板内新建/切换标签页。 */
+  onOpenFile?: (path: string) => void;
 }
 
 export function PanelPreview({
   sessionId,
+  cwd,
   path,
   onPreviewImage,
+  onOpenFile,
 }: PanelPreviewProps) {
   const t = useT();
   const [state, setState] = useState<PreviewState>({ phase: "loading" });
@@ -72,6 +80,17 @@ export function PanelPreview({
   stateRef.current = state;
 
   const info = fileInfoOf(path);
+
+  // 计算当前预览文件的所在目录，供 Markdown 内相对文件与图片解析使用
+  const currentAbsPath =
+    state.phase === "text" ||
+    state.phase === "image" ||
+    state.phase === "document" ||
+    state.phase === "unsupported" ||
+    state.phase === "converting"
+      ? state.stat.absolutePath
+      : resolveAgainstCwd(cwd, path);
+  const docDir = getDirectoryPath(currentAbsPath);
 
   /** 全量（重）载：清空当前内容重新读取。keepScroll 用于自动刷新不跳动。 */
   const load = useCallback(
@@ -390,7 +409,13 @@ export function PanelPreview({
         )}
         {state.phase === "text" && state.info.kind === "markdown" && (
           <div className="panel-preview-md">
-            <Markdown text={state.text} />
+            <Markdown
+              text={state.text}
+              cwd={cwd}
+              baseDir={docDir}
+              onPreviewImage={onPreviewImage}
+              onOpenFile={onOpenFile}
+            />
           </div>
         )}
         {state.phase === "text" && state.info.kind !== "markdown" && (

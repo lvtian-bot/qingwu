@@ -41,7 +41,7 @@ import { rpc, toErrMsg } from "./rpc";
 import { RunningStrip } from "./RunningStrip";
 import { SessionSidebar, useSessionSidebar } from "./SessionSidebar";
 import { sessionTitle } from "./sidebar-data";
-import { TurnItems } from "./TurnItems";
+import { TurnItems, UserMessageBody } from "./TurnItems";
 import { WorkspaceChip } from "./WorkspaceChip";
 import { SettingsPage } from "./SettingsPage";
 import { useChatScroll, useChatScrollFollow } from "./useChatScroll";
@@ -1018,7 +1018,12 @@ export function NativeApp({
                             ))}
                           </div>
                         )}
-                        {echo.text && <div className="native-msg-body">{echo.text}</div>}
+                        {echo.text && (
+                          <UserMessageBody
+                            text={echo.text}
+                            onOpenFile={openFileInPanel}
+                          />
+                        )}
                       </div>
                     </div>
                   ))}
@@ -1044,6 +1049,7 @@ export function NativeApp({
                           text={draft}
                           cwd={currentCwd}
                           onPreviewImage={handlePreviewImage}
+                          onOpenFile={openFileInPanel}
                         />
                         <span className="native-cursor" />
                       </div>

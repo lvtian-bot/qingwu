@@ -87,3 +87,75 @@ export function formatFileMention(
   }
   return `@"${path}"`;
 }
+
+export interface UserTextSegment {
+  kind: 'text' | 'file' | 'directory';
+  raw: string;
+  path?: string;
+  display?: string;
+}
+
+/**
+ * 将用户消息中的文本解析为投射分段。
+ * 匹配 @"path with spaces" 与 @path，对齐官方 projectUserText 行为。
+ */
+export function parseUserTextMentions(text: string): UserTextSegment[] {
+  if (!text) return [];
+
+  const segments: UserTextSegment[] = [];
+  // 匹配 @"..." 或 @token（允许位于开头或任意字符后，但以 @ 或 @" 开头）
+  const mentionRe = /(?:^|\s)(@"([^"\n]+)"|@([^\s，。！？、；：“”‘’（）()]+))/gu;
+
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = mentionRe.exec(text)) !== null) {
+    const fullMatch = match[0];
+    const token = match[1]; // @"..." 或 @...
+    const quotedInner = match[2]; // 引号内部路径
+    const plainInner = match[3]; // 无引号路径
+
+    const tokenStart = match.index + (fullMatch.length - token.length);
+
+    if (tokenStart > lastIndex) {
+      segments.push({
+        kind: 'text',
+        raw: text.slice(lastIndex, tokenStart),
+      });
+    }
+
+    let rawPath = quotedInner !== undefined ? quotedInner : plainInner;
+    // 规避纯邮箱地址（例如 test@example.com）
+    if (tokenStart > 0 && text[tokenStart - 1] !== ' ' && text[tokenStart - 1] !== '\n') {
+      segments.push({
+        kind: 'text',
+        raw: token,
+      });
+      lastIndex = tokenStart + token.length;
+      continue;
+    }
+
+    const isDir = rawPath.endsWith('/') || rawPath.endsWith('\\');
+    const cleanPath = isDir ? rawPath.slice(0, -1) : rawPath;
+    const baseName = cleanPath.split(/[\\/]/).filter(Boolean).pop() ?? cleanPath;
+    const display = isDir ? `${baseName}/` : baseName;
+
+    segments.push({
+      kind: isDir ? 'directory' : 'file',
+      raw: token,
+      path: rawPath,
+      display,
+    });
+
+    lastIndex = tokenStart + token.length;
+  }
+
+  if (lastIndex < text.length) {
+    segments.push({
+      kind: 'text',
+      raw: text.slice(lastIndex),
+    });
+  }
+
+  return segments;
+}

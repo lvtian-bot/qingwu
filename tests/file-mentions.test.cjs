@@ -6,6 +6,7 @@ const { loadTs } = require('./helpers/load-ts.cjs');
 const {
   detectAtTrigger,
   formatFileMention,
+  parseUserTextMentions,
 } = loadTs('src/renderer/src/native/file-mentions.ts');
 
 test('detectAtTrigger 能够正确识别 @ 与 @" 的触发以及词边界', () => {
@@ -74,4 +75,40 @@ test('formatFileMention 格式化文件与目录引用语法', () => {
   // 显式保留引号 preserveQuote
   assert.equal(formatFileMention(file1, true), '@"src/index.ts"');
   assert.equal(formatFileMention(dir1, true), '@"src/components/');
+});
+
+test('parseUserTextMentions 将用户文本解析为纯文本与引用药丸', () => {
+  assert.deepEqual(parseUserTextMentions(''), []);
+
+  // 纯文本
+  const segs1 = parseUserTextMentions('hello world');
+  assert.equal(segs1.length, 1);
+  assert.equal(segs1[0].kind, 'text');
+  assert.equal(segs1[0].raw, 'hello world');
+
+  // 单个普通文件引用
+  const segs2 = parseUserTextMentions('请看 @docs/TODO.md 这里的说明');
+  assert.equal(segs2.length, 3);
+  assert.equal(segs2[0].kind, 'text');
+  assert.equal(segs2[0].raw, '请看 ');
+  assert.equal(segs2[1].kind, 'file');
+  assert.equal(segs2[1].path, 'docs/TODO.md');
+  assert.equal(segs2[1].display, 'TODO.md');
+  assert.equal(segs2[2].kind, 'text');
+  assert.equal(segs2[2].raw, ' 这里的说明');
+
+  // 引号含空格文件与目录
+  const segs3 = parseUserTextMentions('请检查 @"my docs/test file.txt" 以及 @src/components/');
+  assert.equal(segs3.length, 4);
+  assert.equal(segs3[1].kind, 'file');
+  assert.equal(segs3[1].path, 'my docs/test file.txt');
+  assert.equal(segs3[1].display, 'test file.txt');
+  assert.equal(segs3[3].kind, 'directory');
+  assert.equal(segs3[3].path, 'src/components/');
+  assert.equal(segs3[3].display, 'components/');
+
+  // 邮箱地址不误判
+  const segs4 = parseUserTextMentions('邮箱 user@example.com 请忽略');
+  assert.equal(segs4.length, 1);
+  assert.equal(segs4[0].kind, 'text');
 });

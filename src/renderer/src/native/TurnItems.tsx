@@ -9,6 +9,7 @@ import type {
   TurnView,
 } from "./events";
 import { DeliverableCards } from "./DeliverableCards";
+import { parseUserTextMentions } from "./file-mentions";
 import { MessageImageView } from "./images";
 import { Markdown } from "./markdown";
 import { ChevronDownIcon } from "./native-icons";
@@ -229,6 +230,71 @@ function TurnMetricsCapsules({
   );
 }
 
+/**
+ * 用户消息正文投射：解析 @path 与 @"path" 呈现为内联药丸并支持点击在右侧面板预览。
+ */
+export function UserMessageBody({
+  text,
+  onOpenFile,
+}: {
+  text: string;
+  onOpenFile?: (path: string) => void;
+}) {
+  const segments = parseUserTextMentions(text);
+
+  return (
+    <div className="native-msg-body">
+      {segments.map((seg, idx) => {
+        if (seg.kind === "text") {
+          return <span key={idx}>{seg.raw}</span>;
+        }
+
+        const isDir = seg.kind === "directory";
+        const targetPath = seg.path || seg.raw;
+
+        return (
+          <button
+            key={idx}
+            type="button"
+            className="native-ref-chip"
+            title={targetPath}
+            data-ref-kind={seg.kind}
+            onClick={(e) => {
+              e.preventDefault();
+              if (onOpenFile && targetPath) {
+                onOpenFile(targetPath);
+              }
+            }}
+          >
+            <svg
+              className="native-ref-chip-icon"
+              viewBox="0 0 16 16"
+              width="13"
+              height="13"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.3"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              {isDir ? (
+                <path d="M1.75 3.5A1.25 1.25 0 0 1 3 2.25h3.2c.33 0 .65.13.88.37l1.3 1.38h4.87A1.25 1.25 0 0 1 14.5 5.25v7A1.25 1.25 0 0 1 13.25 13.5H3A1.25 1.25 0 0 1 1.75 12.25v-8.75Z" />
+              ) : (
+                <>
+                  <path d="M3.75 1.75h5.5l3.5 3.5v8.5a1.25 1.25 0 0 1-1.25 1.25h-7.75a1.25 1.25 0 0 1-1.25-1.25v-10.5a1.25 1.25 0 0 1 1.25-1.25Z" />
+                  <path d="M9.25 1.75v3.5h3.5" />
+                </>
+              )}
+            </svg>
+            <span className="native-ref-chip-label">{seg.display ?? seg.raw}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 /** 消息复制按钮：点击后 1.5s 内显示「已复制」。 */
 function CopyButton({ text, title }: { text: string; title?: string }) {
   const t = useT();
@@ -362,6 +428,7 @@ function AssistantBody({
             text={item.text}
             cwd={cwd}
             onPreviewImage={onPreviewImage}
+            onOpenFile={onOpenFile}
           />
           {item.interrupted && !item.text && (
             <span className="native-muted">{t("chat.turns.interrupted")}</span>
@@ -494,7 +561,9 @@ export function TurnItems({
               ))}
             </div>
           )}
-          {item.text && <div className="native-msg-body">{item.text}</div>}
+          {item.text && (
+            <UserMessageBody text={item.text} onOpenFile={onOpenFile} />
+          )}
           <div className="native-msg-user-meta">
             <span className="native-msg-time">{formatStamp(item.time, t)}</span>
             {item.text && (

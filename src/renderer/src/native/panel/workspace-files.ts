@@ -137,6 +137,98 @@ export function resolveAgainstCwd(
   return `${base}${sep}${path.replace(/^[\\/]+/, "")}`;
 }
 
+/**
+ * 跨平台路径规范化：
+ * 1. 规约 . 与 .. 段；
+ * 2. 规范化 Windows 盘符大小写（如 c: -> C:）；
+ * 3. 统一使用反斜杠（Windows）或正斜杠。
+ */
+export function normalizePath(rawPath: string): string {
+  if (!rawPath) return "";
+  let p = rawPath.trim();
+  if (p.startsWith("<") && p.endsWith(">")) {
+    p = p.slice(1, -1).trim();
+  }
+  const winMatch = /^([a-zA-Z]):[\\/](.*)$/.exec(p);
+  const isWinDrive = Boolean(winMatch);
+  let drive = "";
+  let body = p;
+  if (winMatch) {
+    drive = `${winMatch[1].toUpperCase()}:`;
+    body = winMatch[2];
+  } else if (/^[a-zA-Z]:$/.test(p)) {
+    return `${p.toUpperCase()}\\`;
+  }
+
+  const isAbsLeading = body.startsWith("/") || body.startsWith("\\");
+  const sep = isWinDrive || p.includes("\\") ? "\\" : "/";
+
+  const segments = body.split(/[\\/]+/).filter(Boolean);
+  const stack: string[] = [];
+
+  for (const seg of segments) {
+    if (seg === ".") continue;
+    if (seg === "..") {
+      if (stack.length > 0 && stack[stack.length - 1] !== "..") {
+        stack.pop();
+      } else if (!isWinDrive && !isAbsLeading) {
+        stack.push("..");
+      }
+    } else {
+      stack.push(seg);
+    }
+  }
+
+  let result = stack.join(sep);
+  if (isWinDrive) {
+    result = `${drive}\\${result}`;
+  } else if (isAbsLeading) {
+    result = `${sep}${result}`;
+  }
+  return result;
+}
+
+/**
+ * 获取路径的父目录（不含末尾分隔符）。
+ * 例如 "D:\\code\\docs\\tech.md" -> "D:\\code\\docs"
+ * "docs/tech.md" -> "docs"
+ * "tech.md" -> ""
+ */
+export function getDirectoryPath(path: string): string {
+  if (!path) return "";
+  const normalized = normalizePath(path);
+  const idx = Math.max(normalized.lastIndexOf("/"), normalized.lastIndexOf("\\"));
+  if (idx <= 0) {
+    if (/^[a-zA-Z]:[\\/]$/.test(normalized)) return normalized;
+    return "";
+  }
+  return normalized.slice(0, idx);
+}
+
+/**
+ * 判断两个工作区文件路径是否指代同一个文件：
+ * 统一相对 cwd 折算、消除 . 和 ..，并在 Windows 风格绝对路径下大小写不敏感比较。
+ */
+export function isSameWorkspacePath(
+  pathA: string,
+  pathB: string,
+  cwd?: string | null,
+): boolean {
+  if (pathA === pathB) return true;
+  if (!pathA || !pathB) return false;
+
+  const normA = normalizePath(resolveAgainstCwd(cwd, pathA));
+  const normB = normalizePath(resolveAgainstCwd(cwd, pathB));
+
+  if (normA === normB) return true;
+
+  const slashA = normA.replace(/\\/g, "/");
+  const slashB = normB.replace(/\\/g, "/");
+  if (slashA === slashB) return true;
+
+  return slashA.toLowerCase() === slashB.toLowerCase();
+}
+
 /** 目录内使用的稳定自然序：目录优先，其后按名称自然序、不分大小写。 */
 export const naturalNameCollator = new Intl.Collator(undefined, {
   numeric: true,

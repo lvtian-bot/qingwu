@@ -8,6 +8,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Components } from 'react-markdown';
 import type { LanguageInput } from 'shiki/core';
+import { normalizePath } from './panel/workspace-files';
 
 // ---------- Shiki 高亮器单例 ----------
 
@@ -198,6 +199,7 @@ interface ResolvedImageTarget {
 function resolveImageTarget(
   rawSrc: string | undefined,
   cwd?: string | null,
+  baseDir?: string | null,
 ): ResolvedImageTarget | null {
   if (!rawSrc) return null;
   let clean = rawSrc.trim();
@@ -229,21 +231,134 @@ function resolveImageTarget(
     clean = clean.slice(1);
   }
 
-  const isAbsolute =
-    /^[a-zA-Z]:[/\\]/.test(clean) || clean.startsWith('/') || clean.startsWith('\\');
-  if (!isAbsolute && cwd) {
-    const sep = cwd.includes('\\') ? '\\' : '/';
-    const trimmedCwd = cwd.replace(/[/\\]+$/, '');
-    const trimmedRelative = clean.replace(/^[/\\]+/, '');
-    clean = `${trimmedCwd}${sep}${trimmedRelative}`;
+  const isWindowsAbsolute = /^[a-zA-Z]:[/\\]/.test(clean) || clean.startsWith('\\\\');
+
+  let resolved = clean;
+  if (!isWindowsAbsolute) {
+    if (clean.startsWith('/') || clean.startsWith('\\')) {
+      if (cwd) {
+        const sep = cwd.includes('\\') ? '\\' : '/';
+        const trimmedCwd = cwd.replace(/[/\\]+$/, '');
+        const trimmedRel = clean.replace(/^[/\\]+/, '');
+        resolved = `${trimmedCwd}${sep}${trimmedRel}`;
+      }
+    } else {
+      const base = baseDir || cwd;
+      if (base) {
+        const sep = base.includes('\\') ? '\\' : '/';
+        const trimmedBase = base.replace(/[/\\]+$/, '');
+        const trimmedRel = clean.replace(/^[/\\]+/, '');
+        resolved = `${trimmedBase}${sep}${trimmedRel}`;
+      }
+    }
   }
 
-  return { isRemote: false, target: clean };
+  return { isRemote: false, target: normalizePath(resolved) };
+}
+
+export interface ParsedFileLink {
+  path: string;
+  line?: number;
+}
+
+/**
+ * 解析 Markdown 链接目标是否为本地文件。
+ * 对齐官方 parseFileLink 规范：
+ * 1. 过滤 http/https/data/blob/mailto 等远程协议；
+ * 2. 提取并剥离末尾的 #L24 或 #L24-L30 行号锚点；
+ * 3. 过滤纯页内锚点（#section）；
+ * 4. 解码 URL 编码并优先以文档目录 baseDir（其次以 cwd）解析相对路径；
+ * 5. 消除 . 与 .. 规约段并规范化斜杠。
+ */
+export function parseLocalFileLink(
+  rawHref?: string,
+  cwd?: string | null,
+  baseDir?: string | null,
+): ParsedFileLink | null {
+  if (!rawHref) return null;
+  let clean = rawHref.trim();
+  if (clean.startsWith('<') && clean.endsWith('>')) {
+    clean = clean.slice(1, -1).trim();
+  }
+  if (!clean) return null;
+
+  // 远程协议直接放行给浏览器
+  if (/^(https?:|data:|blob:|mailto:)/i.test(clean)) {
+    return null;
+  }
+
+  // 提取 #L24 或 #L24-L30 锚点
+  let line: number | undefined;
+  const hashIdx = clean.indexOf('#');
+  if (hashIdx !== -1) {
+    const fragment = clean.slice(hashIdx + 1);
+    clean = clean.slice(0, hashIdx);
+    const lineMatch = /^L([1-9]\d*)(?:-L([1-9]\d*))?$/i.exec(fragment);
+    if (lineMatch) {
+      line = Number(lineMatch[1]);
+    }
+  }
+
+  // 纯页内锚点（如 [跳转](#section)）：剥离锚点后无路径，不作为文件跳转
+  if (!clean) return null;
+
+  // 剥离查询参数
+  const queryIdx = clean.indexOf('?');
+  if (queryIdx !== -1) {
+    clean = clean.slice(0, queryIdx);
+  }
+
+  try {
+    clean = decodeURIComponent(clean);
+  } catch {
+    // 忽略解码错误
+  }
+
+  if (!clean || /[\u0000-\u001f\u007f]/.test(clean)) return null;
+
+  if (clean.startsWith('file:///')) {
+    clean = clean.slice(8);
+  } else if (clean.startsWith('file://')) {
+    clean = clean.slice(7);
+  }
+
+  if (/^\/[a-zA-Z]:/.test(clean)) {
+    clean = clean.slice(1);
+  }
+
+  const isWindowsAbsolute = /^[a-zA-Z]:[/\\]/.test(clean) || clean.startsWith('\\\\');
+
+  let resolved = clean;
+  if (!isWindowsAbsolute) {
+    // 若以 / 或 \ 开头，表示相对于项目根（cwd）
+    if (clean.startsWith('/') || clean.startsWith('\\')) {
+      if (cwd) {
+        const sep = cwd.includes('\\') ? '\\' : '/';
+        const trimmedCwd = cwd.replace(/[/\\]+$/, '');
+        const trimmedRel = clean.replace(/^[/\\]+/, '');
+        resolved = `${trimmedCwd}${sep}${trimmedRel}`;
+      }
+    } else {
+      // 纯相对路径：优先以文档目录 baseDir 为基准，其次以 cwd 为基准
+      const base = baseDir || cwd;
+      if (base) {
+        const sep = base.includes('\\') ? '\\' : '/';
+        const trimmedBase = base.replace(/[/\\]+$/, '');
+        const trimmedRel = clean.replace(/^[/\\]+/, '');
+        resolved = `${trimmedBase}${sep}${trimmedRel}`;
+      }
+    }
+  }
+
+  const normalized = normalizePath(resolved);
+  return { path: normalized, line };
 }
 
 interface MarkdownContextValue {
   cwd?: string | null;
+  baseDir?: string | null;
   onPreviewImage?: (url: string) => void;
+  onOpenFile?: (path: string) => void;
 }
 
 const MarkdownContext = createContext<MarkdownContextValue>({});
@@ -251,9 +366,9 @@ const MarkdownContext = createContext<MarkdownContextValue>({});
 const localImageCache = new Map<string, string>();
 
 function MarkdownImage({ src, alt }: { src?: string; alt?: string }) {
-  const { cwd, onPreviewImage } = useContext(MarkdownContext);
+  const { cwd, baseDir, onPreviewImage } = useContext(MarkdownContext);
   const t = useT();
-  const resolved = useMemo(() => resolveImageTarget(src, cwd), [src, cwd]);
+  const resolved = useMemo(() => resolveImageTarget(src, cwd, baseDir), [src, cwd, baseDir]);
   const cachedDataUrl =
     resolved && !resolved.isRemote ? localImageCache.get(resolved.target) : null;
 
@@ -384,6 +499,42 @@ function MarkdownImage({ src, alt }: { src?: string; alt?: string }) {
   );
 }
 
+function MarkdownLink({
+  href,
+  children,
+}: {
+  href?: string;
+  children?: React.ReactNode;
+}) {
+  const { cwd, baseDir, onOpenFile } = useContext(MarkdownContext);
+  const localFile = useMemo(
+    () => parseLocalFileLink(href, cwd, baseDir),
+    [href, cwd, baseDir],
+  );
+
+  if (localFile && onOpenFile) {
+    return (
+      <button
+        type="button"
+        className="native-md-file-link"
+        title={localFile.path}
+        onClick={(e) => {
+          e.preventDefault();
+          onOpenFile(localFile.path);
+        }}
+      >
+        {children}
+      </button>
+    );
+  }
+
+  return (
+    <a href={href} target="_blank" rel="noreferrer">
+      {children}
+    </a>
+  );
+}
+
 // ---------- Markdown ----------
 
 const mdComponents: Components = {
@@ -399,11 +550,7 @@ const mdComponents: Components = {
     }
     return <code className="native-md-code">{text}</code>;
   },
-  a: ({ href, children }) => (
-    <a href={href} target="_blank" rel="noreferrer">
-      {children}
-    </a>
-  ),
+  a: ({ href, children }) => <MarkdownLink href={href}>{children}</MarkdownLink>,
   img: ({ src, alt }) => (
     <MarkdownImage
       src={typeof src === 'string' ? src : undefined}
@@ -415,7 +562,9 @@ const mdComponents: Components = {
 export interface MarkdownProps {
   text: string;
   cwd?: string | null;
+  baseDir?: string | null;
   onPreviewImage?: (url: string) => void;
+  onOpenFile?: (path: string) => void;
 }
 
 function safeUrlTransform(url: string): string {
@@ -431,11 +580,13 @@ function safeUrlTransform(url: string): string {
 export const Markdown = memo(function Markdown({
   text,
   cwd,
+  baseDir,
   onPreviewImage,
+  onOpenFile,
 }: MarkdownProps) {
   const contextValue = useMemo(
-    () => ({ cwd, onPreviewImage }),
-    [cwd, onPreviewImage],
+    () => ({ cwd, baseDir, onPreviewImage, onOpenFile }),
+    [cwd, baseDir, onPreviewImage, onOpenFile],
   );
 
   return (
