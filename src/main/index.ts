@@ -26,6 +26,7 @@ import {
 import { renderDocumentPreview } from "./document-preview";
 import { setupApplicationDiagnostics } from "./diagnostics";
 import { NotificationManager } from "./notification";
+import { migrateAppShortcuts } from "./shortcut-migration";
 import type { RendererErrorReport } from "../shared/types";
 import { formatMessage } from "../shared/i18n-core";
 import { tr } from "./i18n";
@@ -42,6 +43,7 @@ if (!gotTheLock) {
   const hasConsole = acquireHiddenConsole();
   if (process.platform === "win32") {
     app.setAppUserModelId(CONFIG.appId || "com.qingwu.desktop");
+    migrateAppShortcuts(CONFIG.appId || "com.qingwu.desktop");
   }
   const windowManager = new WindowManager();
   const notificationManager = new NotificationManager(windowManager);

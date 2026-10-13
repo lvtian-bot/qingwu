@@ -393,6 +393,7 @@ test("主入口设置统一的 AppUserModelId 并先提供托盘退出入口，�
         }
       },
     },
+    "./shortcut-migration": { migrateAppShortcuts() {} },
     "./dsh-bridge": {
       DshBridge: class {
         start() {
@@ -426,5 +427,44 @@ test("主入口设置统一的 AppUserModelId 并先提供托盘退出入口，�
 test("应用配置中的 appId 与 package.json 打包配置完全一致以确保任务栏合并", () => {
   assert.ok(CONFIG.appId, "CONFIG.appId 不能为空");
   assert.equal(CONFIG.appId, packageJson.build.appId);
+});
+
+test("migrateAppShortcuts 自动迁移遗留快捷方式的 AppUserModelId 到当前配置", () => {
+  const updated = [];
+  const { migrateAppShortcuts } = loadTs("src/main/shortcut-migration.ts", {
+    electron: {
+      app: {
+        getPath: () => "D:/fake-appdata",
+      },
+      shell: {
+        readShortcutLink: (filePath) => {
+          if (filePath.includes("TaskBar")) {
+            return {
+              target: "C:/Users/test/AppData/Local/Programs/qingwu/qingwu.exe",
+              appUserModelId: "electron.app.青梧",
+            };
+          }
+          return {
+            target: "C:/Users/test/AppData/Local/Programs/qingwu/qingwu.exe",
+            appUserModelId: "com.qingwu.desktop",
+          };
+        },
+        writeShortcutLink: (filePath, operation, details) => {
+          updated.push({ filePath, operation, details });
+          return true;
+        },
+      },
+    },
+    "node:fs": {
+      existsSync: (filePath) => filePath.includes("TaskBar"),
+    },
+    "./config": { CONFIG },
+  });
+  migrateAppShortcuts("com.qingwu.desktop");
+  if (process.platform === "win32") {
+    assert.equal(updated.length, 1);
+    assert.equal(updated[0].operation, "update");
+    assert.equal(updated[0].details.appUserModelId, "com.qingwu.desktop");
+  }
 });
 
