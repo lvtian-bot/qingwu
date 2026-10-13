@@ -15,6 +15,8 @@ export const sidebar = {
     sessions: "会话",
     addProject: "添加项目",
     noProjects: "暂无项目",
+    collapseSection: "折叠{name}",
+    expandSection: "展开{name}",
   },
   /** 项目内会话列表的展开/收起按钮 */
   group: {

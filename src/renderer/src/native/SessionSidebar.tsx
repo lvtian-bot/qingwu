@@ -2,16 +2,20 @@ import { useCallback, useMemo, useState } from "react";
 import { useT } from "../i18n";
 import type { PendingKind } from "./PendingInteraction";
 import { SessionRow, WorkspaceRow } from "./SidebarRows";
+import { ChevronDownIcon } from "./native-icons";
 import type { SessionSummary, WorkspaceView } from "./protocol";
 import {
   calculateMoveAnchor,
+  loadCollapsedSections,
   loadPinnedData,
   reorderIds,
+  saveCollapsedSections,
   savePinnedData,
   sessionTitle,
   sortSessionsByRecency,
   WORKSPACE_SESSION_PREVIEW_LIMIT,
   type PinnedData,
+  type SidebarSectionKey,
 } from "./sidebar-data";
 import type { PanelWidth } from "./usePanelWidth";
 
@@ -69,6 +73,25 @@ export function useSessionSidebar(
   /** 侧栏折叠的分组标题集合。 */
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
     new Set(),
+  );
+  /** 侧栏三大分区折叠状态（本地持久化）。 */
+  const [collapsedSections, setCollapsedSections] = useState<
+    Set<SidebarSectionKey>
+  >(loadCollapsedSections);
+  const toggleSectionCollapse = useCallback(
+    (sectionKey: SidebarSectionKey) => {
+      setCollapsedSections((prev) => {
+        const next = new Set(prev);
+        if (next.has(sectionKey)) {
+          next.delete(sectionKey);
+        } else {
+          next.add(sectionKey);
+        }
+        saveCollapsedSections(next);
+        return next;
+      });
+    },
+    [],
   );
   /** 项目会话组当前展示条数（缺省=默认上限；折叠项目或点「收起」即复位）。 */
   const [sessionVisibleByGroup, setSessionVisibleByGroup] = useState<
@@ -181,6 +204,8 @@ export function useSessionSidebar(
     pinnedSessionsList,
     normalWorkspaces,
     normalUngroupedSessions,
+    collapsedSections,
+    toggleSectionCollapse,
   };
 }
 
@@ -243,6 +268,8 @@ export function SessionSidebar({
     pinnedSessionsList,
     normalWorkspaces,
     normalUngroupedSessions,
+    collapsedSections,
+    toggleSectionCollapse,
   } = state;
   const t = useT();
   const [dragWsId, setDragWsId] = useState<string | null>(null);
@@ -254,7 +281,11 @@ export function SessionSidebar({
   // Hook 必须无条件执行；放在 collapsed 提前返回之后会导致切换侧栏时整棵 React 树被卸载。
   if (collapsed) return null;
 
-  const canReorder = searchText.trim() === "";
+  const searching = searchText.trim() !== "";
+  const canReorder = !searching;
+  const isPinnedCollapsed = !searching && collapsedSections.has("pinned");
+  const isProjectsCollapsed = !searching && collapsedSections.has("projects");
+  const isSessionsCollapsed = !searching && collapsedSections.has("sessions");
 
   const handleDragStart = (
     e: React.DragEvent<HTMLDivElement>,
@@ -539,92 +570,142 @@ export function SessionSidebar({
           {(pinnedWorkspaces.length > 0 || pinnedSessionsList.length > 0) && (
             <div className="native-sidebar-section">
               <div className="native-sidebar-section-header">
-                <span className="native-sidebar-section-title">
-                  {t("sidebar.sections.pinned")}
-                </span>
+                <button
+                  type="button"
+                  className="native-sidebar-section-toggle"
+                  onClick={() => toggleSectionCollapse("pinned")}
+                  aria-expanded={!isPinnedCollapsed}
+                  title={
+                    isPinnedCollapsed
+                      ? t("sidebar.sections.expandSection", {
+                          name: t("sidebar.sections.pinned"),
+                        })
+                      : t("sidebar.sections.collapseSection", {
+                          name: t("sidebar.sections.pinned"),
+                        })
+                  }
+                >
+                  <span className="native-sidebar-section-title">
+                    {t("sidebar.sections.pinned")}
+                  </span>
+                  <span
+                    className={`native-sidebar-section-chevron ${
+                      isPinnedCollapsed ? "collapsed" : ""
+                    }`}
+                    aria-hidden="true"
+                  >
+                    <ChevronDownIcon />
+                  </span>
+                </button>
               </div>
-              <div className="native-sidebar-section-content">
-                {pinnedWorkspaces.map((ws, index) => {
-                  const wsSessions = getWorkspaceSessions(ws);
-                  if (!isWorkspaceMatched(ws, wsSessions)) return null;
-                  const isDragging = dragWsId === ws.workspaceId;
-                  const dropPosition =
-                    dragOverWs?.id === ws.workspaceId
-                      ? dragOverWs.position
-                      : null;
-                  return (
-                    <div
-                      key={ws.workspaceId}
-                      className="native-session-group native-session-group-ws"
-                    >
-                      <WorkspaceRow
-                        workspace={ws}
-                        collapsed={collapsedGroups.has(ws.workspaceId)}
-                        pinned={true}
-                        canMoveUp={canReorder && index > 0}
-                        canMoveDown={
-                          canReorder && index < pinnedWorkspaces.length - 1
-                        }
-                        draggable={canReorder}
-                        isDragging={isDragging}
-                        dropPosition={dropPosition}
-                        onToggle={() => toggleWorkspaceGroup(ws.workspaceId)}
-                        onNewSession={() =>
-                          void createSessionIn(ws.workspaceId).catch((err) =>
-                            setError(
-                              err instanceof Error ? err.message : String(err),
-                            ),
-                          )
-                        }
-                        onRename={(title) =>
-                          handleWorkspaceRename(ws.workspaceId, title)
-                        }
-                        onDelete={() => handleWorkspaceDelete(ws.workspaceId)}
-                        onTogglePin={() => toggleWorkspacePin(ws.workspaceId)}
-                        onMoveUp={() => handlePinnedMoveUp(index)}
-                        onMoveDown={() => handlePinnedMoveDown(index)}
-                        onDragStart={handleDragStart}
-                        onDragEnd={handleDragEnd}
-                        onDragOver={handleDragOver}
-                        onDragLeave={handleDragLeave}
-                        onDrop={handlePinnedDrop}
-                      />
-                      {renderWorkspaceSessions(ws, wsSessions)}
-                    </div>
-                  );
-                })}
-                {pinnedSessionsList.map((session) => (
-                  <SessionRow
-                    key={session.sessionId}
-                    title={sessionTitle(session, t("sidebar.untitled"))}
-                    tooltip={session.cwd ?? session.sessionId}
-                    active={session.sessionId === currentId}
-                    pinned={true}
-                    running={session.running}
-                    pending={
-                      pendingKindBySession.get(session.sessionId) ?? null
-                    }
-                    unread={unreadFinishedSessionIds.has(session.sessionId)}
-                    onClick={() => openSession(session.sessionId)}
-                    onTogglePin={() => toggleSessionPin(session.sessionId)}
-                    onRename={(t) =>
-                      void handleSessionRename(session.sessionId, t)
-                    }
-                    onArchive={() =>
-                      void handleSessionArchive(session.sessionId)
-                    }
-                  />
-                ))}
-              </div>
+              {!isPinnedCollapsed && (
+                <div className="native-sidebar-section-content">
+                  {pinnedWorkspaces.map((ws, index) => {
+                    const wsSessions = getWorkspaceSessions(ws);
+                    if (!isWorkspaceMatched(ws, wsSessions)) return null;
+                    const isDragging = dragWsId === ws.workspaceId;
+                    const dropPosition =
+                      dragOverWs?.id === ws.workspaceId
+                        ? dragOverWs.position
+                        : null;
+                    return (
+                      <div
+                        key={ws.workspaceId}
+                        className="native-session-group native-session-group-ws"
+                      >
+                        <WorkspaceRow
+                          workspace={ws}
+                          collapsed={collapsedGroups.has(ws.workspaceId)}
+                          pinned={true}
+                          canMoveUp={canReorder && index > 0}
+                          canMoveDown={
+                            canReorder && index < pinnedWorkspaces.length - 1
+                          }
+                          draggable={canReorder}
+                          isDragging={isDragging}
+                          dropPosition={dropPosition}
+                          onToggle={() => toggleWorkspaceGroup(ws.workspaceId)}
+                          onNewSession={() =>
+                            void createSessionIn(ws.workspaceId).catch((err) =>
+                              setError(
+                                err instanceof Error ? err.message : String(err),
+                              ),
+                            )
+                          }
+                          onRename={(title) =>
+                            handleWorkspaceRename(ws.workspaceId, title)
+                          }
+                          onDelete={() => handleWorkspaceDelete(ws.workspaceId)}
+                          onTogglePin={() => toggleWorkspacePin(ws.workspaceId)}
+                          onMoveUp={() => handlePinnedMoveUp(index)}
+                          onMoveDown={() => handlePinnedMoveDown(index)}
+                          onDragStart={handleDragStart}
+                          onDragEnd={handleDragEnd}
+                          onDragOver={handleDragOver}
+                          onDragLeave={handleDragLeave}
+                          onDrop={handlePinnedDrop}
+                        />
+                        {renderWorkspaceSessions(ws, wsSessions)}
+                      </div>
+                    );
+                  })}
+                  {pinnedSessionsList.map((session) => (
+                    <SessionRow
+                      key={session.sessionId}
+                      title={sessionTitle(session, t("sidebar.untitled"))}
+                      tooltip={session.cwd ?? session.sessionId}
+                      active={session.sessionId === currentId}
+                      pinned={true}
+                      running={session.running}
+                      pending={
+                        pendingKindBySession.get(session.sessionId) ?? null
+                      }
+                      unread={unreadFinishedSessionIds.has(session.sessionId)}
+                      onClick={() => openSession(session.sessionId)}
+                      onTogglePin={() => toggleSessionPin(session.sessionId)}
+                      onRename={(t) =>
+                        void handleSessionRename(session.sessionId, t)
+                      }
+                      onArchive={() =>
+                        void handleSessionArchive(session.sessionId)
+                      }
+                    />
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
           {/* 2. 项目区间 */}
           <div className="native-sidebar-section">
             <div className="native-sidebar-section-header">
-              <span className="native-sidebar-section-title">
-                {t("sidebar.sections.projects")}
-              </span>
+              <button
+                type="button"
+                className="native-sidebar-section-toggle"
+                onClick={() => toggleSectionCollapse("projects")}
+                aria-expanded={!isProjectsCollapsed}
+                title={
+                  isProjectsCollapsed
+                    ? t("sidebar.sections.expandSection", {
+                        name: t("sidebar.sections.projects"),
+                      })
+                    : t("sidebar.sections.collapseSection", {
+                        name: t("sidebar.sections.projects"),
+                      })
+                }
+              >
+                <span className="native-sidebar-section-title">
+                  {t("sidebar.sections.projects")}
+                </span>
+                <span
+                  className={`native-sidebar-section-chevron ${
+                    isProjectsCollapsed ? "collapsed" : ""
+                  }`}
+                  aria-hidden="true"
+                >
+                  <ChevronDownIcon />
+                </span>
+              </button>
               <button
                 className="native-sidebar-section-act"
                 onClick={() => void handleAddWorkspace()}
@@ -646,97 +727,125 @@ export function SessionSidebar({
                 </svg>
               </button>
             </div>
-            <div className="native-sidebar-section-content">
-              {normalWorkspaces.map((ws, index) => {
-                const wsSessions = getWorkspaceSessions(ws);
-                if (!isWorkspaceMatched(ws, wsSessions)) return null;
-                const isDragging = dragWsId === ws.workspaceId;
-                const dropPosition =
-                  dragOverWs?.id === ws.workspaceId
-                    ? dragOverWs.position
-                    : null;
-                return (
-                  <div
-                    key={ws.workspaceId}
-                    className="native-session-group native-session-group-ws"
-                  >
-                    <WorkspaceRow
-                      workspace={ws}
-                      collapsed={collapsedGroups.has(ws.workspaceId)}
-                      pinned={false}
-                      canMoveUp={canReorder && index > 0}
-                      canMoveDown={
-                        canReorder && index < normalWorkspaces.length - 1
-                      }
-                      draggable={canReorder}
-                      isDragging={isDragging}
-                      dropPosition={dropPosition}
-                      onToggle={() => toggleWorkspaceGroup(ws.workspaceId)}
-                      onNewSession={() =>
-                        void createSessionIn(ws.workspaceId).catch((err) =>
-                          setError(
-                            err instanceof Error ? err.message : String(err),
-                          ),
-                        )
-                      }
-                      onRename={(title) =>
-                        handleWorkspaceRename(ws.workspaceId, title)
-                      }
-                      onDelete={() => handleWorkspaceDelete(ws.workspaceId)}
-                      onTogglePin={() => toggleWorkspacePin(ws.workspaceId)}
-                      onMoveUp={() => handleNormalMoveUp(index)}
-                      onMoveDown={() => handleNormalMoveDown(index)}
-                      onDragStart={handleDragStart}
-                      onDragEnd={handleDragEnd}
-                      onDragOver={handleDragOver}
-                      onDragLeave={handleDragLeave}
-                      onDrop={handleNormalDrop}
-                    />
-                    {renderWorkspaceSessions(ws, wsSessions)}
-                  </div>
-                );
-              })}
-              {normalWorkspaces.length === 0 &&
-                pinnedWorkspaces.length === 0 && (
-                  <div className="native-sidebar-empty-hint">
-                    {t("sidebar.sections.noProjects")}
-                  </div>
-                )}
-            </div>
+            {!isProjectsCollapsed && (
+              <div className="native-sidebar-section-content">
+                {normalWorkspaces.map((ws, index) => {
+                  const wsSessions = getWorkspaceSessions(ws);
+                  if (!isWorkspaceMatched(ws, wsSessions)) return null;
+                  const isDragging = dragWsId === ws.workspaceId;
+                  const dropPosition =
+                    dragOverWs?.id === ws.workspaceId
+                      ? dragOverWs.position
+                      : null;
+                  return (
+                    <div
+                      key={ws.workspaceId}
+                      className="native-session-group native-session-group-ws"
+                    >
+                      <WorkspaceRow
+                        workspace={ws}
+                        collapsed={collapsedGroups.has(ws.workspaceId)}
+                        pinned={false}
+                        canMoveUp={canReorder && index > 0}
+                        canMoveDown={
+                          canReorder && index < normalWorkspaces.length - 1
+                        }
+                        draggable={canReorder}
+                        isDragging={isDragging}
+                        dropPosition={dropPosition}
+                        onToggle={() => toggleWorkspaceGroup(ws.workspaceId)}
+                        onNewSession={() =>
+                          void createSessionIn(ws.workspaceId).catch((err) =>
+                            setError(
+                              err instanceof Error ? err.message : String(err),
+                            ),
+                          )
+                        }
+                        onRename={(title) =>
+                          handleWorkspaceRename(ws.workspaceId, title)
+                        }
+                        onDelete={() => handleWorkspaceDelete(ws.workspaceId)}
+                        onTogglePin={() => toggleWorkspacePin(ws.workspaceId)}
+                        onMoveUp={() => handleNormalMoveUp(index)}
+                        onMoveDown={() => handleNormalMoveDown(index)}
+                        onDragStart={handleDragStart}
+                        onDragEnd={handleDragEnd}
+                        onDragOver={handleDragOver}
+                        onDragLeave={handleDragLeave}
+                        onDrop={handleNormalDrop}
+                      />
+                      {renderWorkspaceSessions(ws, wsSessions)}
+                    </div>
+                  );
+                })}
+                {normalWorkspaces.length === 0 &&
+                  pinnedWorkspaces.length === 0 && (
+                    <div className="native-sidebar-empty-hint">
+                      {t("sidebar.sections.noProjects")}
+                    </div>
+                  )}
+              </div>
+            )}
           </div>
 
           {/* 3. 会话区间（无项目独立日常会话） */}
           {normalUngroupedSessions.length > 0 && (
             <div className="native-sidebar-section">
               <div className="native-sidebar-section-header">
-                <span className="native-sidebar-section-title">
-                  {t("sidebar.sections.sessions")}
-                </span>
+                <button
+                  type="button"
+                  className="native-sidebar-section-toggle"
+                  onClick={() => toggleSectionCollapse("sessions")}
+                  aria-expanded={!isSessionsCollapsed}
+                  title={
+                    isSessionsCollapsed
+                      ? t("sidebar.sections.expandSection", {
+                          name: t("sidebar.sections.sessions"),
+                        })
+                      : t("sidebar.sections.collapseSection", {
+                          name: t("sidebar.sections.sessions"),
+                        })
+                  }
+                >
+                  <span className="native-sidebar-section-title">
+                    {t("sidebar.sections.sessions")}
+                  </span>
+                  <span
+                    className={`native-sidebar-section-chevron ${
+                      isSessionsCollapsed ? "collapsed" : ""
+                    }`}
+                    aria-hidden="true"
+                  >
+                    <ChevronDownIcon />
+                  </span>
+                </button>
               </div>
-              <div className="native-sidebar-section-content">
-                {normalUngroupedSessions.map((session) => (
-                  <SessionRow
-                    key={session.sessionId}
-                    title={sessionTitle(session, t("sidebar.untitled"))}
-                    tooltip={session.cwd ?? session.sessionId}
-                    active={session.sessionId === currentId}
-                    pinned={false}
-                    running={session.running}
-                    pending={
-                      pendingKindBySession.get(session.sessionId) ?? null
-                    }
-                    unread={unreadFinishedSessionIds.has(session.sessionId)}
-                    onClick={() => openSession(session.sessionId)}
-                    onTogglePin={() => toggleSessionPin(session.sessionId)}
-                    onRename={(t) =>
-                      void handleSessionRename(session.sessionId, t)
-                    }
-                    onArchive={() =>
-                      void handleSessionArchive(session.sessionId)
-                    }
-                  />
-                ))}
-              </div>
+              {!isSessionsCollapsed && (
+                <div className="native-sidebar-section-content">
+                  {normalUngroupedSessions.map((session) => (
+                    <SessionRow
+                      key={session.sessionId}
+                      title={sessionTitle(session, t("sidebar.untitled"))}
+                      tooltip={session.cwd ?? session.sessionId}
+                      active={session.sessionId === currentId}
+                      pinned={false}
+                      running={session.running}
+                      pending={
+                        pendingKindBySession.get(session.sessionId) ?? null
+                      }
+                      unread={unreadFinishedSessionIds.has(session.sessionId)}
+                      onClick={() => openSession(session.sessionId)}
+                      onTogglePin={() => toggleSessionPin(session.sessionId)}
+                      onRename={(t) =>
+                        void handleSessionRename(session.sessionId, t)
+                      }
+                      onArchive={() =>
+                        void handleSessionArchive(session.sessionId)
+                      }
+                    />
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>

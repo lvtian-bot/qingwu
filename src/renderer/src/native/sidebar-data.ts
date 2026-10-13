@@ -2,6 +2,11 @@ import type { SessionSummary, WorkspaceView } from "./protocol";
 
 /** 侧栏置顶数据持久化 Key。 */
 const PINNED_STORAGE_KEY = "qingwu.native.pinned";
+/** 侧栏大分区折叠状态持久化 Key。 */
+const COLLAPSED_SECTIONS_STORAGE_KEY = "qingwu.native.collapsed-sections";
+
+/** 侧栏支持折叠的三大分区。 */
+export type SidebarSectionKey = "pinned" | "projects" | "sessions";
 
 /** 项目内会话默认展示上限；「展开显示」每次多展示一批（同数），全部展示后变「收起」。官方 dsh 上限为 5。 */
 export const WORKSPACE_SESSION_PREVIEW_LIMIT = 6;
@@ -28,6 +33,33 @@ export function loadPinnedData(): PinnedData {
 export function savePinnedData(data: PinnedData) {
   try {
     localStorage.setItem(PINNED_STORAGE_KEY, JSON.stringify(data));
+  } catch {}
+}
+
+export function loadCollapsedSections(): Set<SidebarSectionKey> {
+  try {
+    const raw = localStorage.getItem(COLLAPSED_SECTIONS_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return new Set(
+          parsed.filter(
+            (item): item is SidebarSectionKey =>
+              item === "pinned" || item === "projects" || item === "sessions",
+          ),
+        );
+      }
+    }
+  } catch {}
+  return new Set();
+}
+
+export function saveCollapsedSections(sections: Set<SidebarSectionKey>) {
+  try {
+    localStorage.setItem(
+      COLLAPSED_SECTIONS_STORAGE_KEY,
+      JSON.stringify(Array.from(sections)),
+    );
   } catch {}
 }
 

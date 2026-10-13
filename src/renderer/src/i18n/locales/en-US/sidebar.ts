@@ -13,6 +13,8 @@ export const sidebar: typeof zhSidebar = {
     sessions: "Sessions",
     addProject: "Add project",
     noProjects: "No projects yet",
+    collapseSection: "Collapse {name}",
+    expandSection: "Expand {name}",
   },
   group: {
     expand: "Show more",

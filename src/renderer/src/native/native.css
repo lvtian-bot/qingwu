@@ -324,10 +324,61 @@ textarea {
   opacity: 0.75;
   letter-spacing: 0.3px;
   user-select: none;
+  transition: opacity 0.15s ease;
+}
+
+.native-sidebar-section-header:hover {
+  opacity: 0.95;
+}
+
+.native-sidebar-section-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  margin: -2px -6px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.native-sidebar-section-toggle:hover {
+  background: var(--native-sidebar-hover);
+  color: var(--native-fg);
+}
+
+.native-sidebar-section-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  color: currentColor;
+  opacity: 0;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.native-sidebar-section-header:hover .native-sidebar-section-chevron,
+.native-sidebar-section-toggle:hover .native-sidebar-section-chevron,
+.native-sidebar-section-toggle:focus-visible .native-sidebar-section-chevron {
+  opacity: 0.85;
+}
+
+.native-sidebar-section-chevron.collapsed {
+  opacity: 0.85;
+  transform: rotate(-90deg);
+}
+
+.native-sidebar-section-toggle:hover .native-sidebar-section-chevron {
+  opacity: 1;
 }
 
 .native-sidebar-section-title {
-  flex: 1;
   min-width: 0;
 }
 

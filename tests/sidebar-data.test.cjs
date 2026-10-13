@@ -13,6 +13,8 @@ const {
   reorderIds,
   calculateMoveAnchor,
   reorderWorkspaces,
+  loadCollapsedSections,
+  saveCollapsedSections,
 } = loadTs('src/renderer/src/native/sidebar-data.ts');
 
 test('侧栏折叠提前返回前先执行拖拽状态 Hook', () => {
@@ -179,4 +181,37 @@ test('reorderWorkspaces 能够乐观原地重排 WorkspaceView 列表', () => {
     reordered.map((w) => w.workspaceId),
     ['w3', 'w1', 'w2'],
   );
+});
+
+test('loadCollapsedSections 与 saveCollapsedSections 正确持久化分区折叠状态', () => {
+  const store = new Map();
+  const originalLocalStorage = global.localStorage;
+  global.localStorage = {
+    getItem: (k) => store.get(k) ?? null,
+    setItem: (k, v) => store.set(k, String(v)),
+    removeItem: (k) => store.delete(k),
+  };
+  try {
+    assert.equal(loadCollapsedSections().size, 0);
+
+    saveCollapsedSections(new Set(['projects', 'sessions']));
+    const loaded = loadCollapsedSections();
+    assert.equal(loaded.has('projects'), true);
+    assert.equal(loaded.has('sessions'), true);
+    assert.equal(loaded.has('pinned'), false);
+  } finally {
+    global.localStorage = originalLocalStorage;
+  }
+});
+
+test('SessionSidebar 包含置顶、项目、会话三大分区的折叠切换按钮', () => {
+  const source = fs.readFileSync(
+    path.join(__dirname, '../src/renderer/src/native/SessionSidebar.tsx'),
+    'utf8',
+  );
+  assert.ok(source.includes('toggleSectionCollapse("pinned")'));
+  assert.ok(source.includes('toggleSectionCollapse("projects")'));
+  assert.ok(source.includes('toggleSectionCollapse("sessions")'));
+  assert.ok(source.includes('native-sidebar-section-toggle'));
+  assert.ok(source.includes('native-sidebar-section-chevron'));
 });
