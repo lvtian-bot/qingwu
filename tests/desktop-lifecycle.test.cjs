@@ -429,8 +429,11 @@ test("应用配置中的 appId 与 package.json 打包配置完全一致以确�
   assert.equal(CONFIG.appId, packageJson.build.appId);
 });
 
-test("migrateAppShortcuts 自动迁移遗留快捷方式的 AppUserModelId 到当前配置", () => {
+test("migrateAppShortcuts 自动扫描并迁移遗留快捷方式的 AppUserModelId", (t) => {
   const updated = [];
+  const warnings = [];
+  t.mock.method(console, "log", () => {});
+  t.mock.method(console, "warn", (msg) => warnings.push(String(msg)));
   const { migrateAppShortcuts } = loadTs("src/main/shortcut-migration.ts", {
     electron: {
       app: {
@@ -438,33 +441,53 @@ test("migrateAppShortcuts 自动迁移遗留快捷方式的 AppUserModelId 到�
       },
       shell: {
         readShortcutLink: (filePath) => {
-          if (filePath.includes("TaskBar")) {
+          if (filePath.endsWith("青梧 (2).lnk")) {
             return {
               target: "C:/Users/test/AppData/Local/Programs/qingwu/qingwu.exe",
               appUserModelId: "electron.app.青梧",
             };
           }
+          if (filePath.endsWith("青梧.lnk")) {
+            return {
+              target: "C:/Users/test/AppData/Local/Programs/qingwu/qingwu.exe",
+              appUserModelId: "legacy.identity",
+            };
+          }
           return {
-            target: "C:/Users/test/AppData/Local/Programs/qingwu/qingwu.exe",
-            appUserModelId: "com.qingwu.desktop",
+            target: "C:/other/app.exe",
+            appUserModelId: "other.app",
           };
         },
         writeShortcutLink: (filePath, operation, details) => {
+          if (filePath.endsWith("青梧 (2).lnk")) {
+            return false; // 模拟写入失败
+          }
           updated.push({ filePath, operation, details });
           return true;
         },
       },
     },
     "node:fs": {
-      existsSync: (filePath) => filePath.includes("TaskBar"),
+      existsSync: () => true,
+      readdirSync: (dirPath) => {
+        if (dirPath.includes("TaskBar")) {
+          return [
+            { isFile: () => true, name: "青梧.lnk" },
+            { isFile: () => true, name: "青梧 (2).lnk" },
+            { isFile: () => true, name: "其他.lnk" },
+          ];
+        }
+        return [];
+      },
     },
     "./config": { CONFIG },
   });
   migrateAppShortcuts("com.qingwu.desktop");
   if (process.platform === "win32") {
     assert.equal(updated.length, 1);
-    assert.equal(updated[0].operation, "update");
+    assert.equal(updated[0].filePath.endsWith("青梧.lnk"), true);
     assert.equal(updated[0].details.appUserModelId, "com.qingwu.desktop");
+    assert.equal(warnings.some((w) => w.includes("写入快捷方式 AppUserModelId 失败")), true);
   }
 });
 
