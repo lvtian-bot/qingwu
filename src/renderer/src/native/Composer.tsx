@@ -161,13 +161,14 @@ export function Composer({
 
   // 处理文件采纳或下钻
   const handleSelectFile = (item: FileReferenceCandidate, action: 'pick' | 'drill' = 'pick') => {
-    const formatted = formatFileMention(item, atTrigger.quoted);
+    const isDrill = item.kind === 'directory' && action === 'drill';
+    const formatted = formatFileMention(item, atTrigger.quoted, !isDrill);
     if (!formatted) return;
 
     const prefix = input.slice(0, atTrigger.span.start);
     const suffix = input.slice(atTrigger.span.end);
 
-    if (item.kind === 'directory' && action === 'drill') {
+    if (isDrill) {
       // 下钻：将目录 mention 插入，末尾保留未闭合引号或斜杠，不关闭菜单以便继续打字
       const nextVal = prefix + formatted + suffix;
       const nextCaret = prefix.length + formatted.length;
@@ -182,7 +183,7 @@ export function Composer({
       return;
     }
 
-    // 采纳普通文件或普通目录：追加空格并关闭菜单
+    // 采纳普通文件或普通目录：追加空格并关闭菜单（闭合双引号）
     const tokenWithSpace = `${formatted} `;
     const nextVal = prefix + tokenWithSpace + suffix;
     const nextCaret = prefix.length + tokenWithSpace.length;
