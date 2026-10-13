@@ -186,6 +186,7 @@ const api: QingwuApi = {
       return '';
     }
   },
+  readClipboardFilePaths: () => ipcRenderer.invoke('clipboard:readFilePaths'),
 };
 
 contextBridge.exposeInMainWorld('qingwu', api);

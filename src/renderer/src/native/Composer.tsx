@@ -32,7 +32,7 @@ interface ComposerProps {
   draftImages: DraftImage[];
   onRemoveDraftImage: (id: string) => void;
   onAddImages?: (files: File[]) => void;
-  onAddFiles?: (files: File[], directories?: Set<File>) => void;
+  onAddFiles?: (files: File[], directories?: Set<File>, rawPaths?: string[]) => void;
   onPreviewImage: (url: string) => void;
   /** 可用斜杠命令列表。 */
   commands?: SlashCommandItem[];
@@ -337,6 +337,13 @@ export function Composer({
       if (!text) {
         e.preventDefault();
       }
+    } else if (window.qingwu?.readClipboardFilePaths) {
+      // 检查 Electron 主进程系统剪贴板是否有 Windows 资源管理器复制的文件
+      window.qingwu.readClipboardFilePaths().then((paths) => {
+        if (paths && paths.length > 0 && onAddFiles) {
+          onAddFiles([], undefined, paths);
+        }
+      });
     }
   };
 

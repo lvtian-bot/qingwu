@@ -1,6 +1,6 @@
 import "./paths";
 import path from "node:path";
-import { app, dialog, ipcMain, shell } from "electron";
+import { app, clipboard, dialog, ipcMain, shell } from "electron";
 import type { IpcMainInvokeEvent } from "electron";
 import { acquireHiddenConsole } from "./console";
 import { HarnessManager } from "./harness";
@@ -237,6 +237,46 @@ if (!gotTheLock) {
       notificationManager.show(options);
     },
   );
+  ipcMain.handle("clipboard:readFilePaths", () => {
+    try {
+      // 1. 尝试从 text/uri-list 读取（Electron/Windows 标准资源管理器复制）
+      const uriList = clipboard.read("text/uri-list");
+      if (uriList) {
+        const lines = uriList.split(/[\r\n]+/).map((l) => l.trim()).filter((l) => l && !l.startsWith("#"));
+        const paths = lines
+          .map((line) => {
+            if (line.startsWith("file://")) {
+              try {
+                const u = new URL(line);
+                let p = decodeURIComponent(u.pathname);
+                // Windows 路径 去掉前导斜杠，如 /C:/foo -> C:/foo
+                if (/^\/[a-zA-Z]:/.test(p)) {
+                  p = p.slice(1);
+                }
+                return p.replace(/\//g, "\\");
+              } catch {
+                return "";
+              }
+            }
+            return line;
+          })
+          .filter(Boolean);
+        if (paths.length > 0) return paths;
+      }
+      // 2. 尝试从 raw File drop buffer 读取或 fallback
+      const rawBuffer = clipboard.readBuffer("FileNameW");
+      if (rawBuffer && rawBuffer.length > 0) {
+        const text = rawBuffer.toString("utf16le").replace(/\0+$/, "");
+        if (text) {
+          const items = text.split("\0").filter(Boolean);
+          if (items.length > 0) return items;
+        }
+      }
+      return [];
+    } catch {
+      return [];
+    }
+  });
 
   app.whenReady().then(async () => {
     try {
