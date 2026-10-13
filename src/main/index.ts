@@ -43,7 +43,6 @@ if (!gotTheLock) {
   const hasConsole = acquireHiddenConsole();
   if (process.platform === "win32") {
     app.setAppUserModelId(CONFIG.appId || "com.qingwu.desktop");
-    migrateAppShortcuts(CONFIG.appId || "com.qingwu.desktop");
   }
   const windowManager = new WindowManager();
   const notificationManager = new NotificationManager(windowManager);
@@ -257,6 +256,12 @@ if (!gotTheLock) {
       const serviceUrl = harnessManager.getWebUrl();
       windowManager.createWindow(serviceUrl);
       dshBridge.start();
+
+      if (process.platform === "win32") {
+        setTimeout(() => {
+          void migrateAppShortcuts();
+        }, 1500);
+      }
 
       // 菜单动作统一在主进程分发（自绘弹层经 menu-popup:action 上行）。
       const handleMenuAction = (actionId: string) => {

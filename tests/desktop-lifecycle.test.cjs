@@ -429,7 +429,7 @@ test("应用配置中的 appId 与 package.json 打包配置完全一致以确�
   assert.equal(CONFIG.appId, packageJson.build.appId);
 });
 
-test("migrateAppShortcuts 自动扫描并迁移遗留快捷方式的 AppUserModelId", (t) => {
+test("migrateAppShortcuts 异步扫描并仅对匹配当前安装实例的快捷方式更新 AppUserModelId", async (t) => {
   const updated = [];
   const warnings = [];
   t.mock.method(console, "log", () => {});
@@ -437,24 +437,25 @@ test("migrateAppShortcuts 自动扫描并迁移遗留快捷方式的 AppUserMode
   const { migrateAppShortcuts } = loadTs("src/main/shortcut-migration.ts", {
     electron: {
       app: {
+        isPackaged: true,
         getPath: () => "D:/fake-appdata",
       },
       shell: {
         readShortcutLink: (filePath) => {
           if (filePath.endsWith("青梧 (2).lnk")) {
             return {
-              target: "C:/Users/test/AppData/Local/Programs/qingwu/qingwu.exe",
+              target: process.execPath,
               appUserModelId: "electron.app.青梧",
             };
           }
           if (filePath.endsWith("青梧.lnk") || filePath.endsWith("implicit.lnk")) {
             return {
-              target: "C:/Users/test/AppData/Local/Programs/qingwu/qingwu.exe",
+              target: process.execPath,
               appUserModelId: "legacy.identity",
             };
           }
           return {
-            target: "C:/other/app.exe",
+            target: "C:/other-unrelated/qingwu.exe",
             appUserModelId: "other.app",
           };
         },
@@ -469,30 +470,33 @@ test("migrateAppShortcuts 自动扫描并迁移遗留快捷方式的 AppUserMode
     },
     "node:fs": {
       existsSync: () => true,
-      readdirSync: (dirPath) => {
-        if (dirPath.includes("TaskBar")) {
-          return [
-            { isFile: () => true, isDirectory: () => false, name: "青梧.lnk" },
-            { isFile: () => true, isDirectory: () => false, name: "青梧 (2).lnk" },
-            { isFile: () => true, isDirectory: () => false, name: "其他.lnk" },
-          ];
-        }
-        if (dirPath.endsWith("ImplicitAppShortcuts")) {
-          return [
-            { isFile: () => false, isDirectory: () => true, name: "a1b2c3d4" },
-          ];
-        }
-        if (dirPath.includes("a1b2c3d4")) {
-          return [
-            { isFile: () => true, isDirectory: () => false, name: "implicit.lnk" },
-          ];
-        }
-        return [];
+      realpathSync: { native: (p) => p },
+      promises: {
+        readdir: async (dirPath) => {
+          if (dirPath.includes("TaskBar")) {
+            return [
+              { isFile: () => true, isDirectory: () => false, name: "青梧.lnk" },
+              { isFile: () => true, isDirectory: () => false, name: "青梧 (2).lnk" },
+              { isFile: () => true, isDirectory: () => false, name: "其他.lnk" },
+            ];
+          }
+          if (dirPath.endsWith("ImplicitAppShortcuts")) {
+            return [
+              { isFile: () => false, isDirectory: () => true, name: "a1b2c3d4" },
+            ];
+          }
+          if (dirPath.includes("a1b2c3d4")) {
+            return [
+              { isFile: () => true, isDirectory: () => false, name: "implicit.lnk" },
+            ];
+          }
+          return [];
+        },
       },
     },
     "./config": { CONFIG },
   });
-  migrateAppShortcuts("com.qingwu.desktop");
+  await migrateAppShortcuts("com.qingwu.desktop");
   if (process.platform === "win32") {
     assert.equal(updated.length, 2);
     assert.equal(updated.some((u) => u.filePath.endsWith("青梧.lnk")), true);
