@@ -26,7 +26,10 @@ function errorText(err: unknown): string {
   if (/checksum|sha512|signature|integrity/i.test(message)) {
     return tr('update.checksumFailed');
   }
-  if (/network|fetch|connect|timeout|ENOTFOUND|ECONN|ETIMEDOUT|ERR_/i.test(message)) {
+  if (/timeout|timed out|ETIMEDOUT/i.test(message)) {
+    return tr('update.timeout');
+  }
+  if (/network|fetch|connect|ENOTFOUND|ECONN|ERR_/i.test(message)) {
     return tr('update.networkError');
   }
   const firstLine = message.split('\\n')[0].trim();
@@ -35,6 +38,8 @@ function errorText(err: unknown): string {
   }
   return tr('update.genericError');
 }
+
+export const CHECK_TIMEOUT_MS = 15_000;
 
 function asVersion(payload: { version?: unknown } | null | undefined): string | null {
   const version = payload?.version;
@@ -45,19 +50,23 @@ export class UpdateService {
   private readonly currentVersion: string;
   private latestVersion: string;
   private readonly supported: boolean;
+  private readonly checkTimeoutMs: number;
   private state: UpdateState;
   private adapter: AppUpdater | null = null;
   private adapterPromise: Promise<AppUpdater> | null = null;
   private checkPromise: Promise<UpdateState> | null = null;
   private resolveCheck: ((state: UpdateState) => void) | null = null;
+  private checkTimer: NodeJS.Timeout | null = null;
+  private checkSeq = 0;
   private downloadPromise: Promise<UpdateState> | null = null;
   private resolveDownload: ((state: UpdateState) => void) | null = null;
   onStateChange: ((state: UpdateState) => void) | null = null;
 
-  constructor() {
+  constructor(options?: { checkTimeoutMs?: number }) {
     this.currentVersion = app.getVersion();
     this.latestVersion = this.currentVersion;
     this.supported = app.isPackaged && process.platform === 'win32';
+    this.checkTimeoutMs = options?.checkTimeoutMs ?? CHECK_TIMEOUT_MS;
     this.state = this.supported
       ? { status: 'idle', currentVersion: this.currentVersion }
       : { status: 'unsupported', currentVersion: this.currentVersion };
@@ -69,6 +78,10 @@ export class UpdateService {
   }
 
   private finishCheck(next: UpdateState): void {
+    if (this.checkTimer) {
+      clearTimeout(this.checkTimer);
+      this.checkTimer = null;
+    }
     this.setState(next);
     this.resolveCheck?.(next);
     this.resolveCheck = null;
@@ -111,6 +124,7 @@ export class UpdateService {
 
   private bindEvents(autoUpdater: AppUpdater): void {
     autoUpdater.on('update-available', (info: UpdateInfo) => {
+      if (!this.checkPromise) return;
       const version = asVersion(info) || this.currentVersion;
       this.latestVersion = version;
       this.finishCheck({
@@ -120,6 +134,7 @@ export class UpdateService {
       });
     });
     autoUpdater.on('update-not-available', (info: UpdateInfo) => {
+      if (!this.checkPromise) return;
       const version = asVersion(info) || this.currentVersion;
       this.latestVersion = version;
       this.finishCheck({
@@ -162,7 +177,7 @@ export class UpdateService {
             message: errorText(err),
           };
       if (this.downloadPromise) this.finishDownload(next);
-      else this.finishCheck(next);
+      else if (this.checkPromise) this.finishCheck(next);
     });
   }
 
@@ -177,25 +192,44 @@ export class UpdateService {
       return this.state;
     }
 
+    const currentSeq = ++this.checkSeq;
     this.setState({ status: 'checking', currentVersion: this.currentVersion });
     this.checkPromise = new Promise<UpdateState>((resolve) => {
       this.resolveCheck = resolve;
     });
+
+    if (this.checkTimer) {
+      clearTimeout(this.checkTimer);
+    }
+    this.checkTimer = setTimeout(() => {
+      if (this.checkSeq === currentSeq && this.state.status === 'checking') {
+        this.finishCheck({
+          status: 'error',
+          currentVersion: this.currentVersion,
+          message: tr('update.timeout'),
+        });
+      }
+    }, this.checkTimeoutMs);
+
     try {
       const autoUpdater = await this.getAdapter();
       void autoUpdater.checkForUpdates().catch((err: unknown) => {
+        if (this.checkSeq === currentSeq && this.state.status === 'checking') {
+          this.finishCheck({
+            status: 'error',
+            currentVersion: this.currentVersion,
+            message: errorText(err),
+          });
+        }
+      });
+    } catch (err) {
+      if (this.checkSeq === currentSeq && this.state.status === 'checking') {
         this.finishCheck({
           status: 'error',
           currentVersion: this.currentVersion,
           message: errorText(err),
         });
-      });
-    } catch (err) {
-      this.finishCheck({
-        status: 'error',
-        currentVersion: this.currentVersion,
-        message: errorText(err),
-      });
+      }
     }
     return this.checkPromise;
   }

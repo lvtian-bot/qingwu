@@ -14,6 +14,7 @@ export const app: typeof zhApp = {
     devModeDesc:
       "You are in development mode. In-app updates only work in packaged Windows builds. Check the releases page for the latest version.",
     openReleases: "Open Releases Page",
+    cancel: "Cancel",
     checkingTitle: "Checking for Updates",
     checkingDesc: "Connecting to the server for the latest version info…",
     latestTitle: "Up to Date",

@@ -102,6 +102,11 @@ export function UpdateWindow() {
   } else if (status === 'checking' || status === 'idle') {
     title = t('app.update.checkingTitle');
     description = t('app.update.checkingDesc');
+    actions = (
+      <button type="button" className="btn btn-secondary" onClick={closeWindow}>
+        {t('app.update.cancel')}
+      </button>
+    );
   } else if (status === 'latest') {
     title = t('app.update.latestTitle');
     description =

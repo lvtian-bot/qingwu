@@ -28,6 +28,7 @@ const STRINGS: Record<'zh-CN' | 'en-US', MainDict> = {
     'update.noRelease': '远程仓库暂无可用的新版本。',
     'update.checksumFailed': '更新包校验失败，请稍后重试或前往发布页手动下载。',
     'update.networkError': '网络连接异常，请检查网络后重试。',
+    'update.timeout': '连接更新服务器超时，请检查网络或前往发布页手动下载。',
     'update.genericErrorDetail': '更新遇到异常: {detail}',
     'update.genericError': '更新遇到异常，请稍后重试。',
     'update.installFailed': '启动安装失败，请前往发布页手动下载。',
@@ -55,6 +56,8 @@ const STRINGS: Record<'zh-CN' | 'en-US', MainDict> = {
     'update.checksumFailed':
       'The update package failed verification. Try again later, or download it manually from the releases page.',
     'update.networkError': 'Network connection problem. Check your network and try again.',
+    'update.timeout':
+      'Connection to the update server timed out. Check your network or download manually from the releases page.',
     'update.genericErrorDetail': 'Something went wrong while updating: {detail}',
     'update.genericError': 'Something went wrong while updating. Try again later.',
     'update.installFailed':

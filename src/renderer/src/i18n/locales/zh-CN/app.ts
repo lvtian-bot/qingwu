@@ -13,6 +13,7 @@ export const app = {
     devModeDesc:
       "当前处于开发调试模式，在线更新仅在正式打包的 Windows 发行版本中生效。您可以前往发布页查看最新版本。",
     openReleases: "访问发布页",
+    cancel: "取消",
     checkingTitle: "正在检查更新",
     checkingDesc: "正在连接服务器获取最新版本信息…",
     latestTitle: "已是最新版本",
