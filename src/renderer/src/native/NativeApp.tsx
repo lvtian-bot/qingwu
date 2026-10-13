@@ -1051,7 +1051,6 @@ export function NativeApp({
                           onPreviewImage={handlePreviewImage}
                           onOpenFile={openFileInPanel}
                         />
-                        <span className="native-cursor" />
                       </div>
                     </div>
                   )}
