@@ -31,25 +31,38 @@ function isCurrentInstallationTarget(targetPath?: string): boolean {
   }
 }
 
+interface ScanResult {
+  candidates: string[];
+  hasScanFailure: boolean;
+}
+
 async function findCandidateShortcuts(
   dirPath: string,
   recursive = false,
-): Promise<string[]> {
+): Promise<ScanResult> {
   try {
-    if (!fs.existsSync(dirPath)) return [];
+    if (!fs.existsSync(dirPath)) {
+      return { candidates: [], hasScanFailure: false };
+    }
     const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
-    const results: string[] = [];
+    const candidates: string[] = [];
+    let hasScanFailure = false;
     for (const entry of entries) {
       const fullPath = path.join(dirPath, entry.name);
       if (entry.isFile() && entry.name.toLowerCase().endsWith(".lnk")) {
-        results.push(fullPath);
+        candidates.push(fullPath);
       } else if (entry.isDirectory() && recursive) {
-        results.push(...(await findCandidateShortcuts(fullPath, recursive)));
+        const sub = await findCandidateShortcuts(fullPath, recursive);
+        candidates.push(...sub.candidates);
+        if (sub.hasScanFailure) {
+          hasScanFailure = true;
+        }
       }
     }
-    return results;
-  } catch {
-    return [];
+    return { candidates, hasScanFailure };
+  } catch (err) {
+    console.warn("[Main] 扫描快捷方式目录失败:", dirPath, err);
+    return { candidates: [], hasScanFailure: true };
   }
 }
 
@@ -77,7 +90,7 @@ function isAlreadyMigrated(markerPath: string, targetAppId: string): boolean {
  * 3. 隐式固定项（User Pinned\ImplicitAppShortcuts\<hash> 下所有 .lnk，对齐 Chromium 隐式固定规范）；
  * 4. 开始菜单快捷方式（Start Menu\Programs 下所有 .lnk）。
  * 严格仅对指向当前青梧安装实例可执行文件的快捷方式执行 AUMID 更新，循环中让出主事件循环，
- * 且仅在全部成功时记录迁移完成标记，失败时保留下次重试。
+ * 仅在目录读取及写入均完全成功时记录迁移完成标记，遇到任何扫描或写入异常保留下次重试。
  */
 export async function migrateAppShortcuts(
   targetAppId: string = CONFIG.appId || "com.qingwu.desktop",
@@ -108,13 +121,20 @@ export async function migrateAppShortcuts(
       "Programs",
     );
 
+    const taskbarResult = await findCandidateShortcuts(taskbarDir);
+    const implicitResult = await findCandidateShortcuts(implicitDir, true);
+    const startMenuResult = await findCandidateShortcuts(startMenuDir);
+
     const candidates = [
-      ...(await findCandidateShortcuts(taskbarDir)),
-      ...(await findCandidateShortcuts(implicitDir, true)),
-      ...(await findCandidateShortcuts(startMenuDir)),
+      ...taskbarResult.candidates,
+      ...implicitResult.candidates,
+      ...startMenuResult.candidates,
     ];
 
-    let hasFailures = false;
+    let hasFailures =
+      taskbarResult.hasScanFailure ||
+      implicitResult.hasScanFailure ||
+      startMenuResult.hasScanFailure;
 
     for (const candidate of candidates) {
       try {

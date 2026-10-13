@@ -501,3 +501,41 @@ test("migrateAppShortcuts 异步扫描并仅对匹配当前安装实例的快捷
   }
 });
 
+test("migrateAppShortcuts 在目录读取异常时不写入完成标记以保留重试", async (t) => {
+  const writtenFiles = {};
+  t.mock.method(console, "log", () => {});
+  t.mock.method(console, "warn", () => {});
+  const { migrateAppShortcuts } = loadTs("src/main/shortcut-migration.ts", {
+    electron: {
+      app: {
+        isPackaged: true,
+        getPath: () => "D:/fake-appdata",
+      },
+      shell: {
+        readShortcutLink: () => ({ target: process.execPath, appUserModelId: "old" }),
+        writeShortcutLink: () => true,
+      },
+    },
+    "node:fs": {
+      existsSync: () => true,
+      realpathSync: { native: (p) => p },
+      writeFileSync: (p, content) => {
+        writtenFiles[p] = content;
+      },
+      promises: {
+        readdir: async () => {
+          throw new Error("EPERM: scan failed");
+        },
+      },
+    },
+    "./config": { CONFIG },
+  });
+  await migrateAppShortcuts("com.qingwu.desktop");
+  if (process.platform === "win32") {
+    assert.equal(
+      Object.keys(writtenFiles).some((k) => k.endsWith(".shortcut-migration.json")),
+      false,
+    );
+  }
+});
+
