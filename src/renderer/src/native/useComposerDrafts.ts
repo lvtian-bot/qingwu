@@ -45,6 +45,13 @@ export function useComposerDrafts({
   const composerImagesRef = useRef<Map<string, DraftImage[]>>(new Map());
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const revisionsRef = useRef(new Map<string, number>());
+  /** 记录草稿提交清空/废弃的世代号，仅在草稿被发送或删除时递增，普通打字不改变它 */
+  const clearGenerationsRef = useRef(new Map<string, number>());
+  const bumpClearGeneration = useCallback((key: string) => {
+    const nextGen = (clearGenerationsRef.current.get(key) ?? 0) + 1;
+    clearGenerationsRef.current.set(key, nextGen);
+    return nextGen;
+  }, []);
   const touch = useCallback((key: string): DraftVersion => {
     const revision = (revisionsRef.current.get(key) ?? 0) + 1;
     revisionsRef.current.set(key, revision);
@@ -198,7 +205,7 @@ export function useComposerDrafts({
         }
 
         if (imageEntries.length > 0) {
-          const expectedRev = revisionsRef.current.get(key) ?? 0;
+          const expectedClearGen = clearGenerationsRef.current.get(key) ?? 0;
           Promise.all(
             imageEntries.map(async (entry) => {
               if (!window.qingwu?.readLocalImage) {
@@ -217,9 +224,9 @@ export function useComposerDrafts({
             }),
           )
             .then((results) => {
-              // 校验草稿版本：如果已被提交清空，则丢弃旧加载
-              const currentRev = revisionsRef.current.get(key) ?? 0;
-              if (currentRev !== expectedRev) return;
+              // 仅当草稿已被提交发送或销毁（clearGeneration已变动）时丢弃；用户普通打字或追加文本不影响图片正常追加
+              const currentClearGen = clearGenerationsRef.current.get(key) ?? 0;
+              if (currentClearGen !== expectedClearGen) return;
 
               const validFiles: File[] = [];
               const fallbackMentions: string[] = [];
@@ -418,6 +425,7 @@ export function useComposerDrafts({
     ): DraftVersion | null => {
       if ((revisionsRef.current.get(source.key) ?? 0) !== source.revision)
         return null;
+      bumpClearGeneration(source.key);
       composerDraftsRef.current.delete(source.key);
       composerImagesRef.current.delete(source.key);
       touch(source.key);
@@ -434,15 +442,16 @@ export function useComposerDrafts({
       }
       return targetHasDraft ? null : touch(key);
     },
-    [captureForSubmit, currentIdRef, touch],
+    [bumpClearGeneration, captureForSubmit, currentIdRef, touch],
   );
 
   /** 「/model」类本地命令：只清文本输入与文本草稿桶，不动图片。 */
   const clearTextDraft = useCallback(
     (sessionId: string | null) => {
+      const key = sessionId ?? "";
       setInput("");
-      composerDraftsRef.current.delete(sessionId ?? "");
-      touch(sessionId ?? "");
+      composerDraftsRef.current.delete(key);
+      touch(key);
     },
     [touch],
   );
@@ -475,6 +484,7 @@ export function useComposerDrafts({
   /** 草稿随人迁移（换工作区落点时旧会话草稿转到新会话，旧桶清空）。 */
   const migrateBuckets = useCallback(
     (fromId: string, toId: string) => {
+      bumpClearGeneration(fromId);
       touch(fromId);
       touch(toId);
       const pending = composerDraftsRef.current.get(fromId);
@@ -488,17 +498,18 @@ export function useComposerDrafts({
         composerImagesRef.current.delete(fromId);
       }
     },
-    [touch],
+    [bumpClearGeneration, touch],
   );
 
   /** 会话已删除：草稿桶与图片一并清理（内存态，避免残留）。 */
   const discardFor = useCallback(
     (sessionId: string) => {
+      bumpClearGeneration(sessionId);
       touch(sessionId);
       composerDraftsRef.current.delete(sessionId);
       composerImagesRef.current.delete(sessionId);
     },
-    [touch],
+    [bumpClearGeneration, touch],
   );
 
   /** 处理输入框自身的 onPaste 事件：提取文件或通过 Electron 剪贴板提取路径，支持切换会话安全与目录识别 */
