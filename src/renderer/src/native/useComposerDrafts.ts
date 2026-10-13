@@ -138,8 +138,12 @@ export function useComposerDrafts({
    * - 非图片文件（或目录）：提取本地路径并按相对当前会话工作区（cwd）转换为 @ 引用追加到输入框。
    */
   const handleAddFiles = useCallback(
-    (files: File[], directories?: Set<File>, rawPaths?: string[]) => {
-      if ((!files || files.length === 0) && (!rawPaths || rawPaths.length === 0)) return;
+    (
+      files: File[],
+      directories?: Set<File>,
+      rawEntries?: Array<{ path: string; isDirectory: boolean; isImage: boolean }>,
+    ) => {
+      if ((!files || files.length === 0) && (!rawEntries || rawEntries.length === 0)) return;
       const images: File[] = [];
       const mentions: string[] = [];
 
@@ -165,13 +169,28 @@ export function useComposerDrafts({
         }
       }
 
-      if (rawPaths && rawPaths.length > 0) {
+      if (rawEntries && rawEntries.length > 0) {
         const cwd = currentCwdRef?.current;
-        for (const p of rawPaths) {
-          const isDir = p.endsWith('\\') || p.endsWith('/');
-          const formatted = formatFileMentionFromPath(p, cwd, isDir);
-          if (formatted) {
-            mentions.push(formatted);
+        for (const entry of rawEntries) {
+          if (entry.isImage && window.qingwu?.readLocalImage) {
+            // 通过 readLocalImage 载入图片转为 File 接入图片草稿
+            window.qingwu.readLocalImage(entry.path).then((res) => {
+              if (res) {
+                const name = entry.path.split(/[\\/]/).pop() || "image.png";
+                fetch(res.dataUrl)
+                  .then((r) => r.blob())
+                  .then((blob) => {
+                    const file = new File([blob], name, { type: res.mimeType });
+                    handleAddImages([file]);
+                  })
+                  .catch(() => {});
+              }
+            });
+          } else {
+            const formatted = formatFileMentionFromPath(entry.path, cwd, entry.isDirectory);
+            if (formatted) {
+              mentions.push(formatted);
+            }
           }
         }
       }
@@ -270,9 +289,9 @@ export function useComposerDrafts({
         textareaRef.current?.focus();
       } else if (window.qingwu?.readClipboardFilePaths) {
         // 从 Windows 资源管理器复制的文件通过 Electron 主进程剪贴板获取
-        window.qingwu.readClipboardFilePaths().then((paths) => {
-          if (paths && paths.length > 0) {
-            handleAddFiles([], undefined, paths);
+        window.qingwu.readClipboardFilePaths().then((entries) => {
+          if (entries && entries.length > 0) {
+            handleAddFiles([], undefined, entries);
             textareaRef.current?.focus();
           }
         });

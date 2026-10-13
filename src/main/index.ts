@@ -1,4 +1,5 @@
 import "./paths";
+import fs from "node:fs";
 import path from "node:path";
 import { app, clipboard, dialog, ipcMain, shell } from "electron";
 import type { IpcMainInvokeEvent } from "electron";
@@ -239,11 +240,12 @@ if (!gotTheLock) {
   );
   ipcMain.handle("clipboard:readFilePaths", () => {
     try {
+      let rawPaths: string[] = [];
       // 1. 尝试从 text/uri-list 读取（Electron/Windows 标准资源管理器复制）
       const uriList = clipboard.read("text/uri-list");
       if (uriList) {
         const lines = uriList.split(/[\r\n]+/).map((l) => l.trim()).filter((l) => l && !l.startsWith("#"));
-        const paths = lines
+        rawPaths = lines
           .map((line) => {
             if (line.startsWith("file://")) {
               try {
@@ -261,18 +263,35 @@ if (!gotTheLock) {
             return line;
           })
           .filter(Boolean);
-        if (paths.length > 0) return paths;
       }
       // 2. 尝试从 raw File drop buffer 读取或 fallback
-      const rawBuffer = clipboard.readBuffer("FileNameW");
-      if (rawBuffer && rawBuffer.length > 0) {
-        const text = rawBuffer.toString("utf16le").replace(/\0+$/, "");
-        if (text) {
-          const items = text.split("\0").filter(Boolean);
-          if (items.length > 0) return items;
+      if (rawPaths.length === 0) {
+        const rawBuffer = clipboard.readBuffer("FileNameW");
+        if (rawBuffer && rawBuffer.length > 0) {
+          const text = rawBuffer.toString("utf16le").replace(/\0+$/, "");
+          if (text) {
+            rawPaths = text.split("\0").filter(Boolean);
+          }
         }
       }
-      return [];
+
+      if (rawPaths.length === 0) return [];
+
+      const imageExts = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif"]);
+      return rawPaths.map((p) => {
+        try {
+          const stat = fs.statSync(p);
+          const isDirectory = stat.isDirectory();
+          const ext = path.extname(p).toLowerCase();
+          const isImage = !isDirectory && imageExts.has(ext);
+          return { path: p, isDirectory, isImage };
+        } catch {
+          const isDirectory = p.endsWith("\\") || p.endsWith("/");
+          const ext = path.extname(p).toLowerCase();
+          const isImage = !isDirectory && imageExts.has(ext);
+          return { path: p, isDirectory, isImage };
+        }
+      });
     } catch {
       return [];
     }
