@@ -429,9 +429,10 @@ test("应用配置中的 appId 与 package.json 打包配置完全一致以确�
   assert.equal(CONFIG.appId, packageJson.build.appId);
 });
 
-test("migrateAppShortcuts 异步扫描并仅对匹配当前安装实例的快捷方式更新 AppUserModelId", async (t) => {
+test("migrateAppShortcuts 异步扫描并仅对匹配当前安装实例的快捷方式更新 AppUserModelId，并在成功后持久化标记跳过后续重复扫描", async (t) => {
   const updated = [];
   const warnings = [];
+  const writtenFiles = {};
   t.mock.method(console, "log", () => {});
   t.mock.method(console, "warn", (msg) => warnings.push(String(msg)));
   const { migrateAppShortcuts } = loadTs("src/main/shortcut-migration.ts", {
@@ -442,12 +443,6 @@ test("migrateAppShortcuts 异步扫描并仅对匹配当前安装实例的快捷
       },
       shell: {
         readShortcutLink: (filePath) => {
-          if (filePath.endsWith("青梧 (2).lnk")) {
-            return {
-              target: process.execPath,
-              appUserModelId: "electron.app.青梧",
-            };
-          }
           if (filePath.endsWith("青梧.lnk") || filePath.endsWith("implicit.lnk")) {
             return {
               target: process.execPath,
@@ -460,23 +455,23 @@ test("migrateAppShortcuts 异步扫描并仅对匹配当前安装实例的快捷
           };
         },
         writeShortcutLink: (filePath, operation, details) => {
-          if (filePath.endsWith("青梧 (2).lnk")) {
-            return false; // 模拟写入失败
-          }
           updated.push({ filePath, operation, details });
           return true;
         },
       },
     },
     "node:fs": {
-      existsSync: () => true,
+      existsSync: (p) => p in writtenFiles || !p.endsWith(".shortcut-migration.json"),
+      readFileSync: (p) => writtenFiles[p] || "",
+      writeFileSync: (p, content) => {
+        writtenFiles[p] = content;
+      },
       realpathSync: { native: (p) => p },
       promises: {
         readdir: async (dirPath) => {
           if (dirPath.includes("TaskBar")) {
             return [
               { isFile: () => true, isDirectory: () => false, name: "青梧.lnk" },
-              { isFile: () => true, isDirectory: () => false, name: "青梧 (2).lnk" },
               { isFile: () => true, isDirectory: () => false, name: "其他.lnk" },
             ];
           }
@@ -499,10 +494,10 @@ test("migrateAppShortcuts 异步扫描并仅对匹配当前安装实例的快捷
   await migrateAppShortcuts("com.qingwu.desktop");
   if (process.platform === "win32") {
     assert.equal(updated.length, 2);
-    assert.equal(updated.some((u) => u.filePath.endsWith("青梧.lnk")), true);
-    assert.equal(updated.some((u) => u.filePath.endsWith("implicit.lnk")), true);
-    assert.equal(updated.every((u) => u.details.appUserModelId === "com.qingwu.desktop"), true);
-    assert.equal(warnings.some((w) => w.includes("写入快捷方式 AppUserModelId 失败")), true);
+    assert.equal(Object.keys(writtenFiles).some((k) => k.endsWith(".shortcut-migration.json")), true);
+    const countBefore = updated.length;
+    await migrateAppShortcuts("com.qingwu.desktop");
+    assert.equal(updated.length, countBefore);
   }
 });
 
