@@ -74,7 +74,7 @@ export function useComposerDrafts({
   );
 
   const handleAddImages = useCallback(
-    (files: File[]) => {
+    (files: File[], targetSessionId?: string | null) => {
       const valid: File[] = [];
       for (const f of files) {
         if (!isSupportedImage(f)) {
@@ -89,7 +89,7 @@ export function useComposerDrafts({
       }
       if (valid.length === 0) return;
 
-      const key = currentIdRef.current ?? "";
+      const key = (targetSessionId !== undefined ? targetSessionId : currentIdRef.current) ?? "";
       const prev = composerImagesRef.current.get(key) ?? [];
       if (prev.length + valid.length > MAX_IMAGES_PER_MESSAGE) {
         setError(t("composer.tooManyImages", { count: MAX_IMAGES_PER_MESSAGE }));
@@ -112,11 +112,21 @@ export function useComposerDrafts({
             item.base64 = b64;
             const dataUrl = `data:${mediaType};base64,${b64}`;
             item.previewUrl = dataUrl;
-            setDraftImages((cur) =>
-              cur.map((d) =>
+            // 更新对应会话桶中的 draftImage 项
+            const bucketImgs = composerImagesRef.current.get(key);
+            if (bucketImgs) {
+              const updated = bucketImgs.map((d) =>
                 d.id === id ? { ...d, base64: b64, previewUrl: dataUrl } : d,
-              ),
-            );
+              );
+              composerImagesRef.current.set(key, updated);
+            }
+            if ((currentIdRef.current ?? "") === key) {
+              setDraftImages((cur) =>
+                cur.map((d) =>
+                  d.id === id ? { ...d, base64: b64, previewUrl: dataUrl } : d,
+                ),
+              );
+            }
           })
           // 图片读取失败时上横幅提示（文案走词条，中文与 images.tsx 内原错误文案一致）
           .catch(() => {
@@ -127,7 +137,9 @@ export function useComposerDrafts({
       const next = [...prev, ...newItems];
       touch(key);
       composerImagesRef.current.set(key, next);
-      setDraftImages(next);
+      if ((currentIdRef.current ?? "") === key) {
+        setDraftImages(next);
+      }
     },
     [currentIdRef, setError, touch, t],
   );
@@ -143,8 +155,10 @@ export function useComposerDrafts({
       directories?: Set<File>,
       rawEntries?: Array<{ path: string; isDirectory: boolean; isImage: boolean }>,
       targetCwd?: string | null,
+      targetSessionId?: string | null,
     ) => {
       if ((!files || files.length === 0) && (!rawEntries || rawEntries.length === 0)) return;
+      const key = (targetSessionId !== undefined ? targetSessionId : currentIdRef.current) ?? "";
       const images: File[] = [];
       const mentions: string[] = [];
       const cwd = targetCwd !== undefined ? targetCwd : currentCwdRef?.current;
@@ -173,7 +187,7 @@ export function useComposerDrafts({
       if (rawEntries && rawEntries.length > 0) {
         for (const entry of rawEntries) {
           if (entry.isImage && window.qingwu?.readLocalImage) {
-            // 通过 readLocalImage 载入图片转为 File 接入图片草稿
+            // 通过 readLocalImage 载入图片转为 File 接入图片草稿（绑定目标会话）
             window.qingwu.readLocalImage(entry.path).then((res) => {
               if (res) {
                 const name = entry.path.split(/[\\/]/).pop() || "image.png";
@@ -181,7 +195,7 @@ export function useComposerDrafts({
                   .then((r) => r.blob())
                   .then((blob) => {
                     const file = new File([blob], name, { type: res.mimeType });
-                    handleAddImages([file]);
+                    handleAddImages([file], key);
                   })
                   .catch(() => {});
               }
@@ -196,28 +210,29 @@ export function useComposerDrafts({
       }
 
       if (images.length > 0) {
-        handleAddImages(images);
+        handleAddImages(images, key);
       }
 
       if (mentions.length > 0) {
-        const key = currentIdRef.current ?? "";
-        const prevText = composerDraftsRef.current.get(key) ?? input;
+        const prevText = composerDraftsRef.current.get(key) ?? ((currentIdRef.current ?? "") === key ? input : "");
         const insertText = mentions.join(" ");
         const nextText = prevText
           ? prevText.endsWith(" ") || prevText.endsWith("\n")
             ? `${prevText}${insertText} `
             : `${prevText} ${insertText} `
           : `${insertText} `;
-        setInput(nextText);
         touch(key);
         composerDraftsRef.current.set(key, nextText);
-        setTimeout(() => {
-          if (textareaRef.current) {
-            textareaRef.current.focus();
-            const len = nextText.length;
-            textareaRef.current.setSelectionRange(len, len);
-          }
-        }, 0);
+        if ((currentIdRef.current ?? "") === key) {
+          setInput(nextText);
+          setTimeout(() => {
+            if (textareaRef.current) {
+              textareaRef.current.focus();
+              const len = nextText.length;
+              textareaRef.current.setSelectionRange(len, len);
+            }
+          }, 0);
+        }
       }
     },
     [currentCwdRef, currentIdRef, handleAddImages, input, setError, t, touch],
@@ -293,10 +308,10 @@ export function useComposerDrafts({
         const capturedCwd = currentCwdRef?.current;
         window.qingwu.readClipboardFilePaths().then((entries) => {
           if (entries && entries.length > 0) {
-            // 若会话已切换则丢弃，避免串写到新会话草稿
-            if (currentIdRef.current !== capturedSessionId) return;
-            handleAddFiles([], undefined, entries, capturedCwd);
-            textareaRef.current?.focus();
+            handleAddFiles([], undefined, entries, capturedCwd, capturedSessionId);
+            if (currentIdRef.current === capturedSessionId) {
+              textareaRef.current?.focus();
+            }
           }
         });
       }
@@ -473,9 +488,10 @@ export function useComposerDrafts({
         const capturedCwd = currentCwdRef?.current;
         window.qingwu.readClipboardFilePaths().then((entries) => {
           if (entries && entries.length > 0) {
-            if (currentIdRef.current !== capturedSessionId) return;
-            handleAddFiles([], undefined, entries, capturedCwd);
-            textareaRef.current?.focus();
+            handleAddFiles([], undefined, entries, capturedCwd, capturedSessionId);
+            if (currentIdRef.current === capturedSessionId) {
+              textareaRef.current?.focus();
+            }
           }
         });
       }
