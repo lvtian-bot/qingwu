@@ -1,6 +1,7 @@
 import "./paths";
+import fs from "node:fs";
 import path from "node:path";
-import { app, dialog, ipcMain, shell } from "electron";
+import { app, clipboard, dialog, ipcMain, shell } from "electron";
 import type { IpcMainInvokeEvent } from "electron";
 import { acquireHiddenConsole } from "./console";
 import { HarnessManager } from "./harness";
@@ -237,6 +238,85 @@ if (!gotTheLock) {
       notificationManager.show(options);
     },
   );
+  ipcMain.handle("clipboard:readFilePaths", () => {
+    try {
+      let rawPaths: string[] = [];
+      // 1. 尝试从 text/uri-list 读取（Electron/Windows 标准资源管理器复制）
+      const uriList = clipboard.read("text/uri-list");
+      if (uriList) {
+        const lines = uriList.split(/[\r\n]+/).map((l) => l.trim()).filter((l) => l && !l.startsWith("#"));
+        rawPaths = lines
+          .filter((line) => line.startsWith("file://"))
+          .map((line) => {
+            try {
+              const u = new URL(line);
+              let p = decodeURIComponent(u.pathname);
+              if (u.hostname) {
+                // Windows UNC 共享路径 file://server/share/foo -> \\server\share\foo
+                return `\\\\${u.hostname}${p.replace(/\//g, "\\")}`;
+              }
+              // Windows 路径 去掉前导斜杠，如 /C:/foo -> C:/foo
+              if (/^\/[a-zA-Z]:/.test(p)) {
+                p = p.slice(1);
+              }
+              return p.replace(/\//g, "\\");
+            } catch {
+              return "";
+            }
+          })
+          .filter(Boolean);
+      }
+      // 2. 尝试从 Windows 原生 CF_HDROP (DROPFILES 结构) 或 FileNameW 读取
+      if (rawPaths.length === 0) {
+        const dropBuffer = clipboard.readBuffer("CF_HDROP");
+        if (dropBuffer && dropBuffer.length >= 20) {
+          try {
+            const offset = dropBuffer.readUInt32LE(0);
+            const isWide = dropBuffer.readUInt32LE(16) !== 0;
+            const data = dropBuffer.subarray(offset);
+            const parts = isWide
+              ? data.toString("utf16le").split("\0")
+              : data.toString("utf8").split("\0");
+            for (const p of parts) {
+              if (!p) break;
+              rawPaths.push(p);
+            }
+          } catch {
+            // fallback
+          }
+        }
+      }
+      if (rawPaths.length === 0) {
+        const rawBuffer = clipboard.readBuffer("FileNameW");
+        if (rawBuffer && rawBuffer.length > 0) {
+          const text = rawBuffer.toString("utf16le").replace(/\0+$/, "");
+          if (text) {
+            rawPaths = text.split("\0").filter(Boolean);
+          }
+        }
+      }
+
+      if (rawPaths.length === 0) return [];
+
+      const imageExts = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif"]);
+      return rawPaths.map((p) => {
+        try {
+          const stat = fs.statSync(p);
+          const isDirectory = stat.isDirectory();
+          const ext = path.extname(p).toLowerCase();
+          const isImage = !isDirectory && imageExts.has(ext);
+          return { path: p, isDirectory, isImage };
+        } catch {
+          const isDirectory = p.endsWith("\\") || p.endsWith("/");
+          const ext = path.extname(p).toLowerCase();
+          const isImage = !isDirectory && imageExts.has(ext);
+          return { path: p, isDirectory, isImage };
+        }
+      });
+    } catch {
+      return [];
+    }
+  });
 
   app.whenReady().then(async () => {
     try {

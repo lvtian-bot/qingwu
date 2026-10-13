@@ -31,7 +31,13 @@ interface ComposerProps {
   meter?: ReactNode;
   draftImages: DraftImage[];
   onRemoveDraftImage: (id: string) => void;
-  onAddImages: (files: File[]) => void;
+  onAddImages?: (files: File[]) => void;
+  onAddFiles?: (
+    files: File[],
+    directories?: Set<File>,
+    rawEntries?: Array<{ path: string; isDirectory: boolean; isImage: boolean }>,
+  ) => void;
+  onPaste?: (e: React.ClipboardEvent<HTMLTextAreaElement>) => void;
   onPreviewImage: (url: string) => void;
   /** 可用斜杠命令列表。 */
   commands?: SlashCommandItem[];
@@ -74,6 +80,8 @@ export function Composer({
   draftImages,
   onRemoveDraftImage,
   onAddImages,
+  onAddFiles,
+  onPaste,
   onPreviewImage,
   commands,
   onClientCommand,
@@ -159,13 +167,14 @@ export function Composer({
 
   // 处理文件采纳或下钻
   const handleSelectFile = (item: FileReferenceCandidate, action: 'pick' | 'drill' = 'pick') => {
-    const formatted = formatFileMention(item, atTrigger.quoted);
+    const isDrill = item.kind === 'directory' && action === 'drill';
+    const formatted = formatFileMention(item, atTrigger.quoted, !isDrill);
     if (!formatted) return;
 
     const prefix = input.slice(0, atTrigger.span.start);
     const suffix = input.slice(atTrigger.span.end);
 
-    if (item.kind === 'directory' && action === 'drill') {
+    if (isDrill) {
       // 下钻：将目录 mention 插入，末尾保留未闭合引号或斜杠，不关闭菜单以便继续打字
       const nextVal = prefix + formatted + suffix;
       const nextCaret = prefix.length + formatted.length;
@@ -180,7 +189,7 @@ export function Composer({
       return;
     }
 
-    // 采纳普通文件或普通目录：追加空格并关闭菜单
+    // 采纳普通文件或普通目录：追加空格并关闭菜单（闭合双引号）
     const tokenWithSpace = `${formatted} `;
     const nextVal = prefix + tokenWithSpace + suffix;
     const nextCaret = prefix.length + tokenWithSpace.length;
@@ -293,29 +302,56 @@ export function Composer({
   const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const clipboardData = e.clipboardData;
     if (!clipboardData) return;
-    const imageFiles: File[] = [];
+    const files: File[] = [];
+    const directories = new Set<File>();
     if (clipboardData.files && clipboardData.files.length > 0) {
       for (let i = 0; i < clipboardData.files.length; i++) {
-        const file = clipboardData.files[i];
-        if (isSupportedImage(file)) imageFiles.push(file);
+        files.push(clipboardData.files[i]);
       }
-    } else if (clipboardData.items) {
+    }
+    if (clipboardData.items) {
+      const hadFiles = files.length > 0;
+      let fileIdx = 0;
       for (let i = 0; i < clipboardData.items.length; i++) {
         const item = clipboardData.items[i];
         if (item.kind === "file") {
           const file = item.getAsFile();
-          if (file && isSupportedImage(file)) imageFiles.push(file);
+          if (file) {
+            if (!hadFiles) {
+              files.push(file);
+            }
+            const f = hadFiles ? files[fileIdx++] : file;
+            if (
+              f &&
+              typeof item.webkitGetAsEntry === "function" &&
+              item.webkitGetAsEntry()?.isDirectory === true
+            ) {
+              directories.add(f);
+            }
+          }
         }
       }
     }
-    if (imageFiles.length > 0) {
+    if (files.length > 0) {
       // 阻止冒泡至全局 window.onpaste，防止单次粘贴触发两次添加
       e.stopPropagation();
-      onAddImages(imageFiles);
+      if (onAddFiles) {
+        onAddFiles(files, directories);
+      } else if (onAddImages) {
+        const imageFiles = files.filter(isSupportedImage);
+        if (imageFiles.length > 0) onAddImages(imageFiles);
+      }
       const text = clipboardData.getData("text/plain");
       if (!text) {
         e.preventDefault();
       }
+    } else if (window.qingwu?.readClipboardFilePaths) {
+      // 检查 Electron 主进程系统剪贴板是否有 Windows 资源管理器复制的文件
+      window.qingwu.readClipboardFilePaths().then((entries) => {
+        if (entries && entries.length > 0 && onAddFiles) {
+          onAddFiles([], undefined, entries);
+        }
+      });
     }
   };
 
@@ -328,16 +364,30 @@ export function Composer({
 
   const handleDrop = (e: React.DragEvent) => {
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      const imageFiles: File[] = [];
-      for (let i = 0; i < e.dataTransfer.files.length; i++) {
-        const file = e.dataTransfer.files[i];
-        if (isSupportedImage(file)) {
-          imageFiles.push(file);
+      e.preventDefault();
+      e.stopPropagation();
+      const files = Array.from(e.dataTransfer.files);
+      const directories = new Set<File>();
+      let fileIdx = 0;
+      if (e.dataTransfer.items) {
+        for (let i = 0; i < e.dataTransfer.items.length; i++) {
+          const item = e.dataTransfer.items[i];
+          if (item.kind !== "file") continue;
+          const f = files[fileIdx++];
+          if (
+            typeof item.webkitGetAsEntry === "function" &&
+            item.webkitGetAsEntry()?.isDirectory === true &&
+            f !== undefined
+          ) {
+            directories.add(f);
+          }
         }
       }
-      if (imageFiles.length > 0) {
-        e.preventDefault();
-        onAddImages(imageFiles);
+      if (onAddFiles) {
+        onAddFiles(files, directories);
+      } else if (onAddImages) {
+        const imageFiles = files.filter(isSupportedImage);
+        if (imageFiles.length > 0) onAddImages(imageFiles);
       }
     }
   };
@@ -422,7 +472,13 @@ export function Composer({
           setCursorPos(e.target.selectionStart);
           onInputChange(e.target.value);
         }}
-        onPaste={handlePaste}
+        onPaste={(e) => {
+          if (onPaste) {
+            onPaste(e);
+          } else {
+            handlePaste(e);
+          }
+        }}
         onKeyDown={(e) => {
           if (isMenuOpen) {
             if (e.key === "ArrowDown") {
@@ -539,12 +595,16 @@ export function Composer({
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/png,image/jpeg,image/webp,image/gif"
           multiple
           style={{ display: "none" }}
           onChange={(e) => {
             if (e.target.files && e.target.files.length > 0) {
-              onAddImages(Array.from(e.target.files));
+              const files = Array.from(e.target.files);
+              if (onAddFiles) {
+                onAddFiles(files);
+              } else if (onAddImages) {
+                onAddImages(files);
+              }
             }
             e.target.value = "";
           }}
@@ -553,8 +613,8 @@ export function Composer({
           type="button"
           className="native-composer-attach-btn"
           onClick={() => fileInputRef.current?.click()}
-          title={t("composer.addImage")}
-          aria-label={t("composer.addImage")}
+          title={t("composer.attachFile")}
+          aria-label={t("composer.attachFile")}
         >
           <svg
             viewBox="0 0 24 24"
@@ -566,9 +626,7 @@ export function Composer({
             strokeLinecap="round"
             strokeLinejoin="round"
           >
-            <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
-            <circle cx="8.5" cy="8.5" r="1.5" />
-            <path d="m21 15-5-5L5 21" />
+            <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l7.88-7.87" />
           </svg>
         </button>
         {/* 控件组自身占满工具行：图片按钮与权限贴左，模型与推理档位贴右（紧邻发送按钮） */}

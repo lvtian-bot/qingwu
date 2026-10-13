@@ -64,28 +64,80 @@ export function detectAtTrigger(input: string, cursorPos?: number): AtTriggerRes
 }
 
 /**
+ * 将绝对路径或相对路径转换为相对于 cwd 的标准展示路径（POSIX 风格分隔符）。
+ * 跨盘符或无法相对化时回退原路径；同盘符或子路径则转为相对路径。
+ */
+export function relativizePathToCwd(rawPath: string, cwd?: string | null): string {
+  if (!rawPath) return '';
+  const trimmed = rawPath.trim();
+  if (!cwd) return trimmed.replace(/\\/g, '/');
+
+  const norm = (s: string) => s.replace(/\\/g, '/').replace(/\/+$/, '');
+  const np = norm(trimmed);
+  const nc = norm(cwd);
+
+  if (nc && np.toLowerCase() === nc.toLowerCase()) {
+    return '.';
+  }
+  if (nc && np.toLowerCase().startsWith(nc.toLowerCase() + '/')) {
+    return np.slice(nc.length + 1);
+  }
+  return np;
+}
+
+/**
  * 将选中的文件或目录格式化为 Prompt 文本规范。
  * 对齐官方 formatFileMention 逻辑：
  * 包含空格或显式要求引号时使用 @"path"；目录后追加 /；
- * 若目录包含引号或显式保留引号，其末尾引号保持开放以便下钻继续输入。
+ * 若目录包含引号或显式保留引号，其末尾引号在 closeQuote=false 时保持开放以便下钻继续输入。
+ * 当 closeQuote=true（默认或拖拽/最终插入时），目录引号闭合。
  */
 export function formatFileMention(
   candidate: FileReferenceCandidate,
   preserveQuote = false,
+  closeQuote = false,
 ): string | undefined {
   const path = candidate.kind === 'directory' ? `${candidate.path}/` : candidate.path;
   // 检查是否包含控制字符或非法字符
   if (/[\u0000-\u001f\u007f-\u009f"]/u.test(path)) return undefined;
 
-  const needsQuote = preserveQuote || /\s/u.test(path);
+  // 若包含空格或会被 parseUserTextMentions 截断的中英文标点与括号，必须加双引号保护
+  const needsQuote =
+    preserveQuote ||
+    /\s/u.test(path) ||
+    /[，。！？、；：“”‘’（）()]/u.test(path);
   if (!needsQuote) {
     return `@${path}`;
   }
 
-  if (candidate.kind === 'directory') {
+  if (candidate.kind === 'directory' && !closeQuote) {
     return `@"${path}`;
   }
   return `@"${path}"`;
+}
+
+/**
+ * 将相对或绝对路径转换为适合发送的 @ 文件引用字符串。
+ * 若指定了 cwd，优先转换为相对于 cwd 的相对路径。
+ * 拖放或最终落地插入时 closeQuote 默认为 true，确保含空格目录闭合引号。
+ */
+export function formatFileMentionFromPath(
+  rawPath: string,
+  cwd?: string | null,
+  isDirectory = false,
+  closeQuote = true,
+): string | undefined {
+  if (!rawPath) return undefined;
+  const rel = relativizePathToCwd(rawPath, cwd);
+  if (!rel) return undefined;
+  return formatFileMention(
+    {
+      path: rel,
+      kind: isDirectory ? 'directory' : 'file',
+    },
+    false,
+    closeQuote,
+  );
 }
 
 export interface UserTextSegment {

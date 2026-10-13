@@ -14,10 +14,13 @@ import {
   MAX_IMAGES_PER_MESSAGE,
   type DraftImage,
 } from "./images";
+import { formatFileMentionFromPath } from "./file-mentions";
 
 interface ComposerDraftsOptions {
   /** 当前会话 id 的最新值（异步回调里取归属桶）。 */
   currentIdRef: RefObject<string | null>;
+  /** 当前会话工作目录（文件转 @ 引用时的相对基准）。 */
+  currentCwdRef?: RefObject<string | null | undefined>;
   setError: (message: string | null) => void;
 }
 
@@ -28,6 +31,7 @@ interface DraftVersion {
 
 export function useComposerDrafts({
   currentIdRef,
+  currentCwdRef,
   setError,
 }: ComposerDraftsOptions) {
   const t = useT();
@@ -41,6 +45,13 @@ export function useComposerDrafts({
   const composerImagesRef = useRef<Map<string, DraftImage[]>>(new Map());
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const revisionsRef = useRef(new Map<string, number>());
+  /** 记录草稿提交清空/废弃的世代号，仅在草稿被发送或删除时递增，普通打字不改变它 */
+  const clearGenerationsRef = useRef(new Map<string, number>());
+  const bumpClearGeneration = useCallback((key: string) => {
+    const nextGen = (clearGenerationsRef.current.get(key) ?? 0) + 1;
+    clearGenerationsRef.current.set(key, nextGen);
+    return nextGen;
+  }, []);
   const touch = useCallback((key: string): DraftVersion => {
     const revision = (revisionsRef.current.get(key) ?? 0) + 1;
     revisionsRef.current.set(key, revision);
@@ -70,7 +81,7 @@ export function useComposerDrafts({
   );
 
   const handleAddImages = useCallback(
-    (files: File[]) => {
+    (files: File[], targetSessionId?: string | null) => {
       const valid: File[] = [];
       for (const f of files) {
         if (!isSupportedImage(f)) {
@@ -85,7 +96,7 @@ export function useComposerDrafts({
       }
       if (valid.length === 0) return;
 
-      const key = currentIdRef.current ?? "";
+      const key = (targetSessionId !== undefined ? targetSessionId : currentIdRef.current) ?? "";
       const prev = composerImagesRef.current.get(key) ?? [];
       if (prev.length + valid.length > MAX_IMAGES_PER_MESSAGE) {
         setError(t("composer.tooManyImages", { count: MAX_IMAGES_PER_MESSAGE }));
@@ -108,11 +119,21 @@ export function useComposerDrafts({
             item.base64 = b64;
             const dataUrl = `data:${mediaType};base64,${b64}`;
             item.previewUrl = dataUrl;
-            setDraftImages((cur) =>
-              cur.map((d) =>
+            // 更新对应会话桶中的 draftImage 项
+            const bucketImgs = composerImagesRef.current.get(key);
+            if (bucketImgs) {
+              const updated = bucketImgs.map((d) =>
                 d.id === id ? { ...d, base64: b64, previewUrl: dataUrl } : d,
-              ),
-            );
+              );
+              composerImagesRef.current.set(key, updated);
+            }
+            if ((currentIdRef.current ?? "") === key) {
+              setDraftImages((cur) =>
+                cur.map((d) =>
+                  d.id === id ? { ...d, base64: b64, previewUrl: dataUrl } : d,
+                ),
+              );
+            }
           })
           // 图片读取失败时上横幅提示（文案走词条，中文与 images.tsx 内原错误文案一致）
           .catch(() => {
@@ -123,9 +144,161 @@ export function useComposerDrafts({
       const next = [...prev, ...newItems];
       touch(key);
       composerImagesRef.current.set(key, next);
-      setDraftImages(next);
+      if ((currentIdRef.current ?? "") === key) {
+        setDraftImages(next);
+      }
     },
     [currentIdRef, setError, touch, t],
+  );
+
+  /**
+   * 将选中的外部文件分流处理：
+   * - 支持的图片文件：加入草稿图片附件（最多 MAX_IMAGES_PER_MESSAGE 张）；
+   * - 非图片文件（或目录）：提取本地路径并按相对当前会话工作区（cwd）转换为 @ 引用追加到输入框。
+   */
+  const handleAddFiles = useCallback(
+    (
+      files: File[],
+      directories?: Set<File>,
+      rawEntries?: Array<{ path: string; isDirectory: boolean; isImage: boolean }>,
+      targetCwd?: string | null,
+      targetSessionId?: string | null,
+    ) => {
+      if ((!files || files.length === 0) && (!rawEntries || rawEntries.length === 0)) return;
+      const key = (targetSessionId !== undefined ? targetSessionId : currentIdRef.current) ?? "";
+      const images: File[] = [];
+      const mentions: string[] = [];
+      const cwd = targetCwd !== undefined ? targetCwd : currentCwdRef?.current;
+
+      for (const f of files || []) {
+        const isDir = directories ? directories.has(f) : false;
+        if (!isDir && isSupportedImage(f)) {
+          images.push(f);
+        } else {
+          // 通过 window.qingwu.getPathForFile 获取 Electron webUtils 提供的本地绝对路径
+          const filePath =
+            window.qingwu?.getPathForFile?.(f) ||
+            (f as { path?: string }).path ||
+            '';
+          if (filePath) {
+            const formatted = formatFileMentionFromPath(filePath, cwd, isDir);
+            if (formatted) {
+              mentions.push(formatted);
+            }
+          } else {
+            setError(t("composer.attachmentPathUnavailable"));
+          }
+        }
+      }
+
+      if (rawEntries && rawEntries.length > 0) {
+        const imageEntries: Array<{ path: string; isDirectory: boolean; isImage: boolean }> = [];
+        for (const entry of rawEntries) {
+          if (entry.isImage) {
+            imageEntries.push(entry);
+          } else {
+            const formatted = formatFileMentionFromPath(entry.path, cwd, entry.isDirectory);
+            if (formatted) {
+              mentions.push(formatted);
+            }
+          }
+        }
+
+        if (imageEntries.length > 0) {
+          const expectedClearGen = clearGenerationsRef.current.get(key) ?? 0;
+          Promise.all(
+            imageEntries.map(async (entry) => {
+              if (!window.qingwu?.readLocalImage) {
+                return { kind: "fallback", path: entry.path } as const;
+              }
+              const res = await window.qingwu.readLocalImage(entry.path);
+              if (!res) {
+                // 超限(>20MB)或读取失败：不吞掉，降级为插入 @ 路径引用并报错提示
+                return { kind: "fallback", path: entry.path, reason: "tooLarge" } as const;
+              }
+              const name = entry.path.split(/[\\/]/).pop() || "image.png";
+              const r = await fetch(res.dataUrl);
+              const blob = await r.blob();
+              const file = new File([blob], name, { type: res.mimeType });
+              return { kind: "file", file } as const;
+            }),
+          )
+            .then((results) => {
+              // 仅当草稿已被提交发送或销毁（clearGeneration已变动）时丢弃；用户普通打字或追加文本不影响图片正常追加
+              const currentClearGen = clearGenerationsRef.current.get(key) ?? 0;
+              if (currentClearGen !== expectedClearGen) return;
+
+              const validFiles: File[] = [];
+              const fallbackMentions: string[] = [];
+              for (const item of results) {
+                if (item.kind === "file") {
+                  validFiles.push(item.file);
+                } else {
+                  if (item.reason === "tooLarge") {
+                    setError(t("composer.imageTooLarge", { name: item.path.split(/[\\/]/).pop() || item.path }));
+                  }
+                  const formatted = formatFileMentionFromPath(item.path, cwd, false);
+                  if (formatted) fallbackMentions.push(formatted);
+                }
+              }
+
+              if (validFiles.length > 0) {
+                handleAddImages(validFiles, key);
+              }
+
+              if (fallbackMentions.length > 0) {
+                const prevText = composerDraftsRef.current.get(key) ?? ((currentIdRef.current ?? "") === key ? input : "");
+                const insertText = fallbackMentions.join(" ");
+                const nextText = prevText
+                  ? prevText.endsWith(" ") || prevText.endsWith("\n")
+                    ? `${prevText}${insertText} `
+                    : `${prevText} ${insertText} `
+                  : `${insertText} `;
+                touch(key);
+                composerDraftsRef.current.set(key, nextText);
+                if ((currentIdRef.current ?? "") === key) {
+                  setInput(nextText);
+                  setTimeout(() => {
+                    if (textareaRef.current) {
+                      textareaRef.current.focus();
+                      const len = nextText.length;
+                      textareaRef.current.setSelectionRange(len, len);
+                    }
+                  }, 0);
+                }
+              }
+            })
+            .catch(() => {});
+        }
+      }
+
+      if (images.length > 0) {
+        handleAddImages(images, key);
+      }
+
+      if (mentions.length > 0) {
+        const prevText = composerDraftsRef.current.get(key) ?? ((currentIdRef.current ?? "") === key ? input : "");
+        const insertText = mentions.join(" ");
+        const nextText = prevText
+          ? prevText.endsWith(" ") || prevText.endsWith("\n")
+            ? `${prevText}${insertText} `
+            : `${prevText} ${insertText} `
+          : `${insertText} `;
+        touch(key);
+        composerDraftsRef.current.set(key, nextText);
+        if ((currentIdRef.current ?? "") === key) {
+          setInput(nextText);
+          setTimeout(() => {
+            if (textareaRef.current) {
+              textareaRef.current.focus();
+              const len = nextText.length;
+              textareaRef.current.setSelectionRange(len, len);
+            }
+          }, 0);
+        }
+      }
+    },
+    [currentCwdRef, currentIdRef, handleAddImages, input, setError, t, touch],
   );
 
   const handleRemoveDraftImage = useCallback(
@@ -145,7 +318,7 @@ export function useComposerDrafts({
     [currentIdRef, touch],
   );
 
-  // 全局剪贴板粘贴监听：未聚焦输入框时粘贴图片也自动加入当前草稿并聚焦
+  // 全局剪贴板粘贴监听：未聚焦输入框时粘贴图片或文件也自动分流加入当前草稿并聚焦
   useEffect(() => {
     const onGlobalPaste = (e: ClipboardEvent) => {
       // 只要光标在任何输入元素（包括主输入框），都由该元素自身的 onPaste 独立处理，此处直接跳过
@@ -160,30 +333,57 @@ export function useComposerDrafts({
       }
       const clipboardData = e.clipboardData;
       if (!clipboardData) return;
-      const imageFiles: File[] = [];
+      const files: File[] = [];
+      const directories = new Set<File>();
       if (clipboardData.files && clipboardData.files.length > 0) {
         for (let i = 0; i < clipboardData.files.length; i++) {
-          const file = clipboardData.files[i];
-          if (isSupportedImage(file)) imageFiles.push(file);
+          files.push(clipboardData.files[i]);
         }
-      } else if (clipboardData.items) {
+      }
+      if (clipboardData.items) {
+        const hadFiles = files.length > 0;
+        let fileIdx = 0;
         for (let i = 0; i < clipboardData.items.length; i++) {
           const item = clipboardData.items[i];
           if (item.kind === "file") {
             const file = item.getAsFile();
-            if (file && isSupportedImage(file)) imageFiles.push(file);
+            if (file) {
+              if (!hadFiles) {
+                files.push(file);
+              }
+              const f = hadFiles ? files[fileIdx++] : file;
+              if (
+                f &&
+                typeof item.webkitGetAsEntry === "function" &&
+                item.webkitGetAsEntry()?.isDirectory === true
+              ) {
+                directories.add(f);
+              }
+            }
           }
         }
       }
-      if (imageFiles.length > 0) {
+      if (files.length > 0) {
         e.preventDefault();
-        handleAddImages(imageFiles);
+        handleAddFiles(files, directories);
         textareaRef.current?.focus();
+      } else if (window.qingwu?.readClipboardFilePaths) {
+        // 记录触发时的会话 id 与 cwd，防止异步返回时已切换会话
+        const capturedSessionId = currentIdRef.current;
+        const capturedCwd = currentCwdRef?.current;
+        window.qingwu.readClipboardFilePaths().then((entries) => {
+          if (entries && entries.length > 0) {
+            handleAddFiles([], undefined, entries, capturedCwd, capturedSessionId);
+            if (currentIdRef.current === capturedSessionId) {
+              textareaRef.current?.focus();
+            }
+          }
+        });
       }
     };
     window.addEventListener("paste", onGlobalPaste);
     return () => window.removeEventListener("paste", onGlobalPaste);
-  }, [handleAddImages]);
+  }, [handleAddFiles]);
 
   const handleChatDragOver = (e: ReactDragEvent) => {
     if (e.dataTransfer.types.includes("Files")) {
@@ -194,18 +394,26 @@ export function useComposerDrafts({
 
   const handleChatDrop = (e: ReactDragEvent) => {
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      const imageFiles: File[] = [];
-      for (let i = 0; i < e.dataTransfer.files.length; i++) {
-        const file = e.dataTransfer.files[i];
-        if (isSupportedImage(file)) {
-          imageFiles.push(file);
+      e.preventDefault();
+      const files = Array.from(e.dataTransfer.files);
+      const directories = new Set<File>();
+      let fileIdx = 0;
+      if (e.dataTransfer.items) {
+        for (let i = 0; i < e.dataTransfer.items.length; i++) {
+          const item = e.dataTransfer.items[i];
+          if (item.kind !== "file") continue;
+          const f = files[fileIdx++];
+          if (
+            typeof item.webkitGetAsEntry === "function" &&
+            item.webkitGetAsEntry()?.isDirectory === true &&
+            f !== undefined
+          ) {
+            directories.add(f);
+          }
         }
       }
-      if (imageFiles.length > 0) {
-        e.preventDefault();
-        handleAddImages(imageFiles);
-        textareaRef.current?.focus();
-      }
+      handleAddFiles(files, directories);
+      textareaRef.current?.focus();
     }
   };
 
@@ -217,6 +425,7 @@ export function useComposerDrafts({
     ): DraftVersion | null => {
       if ((revisionsRef.current.get(source.key) ?? 0) !== source.revision)
         return null;
+      bumpClearGeneration(source.key);
       composerDraftsRef.current.delete(source.key);
       composerImagesRef.current.delete(source.key);
       touch(source.key);
@@ -233,15 +442,16 @@ export function useComposerDrafts({
       }
       return targetHasDraft ? null : touch(key);
     },
-    [captureForSubmit, currentIdRef, touch],
+    [bumpClearGeneration, captureForSubmit, currentIdRef, touch],
   );
 
   /** 「/model」类本地命令：只清文本输入与文本草稿桶，不动图片。 */
   const clearTextDraft = useCallback(
     (sessionId: string | null) => {
+      const key = sessionId ?? "";
       setInput("");
-      composerDraftsRef.current.delete(sessionId ?? "");
-      touch(sessionId ?? "");
+      composerDraftsRef.current.delete(key);
+      touch(key);
     },
     [touch],
   );
@@ -271,33 +481,73 @@ export function useComposerDrafts({
     setDraftImages(composerImagesRef.current.get(sessionId ?? "") ?? []);
   }, []);
 
-  /** 草稿随人迁移（换工作区落点时旧会话草稿转到新会话，旧桶清空）。 */
-  const migrateBuckets = useCallback(
-    (fromId: string, toId: string) => {
-      touch(fromId);
-      touch(toId);
-      const pending = composerDraftsRef.current.get(fromId);
-      if (pending !== undefined) {
-        composerDraftsRef.current.set(toId, pending);
-        composerDraftsRef.current.delete(fromId);
-      }
-      const pendingImgs = composerImagesRef.current.get(fromId);
-      if (pendingImgs !== undefined) {
-        composerImagesRef.current.set(toId, pendingImgs);
-        composerImagesRef.current.delete(fromId);
-      }
-    },
-    [touch],
-  );
-
   /** 会话已删除：草稿桶与图片一并清理（内存态，避免残留）。 */
   const discardFor = useCallback(
     (sessionId: string) => {
+      bumpClearGeneration(sessionId);
       touch(sessionId);
       composerDraftsRef.current.delete(sessionId);
       composerImagesRef.current.delete(sessionId);
     },
-    [touch],
+    [bumpClearGeneration, touch],
+  );
+
+  /** 处理输入框自身的 onPaste 事件：提取文件或通过 Electron 剪贴板提取路径，支持切换会话安全与目录识别 */
+  const handleComposerPaste = useCallback(
+    (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+      const clipboardData = e.clipboardData;
+      if (!clipboardData) return;
+      const files: File[] = [];
+      const directories = new Set<File>();
+      if (clipboardData.files && clipboardData.files.length > 0) {
+        for (let i = 0; i < clipboardData.files.length; i++) {
+          files.push(clipboardData.files[i]);
+        }
+      }
+      if (clipboardData.items) {
+        const hadFiles = files.length > 0;
+        let fileIdx = 0;
+        for (let i = 0; i < clipboardData.items.length; i++) {
+          const item = clipboardData.items[i];
+          if (item.kind === "file") {
+            const file = item.getAsFile();
+            if (file) {
+              if (!hadFiles) {
+                files.push(file);
+              }
+              const f = hadFiles ? files[fileIdx++] : file;
+              if (
+                f &&
+                typeof item.webkitGetAsEntry === "function" &&
+                item.webkitGetAsEntry()?.isDirectory === true
+              ) {
+                directories.add(f);
+              }
+            }
+          }
+        }
+      }
+      if (files.length > 0) {
+        e.stopPropagation();
+        handleAddFiles(files, directories);
+        const text = clipboardData.getData("text/plain");
+        if (!text) {
+          e.preventDefault();
+        }
+      } else if (window.qingwu?.readClipboardFilePaths) {
+        const capturedSessionId = currentIdRef.current;
+        const capturedCwd = currentCwdRef?.current;
+        window.qingwu.readClipboardFilePaths().then((entries) => {
+          if (entries && entries.length > 0) {
+            handleAddFiles([], undefined, entries, capturedCwd, capturedSessionId);
+            if (currentIdRef.current === capturedSessionId) {
+              textareaRef.current?.focus();
+            }
+          }
+        });
+      }
+    },
+    [currentCwdRef, currentIdRef, handleAddFiles],
   );
 
   return {
@@ -306,7 +556,9 @@ export function useComposerDrafts({
     textareaRef,
     handleInputChange,
     handleAddImages,
+    handleAddFiles,
     handleRemoveDraftImage,
+    handleComposerPaste,
     handleChatDragOver,
     handleChatDrop,
     clearForSubmit,
@@ -314,7 +566,6 @@ export function useComposerDrafts({
     clearTextDraft,
     restoreAfterFailure,
     loadForSession,
-    migrateBuckets,
     discardFor,
   };
 }

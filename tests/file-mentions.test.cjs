@@ -6,7 +6,9 @@ const { loadTs } = require('./helpers/load-ts.cjs');
 const {
   detectAtTrigger,
   formatFileMention,
+  formatFileMentionFromPath,
   parseUserTextMentions,
+  relativizePathToCwd,
 } = loadTs('src/renderer/src/native/file-mentions.ts');
 
 test('detectAtTrigger 能够正确识别 @ 与 @" 的触发以及词边界', () => {
@@ -111,4 +113,47 @@ test('parseUserTextMentions 将用户文本解析为纯文本与引用药丸', (
   const segs4 = parseUserTextMentions('邮箱 user@example.com 请忽略');
   assert.equal(segs4.length, 1);
   assert.equal(segs4[0].kind, 'text');
+});
+
+test('relativizePathToCwd 能够正确折算相对于 cwd 的路径', () => {
+  assert.equal(relativizePathToCwd('D:\\code\\qingwu\\src\\index.ts', 'D:\\code\\qingwu'), 'src/index.ts');
+  assert.equal(relativizePathToCwd('D:/code/qingwu/docs/TODO.md', 'D:/code/qingwu/'), 'docs/TODO.md');
+  assert.equal(relativizePathToCwd('D:\\code\\qingwu', 'D:\\code\\qingwu'), '.');
+  assert.equal(relativizePathToCwd('E:\\other\\file.txt', 'D:\\code\\qingwu'), 'E:/other/file.txt');
+  assert.equal(relativizePathToCwd('relative/path.txt', 'D:\\code\\qingwu'), 'relative/path.txt');
+  assert.equal(relativizePathToCwd('D:\\code\\qingwu\\path with spaces\\a.txt', 'D:\\code\\qingwu'), 'path with spaces/a.txt');
+});
+
+test('formatFileMentionFromPath 能够根据路径与 cwd 生成正确的引用字符串', () => {
+  assert.equal(
+    formatFileMentionFromPath('D:\\code\\qingwu\\src\\index.ts', 'D:\\code\\qingwu'),
+    '@src/index.ts',
+  );
+  assert.equal(
+    formatFileMentionFromPath('D:\\code\\qingwu\\docs folder\\readme.txt', 'D:\\code\\qingwu'),
+    '@"docs folder/readme.txt"',
+  );
+  // 拖放或最终落地插入默认闭合双引号
+  assert.equal(
+    formatFileMentionFromPath('D:\\code\\qingwu\\docs folder', 'D:\\code\\qingwu', true),
+    '@"docs folder/"',
+  );
+  // 下钻模式可显式指定 closeQuote=false 保持开放引号
+  assert.equal(
+    formatFileMentionFromPath('D:\\code\\qingwu\\docs folder', 'D:\\code\\qingwu', true, false),
+    '@"docs folder/',
+  );
+  assert.equal(
+    formatFileMentionFromPath('my-file.md', 'D:\\code\\qingwu'),
+    '@my-file.md',
+  );
+  // 中英文标点及括号保护：避免 parseUserTextMentions 截断
+  assert.equal(
+    formatFileMentionFromPath('D:\\code\\qingwu\\report(1).pdf', 'D:\\code\\qingwu'),
+    '@"report(1).pdf"',
+  );
+  assert.equal(
+    formatFileMentionFromPath('D:\\code\\qingwu\\报告（最终）.docx', 'D:\\code\\qingwu'),
+    '@"报告（最终）.docx"',
+  );
 });
