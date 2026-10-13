@@ -447,7 +447,7 @@ test("migrateAppShortcuts 自动扫描并迁移遗留快捷方式的 AppUserMode
               appUserModelId: "electron.app.青梧",
             };
           }
-          if (filePath.endsWith("青梧.lnk")) {
+          if (filePath.endsWith("青梧.lnk") || filePath.endsWith("implicit.lnk")) {
             return {
               target: "C:/Users/test/AppData/Local/Programs/qingwu/qingwu.exe",
               appUserModelId: "legacy.identity",
@@ -472,9 +472,19 @@ test("migrateAppShortcuts 自动扫描并迁移遗留快捷方式的 AppUserMode
       readdirSync: (dirPath) => {
         if (dirPath.includes("TaskBar")) {
           return [
-            { isFile: () => true, name: "青梧.lnk" },
-            { isFile: () => true, name: "青梧 (2).lnk" },
-            { isFile: () => true, name: "其他.lnk" },
+            { isFile: () => true, isDirectory: () => false, name: "青梧.lnk" },
+            { isFile: () => true, isDirectory: () => false, name: "青梧 (2).lnk" },
+            { isFile: () => true, isDirectory: () => false, name: "其他.lnk" },
+          ];
+        }
+        if (dirPath.endsWith("ImplicitAppShortcuts")) {
+          return [
+            { isFile: () => false, isDirectory: () => true, name: "a1b2c3d4" },
+          ];
+        }
+        if (dirPath.includes("a1b2c3d4")) {
+          return [
+            { isFile: () => true, isDirectory: () => false, name: "implicit.lnk" },
           ];
         }
         return [];
@@ -484,9 +494,10 @@ test("migrateAppShortcuts 自动扫描并迁移遗留快捷方式的 AppUserMode
   });
   migrateAppShortcuts("com.qingwu.desktop");
   if (process.platform === "win32") {
-    assert.equal(updated.length, 1);
-    assert.equal(updated[0].filePath.endsWith("青梧.lnk"), true);
-    assert.equal(updated[0].details.appUserModelId, "com.qingwu.desktop");
+    assert.equal(updated.length, 2);
+    assert.equal(updated.some((u) => u.filePath.endsWith("青梧.lnk")), true);
+    assert.equal(updated.some((u) => u.filePath.endsWith("implicit.lnk")), true);
+    assert.equal(updated.every((u) => u.details.appUserModelId === "com.qingwu.desktop"), true);
     assert.equal(warnings.some((w) => w.includes("写入快捷方式 AppUserModelId 失败")), true);
   }
 });
