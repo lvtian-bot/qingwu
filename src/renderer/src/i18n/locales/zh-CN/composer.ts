@@ -7,8 +7,10 @@ export const composer = {
   queueSendTitle: "排队发送（{key}+Enter 插话发送）",
   steerQueueHint: "{key}+Enter 插话发送全部排队消息",
 
-  /** 草稿图片附件与校验提示。 */
+  /** 草稿附件与校验提示。 */
+  attachFile: "添加附件",
   addImage: "添加图片",
+  attachmentPathUnavailable: "无法获取文件路径",
   removeImage: "删除图片",
   previewImage: "点击预览大图",
   imageReadFailed: "读取图片失败",

@@ -134,14 +134,18 @@ export function NativeApp({
   const { dshConnected, reconnecting, handleManualReconnect } =
     useEngineConnection();
 
-  const drafts = useComposerDrafts({ currentIdRef, setError });
+  const currentCwdRef = useRef<string | null | undefined>(undefined);
+
+  const drafts = useComposerDrafts({ currentIdRef, currentCwdRef, setError });
   const {
     input,
     draftImages,
     textareaRef,
     handleInputChange,
     handleAddImages,
+    handleAddFiles,
     handleRemoveDraftImage,
+    handleComposerPaste,
     handleChatDragOver,
     handleChatDrop,
     clearForSubmit,
@@ -257,7 +261,6 @@ export function NativeApp({
     workspaceOfSession,
     refreshSessions,
     setError,
-    drafts,
     setSessions,
     setWorkspaces,
     setArchivedSessionIds,
@@ -379,6 +382,7 @@ export function NativeApp({
     () => sessions.find((s) => s.sessionId === currentId)?.cwd,
     [sessions, currentId],
   );
+  currentCwdRef.current = currentCwd ?? activeWorkspace?.path ?? null;
 
   /**
    * 当前会话的用量/上下文投影（占用环数据源）。来自 session/list 的投影列，
@@ -915,6 +919,8 @@ export function NativeApp({
                   draftImages={draftImages}
                   onRemoveDraftImage={handleRemoveDraftImage}
                   onAddImages={handleAddImages}
+                  onAddFiles={handleAddFiles}
+                  onPaste={handleComposerPaste}
                   onPreviewImage={handlePreviewImage}
                   commands={availableCommands}
                   onExecuteCommand={(line) => void handleExecuteCommand(line)}
@@ -1051,7 +1057,6 @@ export function NativeApp({
                           onPreviewImage={handlePreviewImage}
                           onOpenFile={openFileInPanel}
                         />
-                        <span className="native-cursor" />
                       </div>
                     </div>
                   )}
@@ -1122,6 +1127,8 @@ export function NativeApp({
                     draftImages={draftImages}
                     onRemoveDraftImage={handleRemoveDraftImage}
                     onAddImages={handleAddImages}
+                    onAddFiles={handleAddFiles}
+                    onPaste={handleComposerPaste}
                     onPreviewImage={handlePreviewImage}
                     commands={availableCommands}
                     onExecuteCommand={(line) => void handleExecuteCommand(line)}

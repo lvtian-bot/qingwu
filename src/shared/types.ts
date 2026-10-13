@@ -183,4 +183,11 @@ export interface QingwuApi {
   }) => Promise<void>;
   /** 监听用户点击桌面通知后跳转到指定会话的事件。 */
   onNotificationNavigate: (listener: (sessionId: string) => void) => () => void;
+  /** 获取 Electron 中 File 对象的本地文件绝对路径（兼容 webUtils.getPathForFile）。 */
+  getPathForFile: (file: File) => string;
+  /** 从系统剪贴板读取复制的本地文件路径列表（例如从 Windows 资源管理器复制的文件或文件夹）。 */
+  /** 剪贴板文件条目元数据 */
+  readClipboardFilePaths: () => Promise<
+    Array<{ path: string; isDirectory: boolean; isImage: boolean }>
+  >;
 }

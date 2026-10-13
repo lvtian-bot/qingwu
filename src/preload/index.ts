@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type { IpcRendererEvent } from 'electron';
 import type {
   AppSettings,
@@ -179,6 +179,14 @@ const api: QingwuApi = {
     ipcRenderer.on('notification:navigate', handler);
     return () => ipcRenderer.removeListener('notification:navigate', handler);
   },
+  getPathForFile: (file: File) => {
+    try {
+      return webUtils.getPathForFile(file);
+    } catch {
+      return '';
+    }
+  },
+  readClipboardFilePaths: () => ipcRenderer.invoke('clipboard:readFilePaths'),
 };
 
 contextBridge.exposeInMainWorld('qingwu', api);
