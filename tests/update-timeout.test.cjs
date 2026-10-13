@@ -2,6 +2,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const os = require("node:os");
 const { EventEmitter } = require("node:events");
 const { loadTs } = require("./helpers/load-ts.cjs");
 
@@ -13,15 +14,20 @@ function createMockAutoUpdater() {
   return emitter;
 }
 
+function createMockApp() {
+  return {
+    getVersion: () => "0.2.8",
+    getLocale: () => "zh-CN",
+    isPackaged: true,
+    getPath: () => os.tmpdir(),
+  };
+}
+
 test("UpdateService 在检查更新超时时切换为超时错误状态", async () => {
   const mockUpdater = createMockAutoUpdater();
   const { UpdateService, CHECK_TIMEOUT_MS } = loadTs("src/main/update.ts", {
     electron: {
-      app: {
-        getVersion: () => "0.2.8",
-        getLocale: () => "zh-CN",
-        isPackaged: true,
-      },
+      app: createMockApp(),
     },
     "electron-updater": {
       autoUpdater: mockUpdater,
@@ -65,11 +71,7 @@ test("UpdateService 在超时前成功收到新版本时清除超时定时器", 
   const mockUpdater = createMockAutoUpdater();
   const { UpdateService } = loadTs("src/main/update.ts", {
     electron: {
-      app: {
-        getVersion: () => "0.2.8",
-        getLocale: () => "zh-CN",
-        isPackaged: true,
-      },
+      app: createMockApp(),
     },
     "electron-updater": {
       autoUpdater: mockUpdater,
@@ -94,11 +96,7 @@ test("UpdateService 超时后重试能够成功切入新状态", async () => {
   const mockUpdater = createMockAutoUpdater();
   const { UpdateService } = loadTs("src/main/update.ts", {
     electron: {
-      app: {
-        getVersion: () => "0.2.8",
-        getLocale: () => "zh-CN",
-        isPackaged: true,
-      },
+      app: createMockApp(),
     },
     "electron-updater": {
       autoUpdater: mockUpdater,
