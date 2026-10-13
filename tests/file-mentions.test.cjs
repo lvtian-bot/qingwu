@@ -133,8 +133,14 @@ test('formatFileMentionFromPath 能够根据路径与 cwd 生成正确的引用�
     formatFileMentionFromPath('D:\\code\\qingwu\\docs folder\\readme.txt', 'D:\\code\\qingwu'),
     '@"docs folder/readme.txt"',
   );
+  // 拖放或最终落地插入默认闭合双引号
   assert.equal(
     formatFileMentionFromPath('D:\\code\\qingwu\\docs folder', 'D:\\code\\qingwu', true),
+    '@"docs folder/"',
+  );
+  // 下钻模式可显式指定 closeQuote=false 保持开放引号
+  assert.equal(
+    formatFileMentionFromPath('D:\\code\\qingwu\\docs folder', 'D:\\code\\qingwu', true, false),
     '@"docs folder/',
   );
   assert.equal(

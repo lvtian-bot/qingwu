@@ -210,7 +210,7 @@ export function useComposerDrafts({
     [currentIdRef, touch],
   );
 
-  // 全局剪贴板粘贴监听：未聚焦输入框时粘贴图片也自动加入当前草稿并聚焦
+  // 全局剪贴板粘贴监听：未聚焦输入框时粘贴图片或文件也自动分流加入当前草稿并聚焦
   useEffect(() => {
     const onGlobalPaste = (e: ClipboardEvent) => {
       // 只要光标在任何输入元素（包括主输入框），都由该元素自身的 onPaste 独立处理，此处直接跳过
@@ -225,30 +225,29 @@ export function useComposerDrafts({
       }
       const clipboardData = e.clipboardData;
       if (!clipboardData) return;
-      const imageFiles: File[] = [];
+      const files: File[] = [];
       if (clipboardData.files && clipboardData.files.length > 0) {
         for (let i = 0; i < clipboardData.files.length; i++) {
-          const file = clipboardData.files[i];
-          if (isSupportedImage(file)) imageFiles.push(file);
+          files.push(clipboardData.files[i]);
         }
       } else if (clipboardData.items) {
         for (let i = 0; i < clipboardData.items.length; i++) {
           const item = clipboardData.items[i];
           if (item.kind === "file") {
             const file = item.getAsFile();
-            if (file && isSupportedImage(file)) imageFiles.push(file);
+            if (file) files.push(file);
           }
         }
       }
-      if (imageFiles.length > 0) {
+      if (files.length > 0) {
         e.preventDefault();
-        handleAddImages(imageFiles);
+        handleAddFiles(files);
         textareaRef.current?.focus();
       }
     };
     window.addEventListener("paste", onGlobalPaste);
     return () => window.removeEventListener("paste", onGlobalPaste);
-  }, [handleAddImages]);
+  }, [handleAddFiles]);
 
   const handleChatDragOver = (e: ReactDragEvent) => {
     if (e.dataTransfer.types.includes("Files")) {
