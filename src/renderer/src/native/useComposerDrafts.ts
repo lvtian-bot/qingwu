@@ -226,22 +226,36 @@ export function useComposerDrafts({
       const clipboardData = e.clipboardData;
       if (!clipboardData) return;
       const files: File[] = [];
+      const directories = new Set<File>();
       if (clipboardData.files && clipboardData.files.length > 0) {
         for (let i = 0; i < clipboardData.files.length; i++) {
           files.push(clipboardData.files[i]);
         }
-      } else if (clipboardData.items) {
+      }
+      if (clipboardData.items) {
+        let fileIdx = 0;
         for (let i = 0; i < clipboardData.items.length; i++) {
           const item = clipboardData.items[i];
           if (item.kind === "file") {
             const file = item.getAsFile();
-            if (file) files.push(file);
+            if (file) {
+              if (files.length === 0) {
+                files.push(file);
+              }
+              const f = files[fileIdx++] ?? file;
+              if (
+                typeof item.webkitGetAsEntry === "function" &&
+                item.webkitGetAsEntry()?.isDirectory === true
+              ) {
+                directories.add(f);
+              }
+            }
           }
         }
       }
       if (files.length > 0) {
         e.preventDefault();
-        handleAddFiles(files);
+        handleAddFiles(files, directories);
         textareaRef.current?.focus();
       }
     };

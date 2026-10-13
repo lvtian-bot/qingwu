@@ -297,16 +297,30 @@ export function Composer({
     const clipboardData = e.clipboardData;
     if (!clipboardData) return;
     const files: File[] = [];
+    const directories = new Set<File>();
     if (clipboardData.files && clipboardData.files.length > 0) {
       for (let i = 0; i < clipboardData.files.length; i++) {
         files.push(clipboardData.files[i]);
       }
-    } else if (clipboardData.items) {
+    }
+    if (clipboardData.items) {
+      let fileIdx = 0;
       for (let i = 0; i < clipboardData.items.length; i++) {
         const item = clipboardData.items[i];
         if (item.kind === "file") {
           const file = item.getAsFile();
-          if (file) files.push(file);
+          if (file) {
+            if (files.length === 0) {
+              files.push(file);
+            }
+            const f = files[fileIdx++] ?? file;
+            if (
+              typeof item.webkitGetAsEntry === "function" &&
+              item.webkitGetAsEntry()?.isDirectory === true
+            ) {
+              directories.add(f);
+            }
+          }
         }
       }
     }
@@ -314,7 +328,7 @@ export function Composer({
       // 阻止冒泡至全局 window.onpaste，防止单次粘贴触发两次添加
       e.stopPropagation();
       if (onAddFiles) {
-        onAddFiles(files);
+        onAddFiles(files, directories);
       } else if (onAddImages) {
         const imageFiles = files.filter(isSupportedImage);
         if (imageFiles.length > 0) onAddImages(imageFiles);

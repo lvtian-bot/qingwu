@@ -101,7 +101,11 @@ export function formatFileMention(
   // 检查是否包含控制字符或非法字符
   if (/[\u0000-\u001f\u007f-\u009f"]/u.test(path)) return undefined;
 
-  const needsQuote = preserveQuote || /\s/u.test(path);
+  // 若包含空格或会被 parseUserTextMentions 截断的中英文标点与括号，必须加双引号保护
+  const needsQuote =
+    preserveQuote ||
+    /\s/u.test(path) ||
+    /[，。！？、；：“”‘’（）()]/u.test(path);
   if (!needsQuote) {
     return `@${path}`;
   }

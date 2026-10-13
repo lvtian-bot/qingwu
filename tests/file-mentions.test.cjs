@@ -147,4 +147,13 @@ test('formatFileMentionFromPath 能够根据路径与 cwd 生成正确的引用�
     formatFileMentionFromPath('my-file.md', 'D:\\code\\qingwu'),
     '@my-file.md',
   );
+  // 中英文标点及括号保护：避免 parseUserTextMentions 截断
+  assert.equal(
+    formatFileMentionFromPath('D:\\code\\qingwu\\report(1).pdf', 'D:\\code\\qingwu'),
+    '@"report(1).pdf"',
+  );
+  assert.equal(
+    formatFileMentionFromPath('D:\\code\\qingwu\\报告（最终）.docx', 'D:\\code\\qingwu'),
+    '@"报告（最终）.docx"',
+  );
 });
