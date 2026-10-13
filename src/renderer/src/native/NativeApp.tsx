@@ -145,6 +145,7 @@ export function NativeApp({
     handleAddImages,
     handleAddFiles,
     handleRemoveDraftImage,
+    handleComposerPaste,
     handleChatDragOver,
     handleChatDrop,
     clearForSubmit,
@@ -920,6 +921,7 @@ export function NativeApp({
                   onRemoveDraftImage={handleRemoveDraftImage}
                   onAddImages={handleAddImages}
                   onAddFiles={handleAddFiles}
+                  onPaste={handleComposerPaste}
                   onPreviewImage={handlePreviewImage}
                   commands={availableCommands}
                   onExecuteCommand={(line) => void handleExecuteCommand(line)}
@@ -1128,6 +1130,7 @@ export function NativeApp({
                     onRemoveDraftImage={handleRemoveDraftImage}
                     onAddImages={handleAddImages}
                     onAddFiles={handleAddFiles}
+                    onPaste={handleComposerPaste}
                     onPreviewImage={handlePreviewImage}
                     commands={availableCommands}
                     onExecuteCommand={(line) => void handleExecuteCommand(line)}

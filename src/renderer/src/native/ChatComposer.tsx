@@ -37,6 +37,7 @@ interface ChatComposerProps {
     directories?: Set<File>,
     rawEntries?: Array<{ path: string; isDirectory: boolean; isImage: boolean }>,
   ) => void;
+  onPaste?: (e: React.ClipboardEvent<HTMLTextAreaElement>) => void;
   onPreviewImage: (url: string) => void;
   commands: SlashCommandItem[];
   onExecuteCommand: (line: string, options?: { preserveInput?: boolean }) => void;
@@ -71,6 +72,7 @@ export function ChatComposer({
   onRemoveDraftImage,
   onAddImages,
   onAddFiles,
+  onPaste,
   onPreviewImage,
   commands,
   onExecuteCommand,
@@ -100,6 +102,7 @@ export function ChatComposer({
       onRemoveDraftImage={onRemoveDraftImage}
       onAddImages={onAddImages}
       onAddFiles={onAddFiles}
+      onPaste={onPaste}
       onPreviewImage={onPreviewImage}
       commands={commands}
       onExecuteCommand={onExecuteCommand}

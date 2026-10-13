@@ -37,6 +37,7 @@ interface ComposerProps {
     directories?: Set<File>,
     rawEntries?: Array<{ path: string; isDirectory: boolean; isImage: boolean }>,
   ) => void;
+  onPaste?: (e: React.ClipboardEvent<HTMLTextAreaElement>) => void;
   onPreviewImage: (url: string) => void;
   /** 可用斜杠命令列表。 */
   commands?: SlashCommandItem[];
@@ -80,6 +81,7 @@ export function Composer({
   onRemoveDraftImage,
   onAddImages,
   onAddFiles,
+  onPaste,
   onPreviewImage,
   commands,
   onClientCommand,
@@ -468,7 +470,13 @@ export function Composer({
           setCursorPos(e.target.selectionStart);
           onInputChange(e.target.value);
         }}
-        onPaste={handlePaste}
+        onPaste={(e) => {
+          if (onPaste) {
+            onPaste(e);
+          } else {
+            handlePaste(e);
+          }
+        }}
         onKeyDown={(e) => {
           if (isMenuOpen) {
             if (e.key === "ArrowDown") {

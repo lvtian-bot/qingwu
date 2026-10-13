@@ -246,21 +246,23 @@ if (!gotTheLock) {
       if (uriList) {
         const lines = uriList.split(/[\r\n]+/).map((l) => l.trim()).filter((l) => l && !l.startsWith("#"));
         rawPaths = lines
+          .filter((line) => line.startsWith("file://"))
           .map((line) => {
-            if (line.startsWith("file://")) {
-              try {
-                const u = new URL(line);
-                let p = decodeURIComponent(u.pathname);
-                // Windows 路径 去掉前导斜杠，如 /C:/foo -> C:/foo
-                if (/^\/[a-zA-Z]:/.test(p)) {
-                  p = p.slice(1);
-                }
-                return p.replace(/\//g, "\\");
-              } catch {
-                return "";
+            try {
+              const u = new URL(line);
+              let p = decodeURIComponent(u.pathname);
+              if (u.hostname) {
+                // Windows UNC 共享路径 file://server/share/foo -> \\server\share\foo
+                return `\\\\${u.hostname}${p.replace(/\//g, "\\")}`;
               }
+              // Windows 路径 去掉前导斜杠，如 /C:/foo -> C:/foo
+              if (/^\/[a-zA-Z]:/.test(p)) {
+                p = p.slice(1);
+              }
+              return p.replace(/\//g, "\\");
+            } catch {
+              return "";
             }
-            return line;
           })
           .filter(Boolean);
       }

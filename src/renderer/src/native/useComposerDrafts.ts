@@ -142,10 +142,12 @@ export function useComposerDrafts({
       files: File[],
       directories?: Set<File>,
       rawEntries?: Array<{ path: string; isDirectory: boolean; isImage: boolean }>,
+      targetCwd?: string | null,
     ) => {
       if ((!files || files.length === 0) && (!rawEntries || rawEntries.length === 0)) return;
       const images: File[] = [];
       const mentions: string[] = [];
+      const cwd = targetCwd !== undefined ? targetCwd : currentCwdRef?.current;
 
       for (const f of files || []) {
         const isDir = directories ? directories.has(f) : false;
@@ -158,7 +160,6 @@ export function useComposerDrafts({
             (f as { path?: string }).path ||
             '';
           if (filePath) {
-            const cwd = currentCwdRef?.current;
             const formatted = formatFileMentionFromPath(filePath, cwd, isDir);
             if (formatted) {
               mentions.push(formatted);
@@ -170,7 +171,6 @@ export function useComposerDrafts({
       }
 
       if (rawEntries && rawEntries.length > 0) {
-        const cwd = currentCwdRef?.current;
         for (const entry of rawEntries) {
           if (entry.isImage && window.qingwu?.readLocalImage) {
             // 通过 readLocalImage 载入图片转为 File 接入图片草稿
@@ -288,10 +288,14 @@ export function useComposerDrafts({
         handleAddFiles(files, directories);
         textareaRef.current?.focus();
       } else if (window.qingwu?.readClipboardFilePaths) {
-        // 从 Windows 资源管理器复制的文件通过 Electron 主进程剪贴板获取
+        // 记录触发时的会话 id 与 cwd，防止异步返回时已切换会话
+        const capturedSessionId = currentIdRef.current;
+        const capturedCwd = currentCwdRef?.current;
         window.qingwu.readClipboardFilePaths().then((entries) => {
           if (entries && entries.length > 0) {
-            handleAddFiles([], undefined, entries);
+            // 若会话已切换则丢弃，避免串写到新会话草稿
+            if (currentIdRef.current !== capturedSessionId) return;
+            handleAddFiles([], undefined, entries, capturedCwd);
             textareaRef.current?.focus();
           }
         });
@@ -424,6 +428,61 @@ export function useComposerDrafts({
     [touch],
   );
 
+  /** 处理输入框自身的 onPaste 事件：提取文件或通过 Electron 剪贴板提取路径，支持切换会话安全与目录识别 */
+  const handleComposerPaste = useCallback(
+    (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+      const clipboardData = e.clipboardData;
+      if (!clipboardData) return;
+      const files: File[] = [];
+      const directories = new Set<File>();
+      if (clipboardData.files && clipboardData.files.length > 0) {
+        for (let i = 0; i < clipboardData.files.length; i++) {
+          files.push(clipboardData.files[i]);
+        }
+      }
+      if (clipboardData.items) {
+        let fileIdx = 0;
+        for (let i = 0; i < clipboardData.items.length; i++) {
+          const item = clipboardData.items[i];
+          if (item.kind === "file") {
+            const file = item.getAsFile();
+            if (file) {
+              if (files.length === 0) {
+                files.push(file);
+              }
+              const f = files[fileIdx++] ?? file;
+              if (
+                typeof item.webkitGetAsEntry === "function" &&
+                item.webkitGetAsEntry()?.isDirectory === true
+              ) {
+                directories.add(f);
+              }
+            }
+          }
+        }
+      }
+      if (files.length > 0) {
+        e.stopPropagation();
+        handleAddFiles(files, directories);
+        const text = clipboardData.getData("text/plain");
+        if (!text) {
+          e.preventDefault();
+        }
+      } else if (window.qingwu?.readClipboardFilePaths) {
+        const capturedSessionId = currentIdRef.current;
+        const capturedCwd = currentCwdRef?.current;
+        window.qingwu.readClipboardFilePaths().then((entries) => {
+          if (entries && entries.length > 0) {
+            if (currentIdRef.current !== capturedSessionId) return;
+            handleAddFiles([], undefined, entries, capturedCwd);
+            textareaRef.current?.focus();
+          }
+        });
+      }
+    },
+    [currentCwdRef, currentIdRef, handleAddFiles],
+  );
+
   return {
     input,
     draftImages,
@@ -432,6 +491,7 @@ export function useComposerDrafts({
     handleAddImages,
     handleAddFiles,
     handleRemoveDraftImage,
+    handleComposerPaste,
     handleChatDragOver,
     handleChatDrop,
     clearForSubmit,
