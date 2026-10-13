@@ -183,4 +183,6 @@ export interface QingwuApi {
   }) => Promise<void>;
   /** 监听用户点击桌面通知后跳转到指定会话的事件。 */
   onNotificationNavigate: (listener: (sessionId: string) => void) => () => void;
+  /** 获取 Electron 中 File 对象的本地文件绝对路径（兼容 webUtils.getPathForFile）。 */
+  getPathForFile: (file: File) => string;
 }

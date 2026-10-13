@@ -32,7 +32,7 @@ interface ComposerProps {
   draftImages: DraftImage[];
   onRemoveDraftImage: (id: string) => void;
   onAddImages?: (files: File[]) => void;
-  onAddFiles?: (files: File[]) => void;
+  onAddFiles?: (files: File[], directories?: Set<File>) => void;
   onPreviewImage: (url: string) => void;
   /** 可用斜杠命令列表。 */
   commands?: SlashCommandItem[];
@@ -335,9 +335,26 @@ export function Composer({
   const handleDrop = (e: React.DragEvent) => {
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       e.preventDefault();
+      e.stopPropagation();
       const files = Array.from(e.dataTransfer.files);
+      const directories = new Set<File>();
+      let fileIdx = 0;
+      if (e.dataTransfer.items) {
+        for (let i = 0; i < e.dataTransfer.items.length; i++) {
+          const item = e.dataTransfer.items[i];
+          if (item.kind !== "file") continue;
+          const f = files[fileIdx++];
+          if (
+            typeof item.webkitGetAsEntry === "function" &&
+            item.webkitGetAsEntry()?.isDirectory === true &&
+            f !== undefined
+          ) {
+            directories.add(f);
+          }
+        }
+      }
       if (onAddFiles) {
-        onAddFiles(files);
+        onAddFiles(files, directories);
       } else if (onAddImages) {
         const imageFiles = files.filter(isSupportedImage);
         if (imageFiles.length > 0) onAddImages(imageFiles);

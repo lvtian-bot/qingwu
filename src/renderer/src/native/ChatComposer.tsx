@@ -32,7 +32,7 @@ interface ChatComposerProps {
   draftImages: DraftImage[];
   onRemoveDraftImage: (id: string) => void;
   onAddImages?: (files: File[]) => void;
-  onAddFiles?: (files: File[]) => void;
+  onAddFiles?: (files: File[], directories?: Set<File>) => void;
   onPreviewImage: (url: string) => void;
   commands: SlashCommandItem[];
   onExecuteCommand: (line: string, options?: { preserveInput?: boolean }) => void;

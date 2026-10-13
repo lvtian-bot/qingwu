@@ -138,24 +138,24 @@ export function useComposerDrafts({
    * - 非图片文件（或目录）：提取本地路径并按相对当前会话工作区（cwd）转换为 @ 引用追加到输入框。
    */
   const handleAddFiles = useCallback(
-    (files: File[]) => {
+    (files: File[], directories?: Set<File>) => {
       if (!files || files.length === 0) return;
       const images: File[] = [];
       const mentions: string[] = [];
 
       for (const f of files) {
-        if (isSupportedImage(f)) {
+        const isDir = directories ? directories.has(f) : false;
+        if (!isDir && isSupportedImage(f)) {
           images.push(f);
         } else {
-          // Electron 环境下 File 对象带有 path 属性（或通过 webUtils.getPathForFile 获得）
+          // 通过 window.qingwu.getPathForFile 获取 Electron webUtils 提供的本地绝对路径
           const filePath =
+            window.qingwu?.getPathForFile?.(f) ||
             (f as { path?: string }).path ||
-            ((window as unknown as { electron?: { webUtils?: { getPathForFile: (file: File) => string } } })
-              .electron?.webUtils?.getPathForFile?.(f) ??
-              '');
+            '';
           if (filePath) {
             const cwd = currentCwdRef?.current;
-            const formatted = formatFileMentionFromPath(filePath, cwd);
+            const formatted = formatFileMentionFromPath(filePath, cwd, isDir);
             if (formatted) {
               mentions.push(formatted);
             }
@@ -260,7 +260,24 @@ export function useComposerDrafts({
   const handleChatDrop = (e: ReactDragEvent) => {
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       e.preventDefault();
-      handleAddFiles(Array.from(e.dataTransfer.files));
+      const files = Array.from(e.dataTransfer.files);
+      const directories = new Set<File>();
+      let fileIdx = 0;
+      if (e.dataTransfer.items) {
+        for (let i = 0; i < e.dataTransfer.items.length; i++) {
+          const item = e.dataTransfer.items[i];
+          if (item.kind !== "file") continue;
+          const f = files[fileIdx++];
+          if (
+            typeof item.webkitGetAsEntry === "function" &&
+            item.webkitGetAsEntry()?.isDirectory === true &&
+            f !== undefined
+          ) {
+            directories.add(f);
+          }
+        }
+      }
+      handleAddFiles(files, directories);
       textareaRef.current?.focus();
     }
   };
