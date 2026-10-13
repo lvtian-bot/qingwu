@@ -5,7 +5,6 @@
 import { useCallback } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import { useT } from "../i18n";
-import type { ComposerDraftsApi } from "./useComposerDrafts";
 import { rpc, toErrMsg } from "./rpc";
 import { Endpoints } from "./protocol";
 import type { SessionSummary, WorkspaceView } from "./protocol";
@@ -22,8 +21,6 @@ interface SessionActionsOptions {
   workspaceOfSession: Map<string, string>;
   refreshSessions: () => Promise<void>;
   setError: (message: string | null) => void;
-  /** 草稿桶迁移（换工作区落点时旧会话草稿随人走）。 */
-  drafts: Pick<ComposerDraftsApi, "migrateBuckets">;
   setSessions: Dispatch<SetStateAction<SessionSummary[]>>;
   setWorkspaces: Dispatch<SetStateAction<WorkspaceView[]>>;
   setArchivedSessionIds: Dispatch<SetStateAction<string[]>>;
@@ -42,7 +39,6 @@ export function useSessionActions({
   workspaceOfSession,
   refreshSessions,
   setError,
-  drafts,
   setSessions,
   setWorkspaces,
   setArchivedSessionIds,
@@ -312,12 +308,11 @@ export function useSessionActions({
     const currentWsId = workspaceOfSession.get(currentId) ?? null;
     if (currentWsId === workspaceId) return;
     void (async () => {
-      const previousId = currentId;
       const nextId = await createSessionIn(workspaceId);
       setActiveWorkspaceId(workspaceId);
-      if (nextId === previousId) return;
-      // 草稿随人走：旧会话的草稿落到目标会话，旧桶清空，避免回头再进它时又冒出来
-      drafts.migrateBuckets(previousId, nextId);
+      if (nextId) {
+        openSession(nextId);
+      }
     })().catch((err) => setError(toErrMsg(err)));
   };
 

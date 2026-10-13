@@ -261,7 +261,6 @@ export function NativeApp({
     workspaceOfSession,
     refreshSessions,
     setError,
-    drafts,
     setSessions,
     setWorkspaces,
     setArchivedSessionIds,

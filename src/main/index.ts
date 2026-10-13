@@ -266,7 +266,26 @@ if (!gotTheLock) {
           })
           .filter(Boolean);
       }
-      // 2. 尝试从 raw File drop buffer 读取或 fallback
+      // 2. 尝试从 Windows 原生 CF_HDROP (DROPFILES 结构) 或 FileNameW 读取
+      if (rawPaths.length === 0) {
+        const dropBuffer = clipboard.readBuffer("CF_HDROP");
+        if (dropBuffer && dropBuffer.length >= 20) {
+          try {
+            const offset = dropBuffer.readUInt32LE(0);
+            const isWide = dropBuffer.readUInt32LE(16) !== 0;
+            const data = dropBuffer.subarray(offset);
+            const parts = isWide
+              ? data.toString("utf16le").split("\0")
+              : data.toString("utf8").split("\0");
+            for (const p of parts) {
+              if (!p) break;
+              rawPaths.push(p);
+            }
+          } catch {
+            // fallback
+          }
+        }
+      }
       if (rawPaths.length === 0) {
         const rawBuffer = clipboard.readBuffer("FileNameW");
         if (rawBuffer && rawBuffer.length > 0) {

@@ -481,26 +481,6 @@ export function useComposerDrafts({
     setDraftImages(composerImagesRef.current.get(sessionId ?? "") ?? []);
   }, []);
 
-  /** 草稿随人迁移（换工作区落点时旧会话草稿转到新会话，旧桶清空）。 */
-  const migrateBuckets = useCallback(
-    (fromId: string, toId: string) => {
-      bumpClearGeneration(fromId);
-      touch(fromId);
-      touch(toId);
-      const pending = composerDraftsRef.current.get(fromId);
-      if (pending !== undefined) {
-        composerDraftsRef.current.set(toId, pending);
-        composerDraftsRef.current.delete(fromId);
-      }
-      const pendingImgs = composerImagesRef.current.get(fromId);
-      if (pendingImgs !== undefined) {
-        composerImagesRef.current.set(toId, pendingImgs);
-        composerImagesRef.current.delete(fromId);
-      }
-    },
-    [bumpClearGeneration, touch],
-  );
-
   /** 会话已删除：草稿桶与图片一并清理（内存态，避免残留）。 */
   const discardFor = useCallback(
     (sessionId: string) => {
@@ -586,7 +566,6 @@ export function useComposerDrafts({
     clearTextDraft,
     restoreAfterFailure,
     loadForSession,
-    migrateBuckets,
     discardFor,
   };
 }
