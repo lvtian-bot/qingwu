@@ -7,6 +7,8 @@ const { PassThrough } = require("node:stream");
 const { loadTs } = require("./helpers/load-ts.cjs");
 
 const { AppLifecycle } = loadTs("src/main/app-lifecycle.ts");
+const { CONFIG } = loadTs("src/main/config.ts");
+const packageJson = require("../package.json");
 const { createLineReader, redactSecrets } = loadTs("src/main/logging.ts");
 const {
   sanitizeDiagnosticUrl,
@@ -402,10 +404,10 @@ test("主入口设置统一的 AppUserModelId 并先提供托盘退出入口，�
       },
     },
     "./settings": { settings: { get: () => "auto", onChange() {} } },
-    "./config": { CONFIG: {} },
+    "./config": { CONFIG },
   });
   if (process.platform === "win32") {
-    assert.equal(registeredAppUserModelId, "com.qingwu.desktop");
+    assert.equal(registeredAppUserModelId, CONFIG.appId);
   }
   await tick();
   assert.deepEqual(calls, ["tray-init", "start"]);
@@ -419,5 +421,10 @@ test("主入口设置统一的 AppUserModelId 并先提供托盘退出入口，�
   await tick();
   assert.equal(attempts, 2);
   assert.deepEqual(calls.slice(-3), ["tray-destroy", "bridge-stop", "quit"]);
+});
+
+test("应用配置中的 appId 与 package.json 打包配置完全一致以确保任务栏合并", () => {
+  assert.ok(CONFIG.appId, "CONFIG.appId 不能为空");
+  assert.equal(CONFIG.appId, packageJson.build.appId);
 });
 
