@@ -26,7 +26,6 @@ import {
 import { renderDocumentPreview } from "./document-preview";
 import { setupApplicationDiagnostics } from "./diagnostics";
 import { NotificationManager } from "./notification";
-import { migrateAppShortcuts } from "./shortcut-migration";
 import type { RendererErrorReport } from "../shared/types";
 import { formatMessage } from "../shared/i18n-core";
 import { tr } from "./i18n";
@@ -256,12 +255,6 @@ if (!gotTheLock) {
       const serviceUrl = harnessManager.getWebUrl();
       windowManager.createWindow(serviceUrl);
       dshBridge.start();
-
-      if (process.platform === "win32") {
-        setTimeout(() => {
-          void migrateAppShortcuts();
-        }, 1500);
-      }
 
       // 菜单动作统一在主进程分发（自绘弹层经 menu-popup:action 上行）。
       const handleMenuAction = (actionId: string) => {

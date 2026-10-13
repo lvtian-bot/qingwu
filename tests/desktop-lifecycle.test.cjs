@@ -393,7 +393,6 @@ test("主入口设置统一的 AppUserModelId 并先提供托盘退出入口，�
         }
       },
     },
-    "./shortcut-migration": { migrateAppShortcuts() {} },
     "./dsh-bridge": {
       DshBridge: class {
         start() {
@@ -427,115 +426,5 @@ test("主入口设置统一的 AppUserModelId 并先提供托盘退出入口，�
 test("应用配置中的 appId 与 package.json 打包配置完全一致以确保任务栏合并", () => {
   assert.ok(CONFIG.appId, "CONFIG.appId 不能为空");
   assert.equal(CONFIG.appId, packageJson.build.appId);
-});
-
-test("migrateAppShortcuts 异步扫描并仅对匹配当前安装实例的快捷方式更新 AppUserModelId，并在成功后持久化标记跳过后续重复扫描", async (t) => {
-  const updated = [];
-  const warnings = [];
-  const writtenFiles = {};
-  t.mock.method(console, "log", () => {});
-  t.mock.method(console, "warn", (msg) => warnings.push(String(msg)));
-  const { migrateAppShortcuts } = loadTs("src/main/shortcut-migration.ts", {
-    electron: {
-      app: {
-        isPackaged: true,
-        getPath: () => "D:/fake-appdata",
-      },
-      shell: {
-        readShortcutLink: (filePath) => {
-          if (filePath.endsWith("青梧.lnk") || filePath.endsWith("implicit.lnk")) {
-            return {
-              target: process.execPath,
-              appUserModelId: "legacy.identity",
-            };
-          }
-          return {
-            target: "C:/other-unrelated/qingwu.exe",
-            appUserModelId: "other.app",
-          };
-        },
-        writeShortcutLink: (filePath, operation, details) => {
-          updated.push({ filePath, operation, details });
-          return true;
-        },
-      },
-    },
-    "node:fs": {
-      existsSync: (p) => p in writtenFiles || !p.endsWith(".shortcut-migration.json"),
-      readFileSync: (p) => writtenFiles[p] || "",
-      writeFileSync: (p, content) => {
-        writtenFiles[p] = content;
-      },
-      realpathSync: { native: (p) => p },
-      promises: {
-        readdir: async (dirPath) => {
-          if (dirPath.includes("TaskBar")) {
-            return [
-              { isFile: () => true, isDirectory: () => false, name: "青梧.lnk" },
-              { isFile: () => true, isDirectory: () => false, name: "其他.lnk" },
-            ];
-          }
-          if (dirPath.endsWith("ImplicitAppShortcuts")) {
-            return [
-              { isFile: () => false, isDirectory: () => true, name: "a1b2c3d4" },
-            ];
-          }
-          if (dirPath.includes("a1b2c3d4")) {
-            return [
-              { isFile: () => true, isDirectory: () => false, name: "implicit.lnk" },
-            ];
-          }
-          return [];
-        },
-      },
-    },
-    "./config": { CONFIG },
-  });
-  await migrateAppShortcuts("com.qingwu.desktop");
-  if (process.platform === "win32") {
-    assert.equal(updated.length, 2);
-    assert.equal(Object.keys(writtenFiles).some((k) => k.endsWith(".shortcut-migration.json")), true);
-    const countBefore = updated.length;
-    await migrateAppShortcuts("com.qingwu.desktop");
-    assert.equal(updated.length, countBefore);
-  }
-});
-
-test("migrateAppShortcuts 在目录读取异常时不写入完成标记以保留重试", async (t) => {
-  const writtenFiles = {};
-  t.mock.method(console, "log", () => {});
-  t.mock.method(console, "warn", () => {});
-  const { migrateAppShortcuts } = loadTs("src/main/shortcut-migration.ts", {
-    electron: {
-      app: {
-        isPackaged: true,
-        getPath: () => "D:/fake-appdata",
-      },
-      shell: {
-        readShortcutLink: () => ({ target: process.execPath, appUserModelId: "old" }),
-        writeShortcutLink: () => true,
-      },
-    },
-    "node:fs": {
-      existsSync: () => true,
-      realpathSync: { native: (p) => p },
-      writeFileSync: (p, content) => {
-        writtenFiles[p] = content;
-      },
-      promises: {
-        readdir: async () => {
-          throw new Error("EPERM: scan failed");
-        },
-      },
-    },
-    "./config": { CONFIG },
-  });
-  await migrateAppShortcuts("com.qingwu.desktop");
-  if (process.platform === "win32") {
-    assert.equal(
-      Object.keys(writtenFiles).some((k) => k.endsWith(".shortcut-migration.json")),
-      false,
-    );
-  }
 });
 
