@@ -1826,6 +1826,15 @@ pre.native-codeblock-body {
   font-size: 13.5px;
   line-height: 1.65;
   background: transparent !important;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.native-codeblock-body code {
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .native-codeblock-body.plain pre,
