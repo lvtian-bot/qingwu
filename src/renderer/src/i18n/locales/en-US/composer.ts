@@ -7,7 +7,9 @@ export const composer: typeof zhComposer = {
   queueSendTitle: "Queue message ({key}+Enter to send now)",
   steerQueueHint: "{key}+Enter to send all queued messages",
 
+  attachFile: "Add attachment",
   addImage: "Add image",
+  attachmentPathUnavailable: "Unable to resolve file path",
   removeImage: "Remove image",
   previewImage: "Click to preview the image",
   imageReadFailed: "Failed to read image",

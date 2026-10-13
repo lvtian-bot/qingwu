@@ -64,6 +64,28 @@ export function detectAtTrigger(input: string, cursorPos?: number): AtTriggerRes
 }
 
 /**
+ * 将绝对路径或相对路径转换为相对于 cwd 的标准展示路径（POSIX 风格分隔符）。
+ * 跨盘符或无法相对化时回退原路径；同盘符或子路径则转为相对路径。
+ */
+export function relativizePathToCwd(rawPath: string, cwd?: string | null): string {
+  if (!rawPath) return '';
+  const trimmed = rawPath.trim();
+  if (!cwd) return trimmed.replace(/\\/g, '/');
+
+  const norm = (s: string) => s.replace(/\\/g, '/').replace(/\/+$/, '');
+  const np = norm(trimmed);
+  const nc = norm(cwd);
+
+  if (nc && np.toLowerCase() === nc.toLowerCase()) {
+    return '.';
+  }
+  if (nc && np.toLowerCase().startsWith(nc.toLowerCase() + '/')) {
+    return np.slice(nc.length + 1);
+  }
+  return np;
+}
+
+/**
  * 将选中的文件或目录格式化为 Prompt 文本规范。
  * 对齐官方 formatFileMention 逻辑：
  * 包含空格或显式要求引号时使用 @"path"；目录后追加 /；
@@ -86,6 +108,24 @@ export function formatFileMention(
     return `@"${path}`;
   }
   return `@"${path}"`;
+}
+
+/**
+ * 将相对或绝对路径转换为适合发送的 @ 文件引用字符串。
+ * 若指定了 cwd，优先转换为相对于 cwd 的相对路径。
+ */
+export function formatFileMentionFromPath(
+  rawPath: string,
+  cwd?: string | null,
+  isDirectory = false,
+): string | undefined {
+  if (!rawPath) return undefined;
+  const rel = relativizePathToCwd(rawPath, cwd);
+  if (!rel) return undefined;
+  return formatFileMention({
+    path: rel,
+    kind: isDirectory ? 'directory' : 'file',
+  });
 }
 
 export interface UserTextSegment {

@@ -31,7 +31,8 @@ interface ComposerProps {
   meter?: ReactNode;
   draftImages: DraftImage[];
   onRemoveDraftImage: (id: string) => void;
-  onAddImages: (files: File[]) => void;
+  onAddImages?: (files: File[]) => void;
+  onAddFiles?: (files: File[]) => void;
   onPreviewImage: (url: string) => void;
   /** 可用斜杠命令列表。 */
   commands?: SlashCommandItem[];
@@ -74,6 +75,7 @@ export function Composer({
   draftImages,
   onRemoveDraftImage,
   onAddImages,
+  onAddFiles,
   onPreviewImage,
   commands,
   onClientCommand,
@@ -293,25 +295,29 @@ export function Composer({
   const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const clipboardData = e.clipboardData;
     if (!clipboardData) return;
-    const imageFiles: File[] = [];
+    const files: File[] = [];
     if (clipboardData.files && clipboardData.files.length > 0) {
       for (let i = 0; i < clipboardData.files.length; i++) {
-        const file = clipboardData.files[i];
-        if (isSupportedImage(file)) imageFiles.push(file);
+        files.push(clipboardData.files[i]);
       }
     } else if (clipboardData.items) {
       for (let i = 0; i < clipboardData.items.length; i++) {
         const item = clipboardData.items[i];
         if (item.kind === "file") {
           const file = item.getAsFile();
-          if (file && isSupportedImage(file)) imageFiles.push(file);
+          if (file) files.push(file);
         }
       }
     }
-    if (imageFiles.length > 0) {
+    if (files.length > 0) {
       // 阻止冒泡至全局 window.onpaste，防止单次粘贴触发两次添加
       e.stopPropagation();
-      onAddImages(imageFiles);
+      if (onAddFiles) {
+        onAddFiles(files);
+      } else if (onAddImages) {
+        const imageFiles = files.filter(isSupportedImage);
+        if (imageFiles.length > 0) onAddImages(imageFiles);
+      }
       const text = clipboardData.getData("text/plain");
       if (!text) {
         e.preventDefault();
@@ -328,16 +334,13 @@ export function Composer({
 
   const handleDrop = (e: React.DragEvent) => {
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      const imageFiles: File[] = [];
-      for (let i = 0; i < e.dataTransfer.files.length; i++) {
-        const file = e.dataTransfer.files[i];
-        if (isSupportedImage(file)) {
-          imageFiles.push(file);
-        }
-      }
-      if (imageFiles.length > 0) {
-        e.preventDefault();
-        onAddImages(imageFiles);
+      e.preventDefault();
+      const files = Array.from(e.dataTransfer.files);
+      if (onAddFiles) {
+        onAddFiles(files);
+      } else if (onAddImages) {
+        const imageFiles = files.filter(isSupportedImage);
+        if (imageFiles.length > 0) onAddImages(imageFiles);
       }
     }
   };
@@ -539,12 +542,16 @@ export function Composer({
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/png,image/jpeg,image/webp,image/gif"
           multiple
           style={{ display: "none" }}
           onChange={(e) => {
             if (e.target.files && e.target.files.length > 0) {
-              onAddImages(Array.from(e.target.files));
+              const files = Array.from(e.target.files);
+              if (onAddFiles) {
+                onAddFiles(files);
+              } else if (onAddImages) {
+                onAddImages(files);
+              }
             }
             e.target.value = "";
           }}
@@ -553,8 +560,8 @@ export function Composer({
           type="button"
           className="native-composer-attach-btn"
           onClick={() => fileInputRef.current?.click()}
-          title={t("composer.addImage")}
-          aria-label={t("composer.addImage")}
+          title={t("composer.attachFile")}
+          aria-label={t("composer.attachFile")}
         >
           <svg
             viewBox="0 0 24 24"
@@ -566,9 +573,7 @@ export function Composer({
             strokeLinecap="round"
             strokeLinejoin="round"
           >
-            <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
-            <circle cx="8.5" cy="8.5" r="1.5" />
-            <path d="m21 15-5-5L5 21" />
+            <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l7.88-7.87" />
           </svg>
         </button>
         {/* 控件组自身占满工具行：图片按钮与权限贴左，模型与推理档位贴右（紧邻发送按钮） */}

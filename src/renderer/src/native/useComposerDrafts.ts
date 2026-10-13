@@ -14,10 +14,13 @@ import {
   MAX_IMAGES_PER_MESSAGE,
   type DraftImage,
 } from "./images";
+import { formatFileMentionFromPath } from "./file-mentions";
 
 interface ComposerDraftsOptions {
   /** 当前会话 id 的最新值（异步回调里取归属桶）。 */
   currentIdRef: RefObject<string | null>;
+  /** 当前会话工作目录（文件转 @ 引用时的相对基准）。 */
+  currentCwdRef?: RefObject<string | null | undefined>;
   setError: (message: string | null) => void;
 }
 
@@ -28,6 +31,7 @@ interface DraftVersion {
 
 export function useComposerDrafts({
   currentIdRef,
+  currentCwdRef,
   setError,
 }: ComposerDraftsOptions) {
   const t = useT();
@@ -128,6 +132,67 @@ export function useComposerDrafts({
     [currentIdRef, setError, touch, t],
   );
 
+  /**
+   * 将选中的外部文件分流处理：
+   * - 支持的图片文件：加入草稿图片附件（最多 MAX_IMAGES_PER_MESSAGE 张）；
+   * - 非图片文件（或目录）：提取本地路径并按相对当前会话工作区（cwd）转换为 @ 引用追加到输入框。
+   */
+  const handleAddFiles = useCallback(
+    (files: File[]) => {
+      if (!files || files.length === 0) return;
+      const images: File[] = [];
+      const mentions: string[] = [];
+
+      for (const f of files) {
+        if (isSupportedImage(f)) {
+          images.push(f);
+        } else {
+          // Electron 环境下 File 对象带有 path 属性（或通过 webUtils.getPathForFile 获得）
+          const filePath =
+            (f as { path?: string }).path ||
+            ((window as unknown as { electron?: { webUtils?: { getPathForFile: (file: File) => string } } })
+              .electron?.webUtils?.getPathForFile?.(f) ??
+              '');
+          if (filePath) {
+            const cwd = currentCwdRef?.current;
+            const formatted = formatFileMentionFromPath(filePath, cwd);
+            if (formatted) {
+              mentions.push(formatted);
+            }
+          } else {
+            setError(t("composer.attachmentPathUnavailable"));
+          }
+        }
+      }
+
+      if (images.length > 0) {
+        handleAddImages(images);
+      }
+
+      if (mentions.length > 0) {
+        const key = currentIdRef.current ?? "";
+        const prevText = composerDraftsRef.current.get(key) ?? input;
+        const insertText = mentions.join(" ");
+        const nextText = prevText
+          ? prevText.endsWith(" ") || prevText.endsWith("\n")
+            ? `${prevText}${insertText} `
+            : `${prevText} ${insertText} `
+          : `${insertText} `;
+        setInput(nextText);
+        touch(key);
+        composerDraftsRef.current.set(key, nextText);
+        setTimeout(() => {
+          if (textareaRef.current) {
+            textareaRef.current.focus();
+            const len = nextText.length;
+            textareaRef.current.setSelectionRange(len, len);
+          }
+        }, 0);
+      }
+    },
+    [currentCwdRef, currentIdRef, handleAddImages, input, setError, t, touch],
+  );
+
   const handleRemoveDraftImage = useCallback(
     (id: string) => {
       const key = currentIdRef.current ?? "";
@@ -194,18 +259,9 @@ export function useComposerDrafts({
 
   const handleChatDrop = (e: ReactDragEvent) => {
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      const imageFiles: File[] = [];
-      for (let i = 0; i < e.dataTransfer.files.length; i++) {
-        const file = e.dataTransfer.files[i];
-        if (isSupportedImage(file)) {
-          imageFiles.push(file);
-        }
-      }
-      if (imageFiles.length > 0) {
-        e.preventDefault();
-        handleAddImages(imageFiles);
-        textareaRef.current?.focus();
-      }
+      e.preventDefault();
+      handleAddFiles(Array.from(e.dataTransfer.files));
+      textareaRef.current?.focus();
     }
   };
 
@@ -306,6 +362,7 @@ export function useComposerDrafts({
     textareaRef,
     handleInputChange,
     handleAddImages,
+    handleAddFiles,
     handleRemoveDraftImage,
     handleChatDragOver,
     handleChatDrop,

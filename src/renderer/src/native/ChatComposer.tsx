@@ -31,7 +31,8 @@ interface ChatComposerProps {
   textareaRef: RefObject<HTMLTextAreaElement | null>;
   draftImages: DraftImage[];
   onRemoveDraftImage: (id: string) => void;
-  onAddImages: (files: File[]) => void;
+  onAddImages?: (files: File[]) => void;
+  onAddFiles?: (files: File[]) => void;
   onPreviewImage: (url: string) => void;
   commands: SlashCommandItem[];
   onExecuteCommand: (line: string, options?: { preserveInput?: boolean }) => void;
@@ -65,6 +66,7 @@ export function ChatComposer({
   draftImages,
   onRemoveDraftImage,
   onAddImages,
+  onAddFiles,
   onPreviewImage,
   commands,
   onExecuteCommand,
@@ -93,6 +95,7 @@ export function ChatComposer({
       draftImages={draftImages}
       onRemoveDraftImage={onRemoveDraftImage}
       onAddImages={onAddImages}
+      onAddFiles={onAddFiles}
       onPreviewImage={onPreviewImage}
       commands={commands}
       onExecuteCommand={onExecuteCommand}
