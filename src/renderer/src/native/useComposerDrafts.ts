@@ -185,27 +185,83 @@ export function useComposerDrafts({
       }
 
       if (rawEntries && rawEntries.length > 0) {
+        const imageEntries: Array<{ path: string; isDirectory: boolean; isImage: boolean }> = [];
         for (const entry of rawEntries) {
-          if (entry.isImage && window.qingwu?.readLocalImage) {
-            // 通过 readLocalImage 载入图片转为 File 接入图片草稿（绑定目标会话）
-            window.qingwu.readLocalImage(entry.path).then((res) => {
-              if (res) {
-                const name = entry.path.split(/[\\/]/).pop() || "image.png";
-                fetch(res.dataUrl)
-                  .then((r) => r.blob())
-                  .then((blob) => {
-                    const file = new File([blob], name, { type: res.mimeType });
-                    handleAddImages([file], key);
-                  })
-                  .catch(() => {});
-              }
-            });
+          if (entry.isImage) {
+            imageEntries.push(entry);
           } else {
             const formatted = formatFileMentionFromPath(entry.path, cwd, entry.isDirectory);
             if (formatted) {
               mentions.push(formatted);
             }
           }
+        }
+
+        if (imageEntries.length > 0) {
+          const expectedRev = revisionsRef.current.get(key) ?? 0;
+          Promise.all(
+            imageEntries.map(async (entry) => {
+              if (!window.qingwu?.readLocalImage) {
+                return { kind: "fallback", path: entry.path } as const;
+              }
+              const res = await window.qingwu.readLocalImage(entry.path);
+              if (!res) {
+                // 超限(>20MB)或读取失败：不吞掉，降级为插入 @ 路径引用并报错提示
+                return { kind: "fallback", path: entry.path, reason: "tooLarge" } as const;
+              }
+              const name = entry.path.split(/[\\/]/).pop() || "image.png";
+              const r = await fetch(res.dataUrl);
+              const blob = await r.blob();
+              const file = new File([blob], name, { type: res.mimeType });
+              return { kind: "file", file } as const;
+            }),
+          )
+            .then((results) => {
+              // 校验草稿版本：如果已被提交清空，则丢弃旧加载
+              const currentRev = revisionsRef.current.get(key) ?? 0;
+              if (currentRev !== expectedRev) return;
+
+              const validFiles: File[] = [];
+              const fallbackMentions: string[] = [];
+              for (const item of results) {
+                if (item.kind === "file") {
+                  validFiles.push(item.file);
+                } else {
+                  if (item.reason === "tooLarge") {
+                    setError(t("composer.imageTooLarge", { name: item.path.split(/[\\/]/).pop() || item.path }));
+                  }
+                  const formatted = formatFileMentionFromPath(item.path, cwd, false);
+                  if (formatted) fallbackMentions.push(formatted);
+                }
+              }
+
+              if (validFiles.length > 0) {
+                handleAddImages(validFiles, key);
+              }
+
+              if (fallbackMentions.length > 0) {
+                const prevText = composerDraftsRef.current.get(key) ?? ((currentIdRef.current ?? "") === key ? input : "");
+                const insertText = fallbackMentions.join(" ");
+                const nextText = prevText
+                  ? prevText.endsWith(" ") || prevText.endsWith("\n")
+                    ? `${prevText}${insertText} `
+                    : `${prevText} ${insertText} `
+                  : `${insertText} `;
+                touch(key);
+                composerDraftsRef.current.set(key, nextText);
+                if ((currentIdRef.current ?? "") === key) {
+                  setInput(nextText);
+                  setTimeout(() => {
+                    if (textareaRef.current) {
+                      textareaRef.current.focus();
+                      const len = nextText.length;
+                      textareaRef.current.setSelectionRange(len, len);
+                    }
+                  }, 0);
+                }
+              }
+            })
+            .catch(() => {});
         }
       }
 
@@ -278,17 +334,19 @@ export function useComposerDrafts({
         }
       }
       if (clipboardData.items) {
+        const hadFiles = files.length > 0;
         let fileIdx = 0;
         for (let i = 0; i < clipboardData.items.length; i++) {
           const item = clipboardData.items[i];
           if (item.kind === "file") {
             const file = item.getAsFile();
             if (file) {
-              if (files.length === 0) {
+              if (!hadFiles) {
                 files.push(file);
               }
-              const f = files[fileIdx++] ?? file;
+              const f = hadFiles ? files[fileIdx++] : file;
               if (
+                f &&
                 typeof item.webkitGetAsEntry === "function" &&
                 item.webkitGetAsEntry()?.isDirectory === true
               ) {
@@ -456,17 +514,19 @@ export function useComposerDrafts({
         }
       }
       if (clipboardData.items) {
+        const hadFiles = files.length > 0;
         let fileIdx = 0;
         for (let i = 0; i < clipboardData.items.length; i++) {
           const item = clipboardData.items[i];
           if (item.kind === "file") {
             const file = item.getAsFile();
             if (file) {
-              if (files.length === 0) {
+              if (!hadFiles) {
                 files.push(file);
               }
-              const f = files[fileIdx++] ?? file;
+              const f = hadFiles ? files[fileIdx++] : file;
               if (
+                f &&
                 typeof item.webkitGetAsEntry === "function" &&
                 item.webkitGetAsEntry()?.isDirectory === true
               ) {

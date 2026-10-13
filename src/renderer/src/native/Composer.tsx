@@ -310,17 +310,19 @@ export function Composer({
       }
     }
     if (clipboardData.items) {
+      const hadFiles = files.length > 0;
       let fileIdx = 0;
       for (let i = 0; i < clipboardData.items.length; i++) {
         const item = clipboardData.items[i];
         if (item.kind === "file") {
           const file = item.getAsFile();
           if (file) {
-            if (files.length === 0) {
+            if (!hadFiles) {
               files.push(file);
             }
-            const f = files[fileIdx++] ?? file;
+            const f = hadFiles ? files[fileIdx++] : file;
             if (
+              f &&
               typeof item.webkitGetAsEntry === "function" &&
               item.webkitGetAsEntry()?.isDirectory === true
             ) {
