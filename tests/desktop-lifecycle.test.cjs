@@ -7,6 +7,8 @@ const { PassThrough } = require("node:stream");
 const { loadTs } = require("./helpers/load-ts.cjs");
 
 const { AppLifecycle } = loadTs("src/main/app-lifecycle.ts");
+const { CONFIG } = loadTs("src/main/config.ts");
+const packageJson = require("../package.json");
 const { createLineReader, redactSecrets } = loadTs("src/main/logging.ts");
 const {
   sanitizeDiagnosticUrl,
@@ -317,15 +319,18 @@ test("菜单目标和焦点指向主窗口界面", () => {
   assert.equal(focused.includes("native"), true);
 });
 
-test("主入口先提供托盘退出入口，启动期间退出后不创建窗口，无托盘也可重新打开重试", async (t) => {
+test("主入口设置统一的 AppUserModelId 并先提供托盘退出入口，启动期间退出后不创建窗口，无托盘也可重新打开重试", async (t) => {
   const calls = [];
   let completeStart;
   let attempts = 0;
+  let registeredAppUserModelId;
   const app = new EventEmitter();
   app.getPath = () => "D:/fixture";
   app.getLocale = () => "zh-CN";
   app.requestSingleInstanceLock = () => true;
-  app.setAppUserModelId = () => {};
+  app.setAppUserModelId = (id) => {
+    registeredAppUserModelId = id;
+  };
   app.whenReady = () => Promise.resolve();
   app.quit = () => {
     calls.push("quit");
@@ -399,8 +404,11 @@ test("主入口先提供托盘退出入口，启动期间退出后不创建窗�
       },
     },
     "./settings": { settings: { get: () => "auto", onChange() {} } },
-    "./config": { CONFIG: {} },
+    "./config": { CONFIG },
   });
+  if (process.platform === "win32") {
+    assert.equal(registeredAppUserModelId, CONFIG.appId);
+  }
   await tick();
   assert.deepEqual(calls, ["tray-init", "start"]);
   app.quit();
@@ -414,3 +422,9 @@ test("主入口先提供托盘退出入口，启动期间退出后不创建窗�
   assert.equal(attempts, 2);
   assert.deepEqual(calls.slice(-3), ["tray-destroy", "bridge-stop", "quit"]);
 });
+
+test("应用配置中的 appId 与 package.json 打包配置完全一致以确保任务栏合并", () => {
+  assert.ok(CONFIG.appId, "CONFIG.appId 不能为空");
+  assert.equal(CONFIG.appId, packageJson.build.appId);
+});
+
