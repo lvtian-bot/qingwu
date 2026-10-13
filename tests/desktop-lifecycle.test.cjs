@@ -317,15 +317,18 @@ test("菜单目标和焦点指向主窗口界面", () => {
   assert.equal(focused.includes("native"), true);
 });
 
-test("主入口先提供托盘退出入口，启动期间退出后不创建窗口，无托盘也可重新打开重试", async (t) => {
+test("主入口设置统一的 AppUserModelId 并先提供托盘退出入口，启动期间退出后不创建窗口，无托盘也可重新打开重试", async (t) => {
   const calls = [];
   let completeStart;
   let attempts = 0;
+  let registeredAppUserModelId;
   const app = new EventEmitter();
   app.getPath = () => "D:/fixture";
   app.getLocale = () => "zh-CN";
   app.requestSingleInstanceLock = () => true;
-  app.setAppUserModelId = () => {};
+  app.setAppUserModelId = (id) => {
+    registeredAppUserModelId = id;
+  };
   app.whenReady = () => Promise.resolve();
   app.quit = () => {
     calls.push("quit");
@@ -401,6 +404,9 @@ test("主入口先提供托盘退出入口，启动期间退出后不创建窗�
     "./settings": { settings: { get: () => "auto", onChange() {} } },
     "./config": { CONFIG: {} },
   });
+  if (process.platform === "win32") {
+    assert.equal(registeredAppUserModelId, "com.qingwu.desktop");
+  }
   await tick();
   assert.deepEqual(calls, ["tray-init", "start"]);
   app.quit();
@@ -414,3 +420,4 @@ test("主入口先提供托盘退出入口，启动期间退出后不创建窗�
   assert.equal(attempts, 2);
   assert.deepEqual(calls.slice(-3), ["tray-destroy", "bridge-stop", "quit"]);
 });
+
