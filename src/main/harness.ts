@@ -145,6 +145,24 @@ export class HarnessManager {
   }
 
   /**
+   * 解析随包分发的引擎遥测禁用补丁。
+   *
+   * 青梧不使用 dsh 的遥测上报，安装包也不携带 OpenTelemetry 相关依赖；
+   * 补丁经 --patch 最高优先级层注入，禁用加载它们的引擎插件。选择
+   * --patch 而非改写用户 profile 补丁：不碰用户目录里可能存在的自定义
+   * 内容，且优先级高于 profile 层，禁用意图始终生效。
+   */
+  private resolveEnginePatchPath(): string | null {
+    const candidates = app.isPackaged
+      ? [path.join(process.resourcesPath ?? "", "telemetry-off.patch.yml")]
+      : [path.join(app.getAppPath(), "build", "telemetry-off.patch.yml")];
+    for (const candidate of candidates) {
+      if (fs.existsSync(candidate)) return candidate;
+    }
+    return null;
+  }
+
+  /**
    * 确保用户主目录下存在青梧专属的 dsh profile（~/.dsh/profiles/qingwu）。
    *
    * 为什么需要专属 profile：
@@ -220,12 +238,25 @@ export class HarnessManager {
       binPath,
       "--profile",
       "qingwu",
+    ];
+
+    // 遥测禁用补丁随包分发（见 resolveEnginePatchPath）。缺失时仅告警：
+    // 引擎对插件加载失败本身容错，补丁丢失不会让应用起不来，只是安装包
+    // 侧的依赖排除会让引擎日志出现「entries did not activate」告警。
+    const patchPath = this.resolveEnginePatchPath();
+    if (patchPath) {
+      args.push("--patch", patchPath);
+    } else {
+      console.warn("[Harness] 未找到引擎遥测禁用补丁，引擎遥测保持默认状态");
+    }
+
+    args.push(
       "--host",
       this.host,
       "--port",
       String(this.port),
       "--no-open",
-    ];
+    );
 
     // windowsHide 会剥掉子进程的控制台（CREATE_NO_WINDOW）：控制台子系统运行时
     // 必须保留继承，否则 dsh 派生出的 pwsh 仍会各自新建可见控制台窗口。
@@ -237,8 +268,13 @@ export class HarnessManager {
       );
     }
 
+    // 引擎遥测总开关：非空值即退出会话反馈遥测（dsh 官方退出机制）。
+    // 与 telemetry-off.patch.yml 双保险：补丁阻止插件加载，环境变量封住
+    // 上报通道，两者独立生效。
+    const engineEnv = { ...runtime.env, DSH_TELEMETRY_DISABLED: "1" };
+
     const child = spawn(runtime.command, args, {
-      env: runtime.env,
+      env: engineEnv,
       // 引擎工作目录：无项目会话的 cwd 落点。用程序目录会把 AI 的文件
       // 读写引进安装目录，故取用户主目录（官方 web 无此问题：开发者
       // 总是从项目目录启动，cwd 天然正确；桌面应用必须显式指定）。

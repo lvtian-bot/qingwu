@@ -1,0 +1,11 @@
+# 青梧引擎补丁：禁用 dsh 遥测。
+# 青梧不使用引擎的遥测上报——产品统计（desktop-product-telemetry）在
+# qingwu profile 下本就禁用；会话反馈遥测（session-telemetry-otel）会把
+# 反馈时的会话片段发往 dsh 官方收集服务器，青梧同样不需要。禁用后
+# 安装包不再携带 OpenTelemetry 依赖（见 package.json build.files 排除项）。
+# 本文件经引擎启动参数 --patch 以最高优先级层注入，不写入也不覆盖
+# 用户 profile 目录下的自定义补丁。
+- id: otel
+  disabled: true
+- id: session-telemetry-otel
+  disabled: true
