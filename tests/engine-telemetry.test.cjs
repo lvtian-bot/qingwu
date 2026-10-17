@@ -26,7 +26,8 @@ const PATCH_ROWS = ['- id: otel\n  disabled: true', '- id: session-telemetry-ote
 
 test('遥测禁用补丁存在且禁用行完整', () => {
   const patchPath = path.join(root, 'build', 'telemetry-off.patch.yml');
-  const content = fs.readFileSync(patchPath, 'utf8');
+  // 归一化行尾：CI 检出可能把 LF 转 CRLF，断言只关心行内容本身
+  const content = fs.readFileSync(patchPath, 'utf8').replace(/\r\n/g, '\n');
   for (const row of PATCH_ROWS) {
     assert.ok(content.includes(row), `补丁缺少禁用行: ${row}`);
   }
