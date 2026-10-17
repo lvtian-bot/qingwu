@@ -93,7 +93,12 @@
       "!**/node_modules/*/{CHANGELOG*,README*,*.md,*.txt}",
       "!**/node_modules/**/*.{map,d.ts,d.mts,d.cts,ts,mts,cts,flow,py,c,cc,h,hh,cpp,hpp,gyp,gypi,ninja,o,obj,pdb,lib,def,s,asm,vcxproj*}",
       "!**/node_modules/**/{test,tests,testing,docs,example,examples,coverage,.github,.vscode,.bin}/**",
-      "!**/node_modules/**/*.{test,spec}.{js,cjs,mjs}"
+      "!**/node_modules/**/*.{test,spec}.{js,cjs,mjs}",
+      "!**/node_modules/@opentelemetry/**",
+      "!**/node_modules/@deepseek-ai/dsh-otel/**",
+      "!**/node_modules/@deepseek-ai/dsh-session-telemetry-otel/**",
+      "!**/node_modules/@deepseek-ai/dsh-host-product-telemetry-otel/**",
+      "!**/node_modules/@deepseek-ai/dsh-client-product-analytics/**"
     ],
     "publish": [
       {
@@ -109,6 +114,10 @@
       {
         "from": "build/node-runtime/node.exe",
         "to": "node/node.exe"
+      },
+      {
+        "from": "build/telemetry-off.patch.yml",
+        "to": "telemetry-off.patch.yml"
       }
     ],
     "asarUnpack": [
@@ -129,5 +138,9 @@
       "shortcutName": "青梧",
       "artifactName": "Qingwu-Setup-${version}.${ext}"
     }
+  },
+  "allowScripts": {
+    "koffi@3.1.1": true,
+    "koffi@3.1.6": true
   }
 }
