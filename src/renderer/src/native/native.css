@@ -2932,14 +2932,21 @@ body.native-ui-active .titlebar {
 
 @container (max-width: 320px) {
   .native-picker-model .native-pill-text,
-  .native-picker-permission .native-pill-text {
+  .native-picker-permission .native-pill-text,
+  .native-plan-chip .native-pill-text {
     display: none;
+  }
+  .native-plan-chip {
+    padding: 0 8px;
   }
 }
 
 @container (max-width: 170px) {
   .native-pill-chevron {
     display: none;
+  }
+  .native-plan-chip {
+    padding: 0 6px;
   }
 }
 
