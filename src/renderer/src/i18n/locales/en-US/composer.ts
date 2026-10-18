@@ -2,10 +2,16 @@ import type { composer as zhComposer } from "../zh-CN/composer";
 
 export const composer: typeof zhComposer = {
   placeholder: "Ask anything",
+  placeholderPlan: "Describe your task to generate plan...",
   send: "Send",
   stopTitle: "Stop (press Esc twice)",
   queueSendTitle: "Queue message ({key}+Enter to send now)",
   steerQueueHint: "{key}+Enter to send all queued messages",
+
+  planChip: {
+    label: "Plan",
+    title: "Plan mode is active; click to exit",
+  },
 
   attachFile: "Add attachment",
   addImage: "Add image",

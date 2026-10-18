@@ -393,6 +393,44 @@ export function NativeApp({
     [sessions, currentId],
   );
 
+  /**
+   * 当前会话是否处于计划模式（Plan Mode）：
+   * 优先查 eventsRef 窗口里最近的 plan/mode 事件；
+   * 未出现事件时从 session/list 投影 currentProjections.plan 取值。
+   */
+  const isPlanMode = useMemo(() => {
+    if (!currentId) return false;
+    for (let i = eventsRef.current.length - 1; i >= 0; i--) {
+      const ev = eventsRef.current[i];
+      if (ev.type === "plan/mode") {
+        const active = (ev.data as { active?: boolean } | null)?.active;
+        if (typeof active === "boolean") return active;
+      }
+    }
+    const plan = currentProjections?.plan;
+    if (plan) {
+      return Boolean(plan.pending ? !plan.active : plan.active);
+    }
+    return false;
+  }, [currentId, currentProjections, items, eventsRef]);
+
+  const handleExitPlanMode = useCallback(async () => {
+    if (!currentId) return;
+    try {
+      const res = await rpc<CommandExecution>(Endpoints.commandsExecute, {
+        agentId: currentId,
+        line: "/plan off",
+        submittedAttachments: [],
+      });
+      if (res?.result?.kind === "error") {
+        setError(res.result.text);
+      }
+      await refreshSessions();
+    } catch (err) {
+      setError(toErrMsg(err));
+    }
+  }, [currentId, refreshSessions, setError]);
+
   /** 当前会话标题（聊天标题栏展示）。 */
   const currentTitle = useMemo(() => {
     const session = sessions.find((s) => s.sessionId === currentId);
@@ -931,6 +969,8 @@ export function NativeApp({
                   selection={currentModelSelection}
                   permission={currentPermission}
                   permissionHint={currentId ? undefined : t("chat.composer.newSessionPermissionHint")}
+                  isPlanMode={isPlanMode}
+                  onExitPlanMode={() => void handleExitPlanMode()}
                   onModelPick={handleModelPick}
                   onEffortPick={handleEffortPick}
                   onPermissionPick={handlePermissionPick}
@@ -1138,6 +1178,8 @@ export function NativeApp({
                     catalog={modelCatalog}
                     selection={currentModelSelection}
                     permission={currentPermission}
+                    isPlanMode={isPlanMode}
+                    onExitPlanMode={() => void handleExitPlanMode()}
                     onModelPick={handleModelPick}
                     onEffortPick={handleEffortPick}
                     onPermissionPick={handlePermissionPick}
