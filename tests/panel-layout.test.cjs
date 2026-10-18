@@ -107,21 +107,26 @@ test('loadPanelLayout 正常保留用户在合法范围内保存的宽度', () =
   assert.equal(layout.width, 688);
 });
 
-test('savePanelLayout 同步写入会话存储与全局最近宽度 key', () => {
+test('savePanelLayout 仅写入会话独立存储，不覆盖全局最近宽度', () => {
   storage.clear();
+  // 用户之前显式调整到 680px
+  saveLastPanelWidth(680);
+  assert.equal(getLastPanelWidth(), 680);
+
+  // 访问/保存带有 600px 的旧会话布局
   savePanelLayout('session-1', {
     expanded: true,
     fullscreen: false,
-    width: 650,
+    width: 600,
     tabs: [],
     activeTabId: null,
   });
 
-  // 会话独立存储
+  // 会话独立存储正常记录 600px
   const sessionSaved = JSON.parse(storage.get('qingwu.panel.layout.session-1'));
-  assert.equal(sessionSaved.width, 650);
+  assert.equal(sessionSaved.width, 600);
 
-  // 全局最近宽度存储
-  assert.equal(storage.get(PANEL_LAST_WIDTH_KEY), '650');
-  assert.equal(getLastPanelWidth(), 650);
+  // 全局最近宽度依然保持为用户显式调整的 680px，不被常规保存污染
+  assert.equal(storage.get(PANEL_LAST_WIDTH_KEY), '680');
+  assert.equal(getLastPanelWidth(), 680);
 });

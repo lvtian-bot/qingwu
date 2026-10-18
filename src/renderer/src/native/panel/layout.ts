@@ -113,9 +113,6 @@ export function loadPanelLayout(sessionId: string | null): PanelLayout {
 export function savePanelLayout(sessionId: string, layout: PanelLayout): void {
   try {
     window.localStorage.setItem(storageKeyOf(sessionId), JSON.stringify(layout));
-    if (typeof layout.width === "number" && Number.isFinite(layout.width)) {
-      saveLastPanelWidth(layout.width);
-    }
   } catch {
     // 存储失败时当前布局仍可在内存中使用
   }

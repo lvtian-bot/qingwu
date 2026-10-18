@@ -228,10 +228,18 @@ export const RightPanel = forwardRef<RightPanelHandle, RightPanelProps>(
     }, [narrow, onOpenChange]);
 
     // 宽度拖拽（仅普通展开态显示）
-    const dragRef = useRef<{ startX: number; startWidth: number } | null>(null);
+    const dragRef = useRef<{
+      startX: number;
+      startWidth: number;
+      currentWidth: number;
+    } | null>(null);
     const onResizerDown = (event: React.PointerEvent<HTMLDivElement>) => {
       event.preventDefault();
-      dragRef.current = { startX: event.clientX, startWidth: layout.width };
+      dragRef.current = {
+        startX: event.clientX,
+        startWidth: layout.width,
+        currentWidth: layout.width,
+      };
       event.currentTarget.setPointerCapture(event.pointerId);
       setDragging(true);
     };
@@ -243,13 +251,17 @@ export const RightPanel = forwardRef<RightPanelHandle, RightPanelProps>(
         max,
         Math.max(PANEL_MIN_WIDTH, drag.startWidth + (drag.startX - event.clientX)),
       );
+      drag.currentWidth = width;
       setLayout((prev) => ({ ...prev, width }));
     };
     const onResizerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+      const drag = dragRef.current;
+      if (drag) {
+        saveLastPanelWidth(drag.currentWidth);
+      }
       dragRef.current = null;
       setDragging(false);
       event.currentTarget.releasePointerCapture(event.pointerId);
-      saveLastPanelWidth(layout.width);
     };
 
     if (!open) return null;
