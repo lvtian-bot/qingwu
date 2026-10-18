@@ -78,6 +78,32 @@ test('新增依赖未安装（lock 与本地均无记录）不放行', () => {
   ]);
 });
 
+test('删除依赖未重新安装（lock 快照仍留旧声明）不放行', () => {
+  const dir = makeProject({
+    deps: {}, // package.json 已删空
+    lockRootDeps: { '@deepseek-ai/dsh': '0.2.1-rc.2' },
+    lockEntries: { 'node_modules/@deepseek-ai/dsh': { version: '0.2.1-rc.2' } },
+    installed: { '@deepseek-ai/dsh': '0.2.1-rc.2' }, // 旧包仍留在本地
+  });
+  const { mismatches } = collectMismatches(dir);
+  assert.deepEqual(mismatches, [
+    { name: '@deepseek-ai/dsh', kind: 'declared', declared: undefined, lockDecl: '0.2.1-rc.2' },
+  ]);
+});
+
+test('包内 package.json 损坏时报可读错误而非崩溃', () => {
+  const dir = makeProject({
+    deps: { ws: '^8.0.0' },
+    lockEntries: { 'node_modules/ws': { version: '8.21.3' } },
+    installed: { ws: '8.21.3' },
+  });
+  fs.writeFileSync(path.join(dir, 'node_modules', 'ws', 'package.json'), '{broken json');
+  const { mismatches } = collectMismatches(dir);
+  assert.deepEqual(mismatches, [
+    { name: 'ws', kind: 'version', lock: '8.21.3', installed: 'package.json 损坏' },
+  ]);
+});
+
 test('升级声明与 lock 后未重新安装时报告过期包', () => {
   // 复现真实事故形态：package.json 与 lock 已是新版，node_modules 里还是旧版
   const dir = makeProject({
