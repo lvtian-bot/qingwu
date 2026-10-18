@@ -49,22 +49,18 @@ export const settings = {
       label: "任务完成时发送桌面通知",
       desc: "当青梧在后台运行且任务执行结束时，弹出系统桌面通知；点击通知可快速回到对应会话。",
     },
-    appData: {
-      label: "青梧应用配置目录",
-      desc: "存放界面设置、窗口状态与运行日志的本地目录 (%APPDATA%/qingwu)。",
-      open: "在文件管理器中打开",
-    },
-    dshConfig: {
-      label: "底层引擎配置文件",
-      desc: "DSH 引擎的全局配置文件 (~/.dsh/settings.json)，包含所有已注册的扩展参数。",
-      open: "在编辑器中打开",
+    profileDir: {
+      label: "青梧配置目录",
+      desc: "存放青梧界面设置、模型参数与引擎配置的专属目录 (~/.dsh/profiles/qingwu)。",
+      openFolder: "在文件管理器中打开",
+      openFile: "在编辑器中打开",
     },
   },
   /** 模型设置与权限两个 Tab 共用的角标、字段与按钮文案。 */
   shared: {
     engineBadge: "(DSH 引擎设置)",
     engineBadgeTitle:
-      "保存在 DSH 引擎配置目录 (~/.dsh)，与 DSH 官方桌面版及命令行共享，改动会同步影响这些客户端。",
+      "模型与权限保存在青梧专属目录 (~/.dsh/profiles/qingwu)；API 密钥凭据存放在 ~/.dsh 供各客户端通用。",
     apiKey: "API 密钥",
     apiProtocol: "API 协议",
     apiUrl: "API 地址",

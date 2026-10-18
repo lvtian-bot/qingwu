@@ -151,7 +151,9 @@ export interface QingwuApi {
   setAppSettings: (patch: Partial<AppSettings>) => Promise<AppSettings>;
   /** 订阅青梧本地应用设置变更。 */
   onAppSettingsChanged: (listener: (settings: AppSettings) => void) => () => void;
-  /** 在文件管理器中打开青梧本地应用数据目录。 */
+  /** 在文件管理器中打开青梧专属 Profile 配置目录（~/.dsh/profiles/qingwu）。 */
+  openProfileFolder: () => Promise<string>;
+  /** 兼容别名：在文件管理器中打开青梧配置目录。 */
   openUserDataFolder: () => Promise<string>;
 
   /** 在外部终端中打开指定路径（若未传则打开当前活跃工作区）。 */

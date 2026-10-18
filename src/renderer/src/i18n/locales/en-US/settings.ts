@@ -50,21 +50,17 @@ export const settings: typeof zhSettings = {
       label: "Send desktop notifications on task completion",
       desc: "Shows a system desktop notification when Qingwu runs in the background and a task finishes; click the notification to return to the session.",
     },
-    appData: {
-      label: "Qingwu app config folder",
-      desc: "Local folder that stores UI settings, window state, and run logs (%APPDATA%/qingwu).",
-      open: "Open in File Explorer",
-    },
-    dshConfig: {
-      label: "Engine config file",
-      desc: "The DSH engine's global config file (~/.dsh/settings.json) with all registered extension parameters.",
-      open: "Open in editor",
+    profileDir: {
+      label: "Qingwu profile folder",
+      desc: "Directory for Qingwu UI settings, models, and engine configuration (~/.dsh/profiles/qingwu).",
+      openFolder: "Open in File Explorer",
+      openFile: "Open in editor",
     },
   },
   shared: {
     engineBadge: "(DSH engine settings)",
     engineBadgeTitle:
-      "Stored in the DSH engine config folder (~/.dsh) and shared with the DSH desktop app and CLI; changes also affect those clients.",
+      "Model and permission settings are stored in the Qingwu profile (~/.dsh/profiles/qingwu); API credentials are saved in ~/.dsh and shared across clients.",
     apiKey: "API key",
     apiProtocol: "API protocol",
     apiUrl: "API URL",

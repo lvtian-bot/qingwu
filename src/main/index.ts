@@ -13,6 +13,7 @@ import { UpdateService } from "./update";
 import { UpdateWindowManager } from "./update-window";
 import { TrayManager } from "./tray";
 import { DshBridge } from "./dsh-bridge";
+import { resolveQingwuProfileDir } from "./dsh-paths";
 import { settings } from "./settings";
 import { CONFIG } from "./config";
 import { AppLifecycle } from "./app-lifecycle";
@@ -209,9 +210,15 @@ if (!gotTheLock) {
       setupAboutPanel();
     }
   });
-  ipcMain.handle("appSettings:openUserData", () =>
-    shell.openPath(app.getPath("userData")),
-  );
+  const handleOpenProfileFolder = async () => {
+    const dir = resolveQingwuProfileDir();
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    return shell.openPath(dir);
+  };
+  ipcMain.handle("appSettings:openProfileFolder", handleOpenProfileFolder);
+  ipcMain.handle("appSettings:openUserData", handleOpenProfileFolder);
 
   ipcMain.handle("workspace:openTerminal", (_event, targetPath?: string) =>
     openTerminal(targetPath),
