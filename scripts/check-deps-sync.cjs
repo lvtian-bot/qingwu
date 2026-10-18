@@ -40,9 +40,10 @@ function collectMismatches(dir) {
   const wanted = { ...pkg.dependencies, ...pkg.devDependencies };
   const mismatches = [];
   for (const [name, declared] of Object.entries(wanted)) {
-    // 第一层：声明必须与 lock 根快照一致（npm install 时复刻，改声明未重装即失配）
+    // 第一层：声明必须与 lock 根快照一致（npm install 时复刻，改声明未重装即失配）；
+    // lock 查不到声明（新增依赖未安装）同样失配，不能视为「两边一致」放行
     const lockDeclared = { ...lockRoot.dependencies, ...lockRoot.devDependencies }[name];
-    if (lockDeclared !== undefined && declared !== lockDeclared) {
+    if (declared !== lockDeclared) {
       mismatches.push({ name, kind: 'declared', declared, lockDecl: lockDeclared });
     }
 
@@ -77,7 +78,8 @@ function main() {
   console.error('[deps-sync] 本地依赖不同步，检查中止（升级或改声明后未重新安装的典型症状）：');
   for (const m of mismatches) {
     if (m.kind === 'declared') {
-      console.error(`  ${m.name}: 声明 ${m.declared} / lock 快照 ${m.lockDecl}（package.json 改动未落 lock）`);
+      const lockDeclText = m.lockDecl ?? '未记录';
+      console.error(`  ${m.name}: 声明 ${m.declared} / lock 快照 ${lockDeclText}（package.json 改动未落 lock）`);
     } else {
       const installedText = m.installed ?? '未安装';
       const lockText = m.lock ?? 'lock 未记录';

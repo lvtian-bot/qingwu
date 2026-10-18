@@ -65,6 +65,19 @@ test('改了声明未重新安装时报告声明失配（lock 与本地同旧不
   ]);
 });
 
+test('新增依赖未安装（lock 与本地均无记录）不放行', () => {
+  const dir = makeProject({
+    deps: { '@deepseek-ai/dsh': '0.2.1-rc.2', ws: '^8.0.0' },
+    lockRootDeps: { '@deepseek-ai/dsh': '0.2.1-rc.2' }, // ws 未进 lock 根快照
+    lockEntries: { 'node_modules/@deepseek-ai/dsh': { version: '0.2.1-rc.2' } },
+    installed: { '@deepseek-ai/dsh': '0.2.1-rc.2' }, // ws 未安装
+  });
+  const { mismatches } = collectMismatches(dir);
+  assert.deepEqual(mismatches, [
+    { name: 'ws', kind: 'declared', declared: '^8.0.0', lockDecl: undefined },
+  ]);
+});
+
 test('升级声明与 lock 后未重新安装时报告过期包', () => {
   // 复现真实事故形态：package.json 与 lock 已是新版，node_modules 里还是旧版
   const dir = makeProject({
