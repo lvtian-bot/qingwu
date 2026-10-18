@@ -140,7 +140,7 @@ export function WebSearchTab({ controller }: { controller: WebSearchSettingsCont
         <button
           type="button"
           className="native-btn native-btn-primary"
-          disabled={controller.saving}
+          disabled={!controller.loaded || controller.saving}
           onClick={() => void controller.save()}
         >
           {controller.saving

@@ -21,6 +21,8 @@ export interface WebSearchSettingsController {
   /** 专用 API Key 输入草稿 */
   apiKeyDraft: string;
   setApiKeyDraft: (key: string) => void;
+  /** 配置是否已成功加载完成 */
+  loaded: boolean;
   /** 是否正在保存 */
   saving: boolean;
   /** 操作成功反馈 */
@@ -36,6 +38,7 @@ export interface WebSearchSettingsController {
 export function useWebSearchSettings(): WebSearchSettingsController {
   const t = useT();
   const [settingsSnapshot, setSettingsSnapshot] = useState<SettingsDescribeValue | null>(null);
+  const [loaded, setLoaded] = useState<boolean>(false);
   const [providerType, setProviderType] = useState<"deepseek" | "custom">("deepseek");
   const [baseURL, setBaseURL] = useState<string>("");
   const [count, setCount] = useState<number>(DEFAULT_SEARCH_COUNT);
@@ -62,6 +65,8 @@ export function useWebSearchSettings(): WebSearchSettingsController {
 
       if (settingsRes && Array.isArray(settingsRes.namespaces)) {
         setSettingsSnapshot(settingsRes);
+        setLoaded(true);
+        setError(null);
 
         const webNs = settingsRes.namespaces.find((ns) => ns.ns === "web");
         const webVal = webNs?.value as { searchProvider?: string; fetchProvider?: string } | undefined;
@@ -85,6 +90,9 @@ export function useWebSearchSettings(): WebSearchSettingsController {
         } else {
           setProviderType("deepseek");
         }
+      } else {
+        setLoaded(false);
+        setError(t("settings.webSearch.loadFailed"));
       }
 
       if (credsRes && typeof credsRes === "object") {
@@ -92,15 +100,22 @@ export function useWebSearchSettings(): WebSearchSettingsController {
         setHasKey(Boolean(deepseekCred?.configured));
       }
     } catch (err) {
+      setLoaded(false);
+      setError(t("settings.webSearch.loadFailed"));
       console.error("[WebSearchSettings] 加载配置异常:", err);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
   const save = useCallback(async () => {
+    if (!settingsSnapshot) {
+      setError(t("settings.webSearch.loadFailed"));
+      return;
+    }
+
     setSaving(true);
     setMessage(null);
     setError(null);
@@ -116,8 +131,8 @@ export function useWebSearchSettings(): WebSearchSettingsController {
         setHasKey(true);
       }
 
-      // 2. 保存 web 命名空间
-      const webNs = settingsSnapshot?.namespaces.find((ns) => ns.ns === "web");
+      // 2. 保存 web 命名空间：确保 searchProvider 与 fetchProvider 一致
+      const webNs = settingsSnapshot.namespaces.find((ns) => ns.ns === "web");
       await rpc(Endpoints.settingsUpdate, {
         ns: "web",
         patch: {
@@ -127,25 +142,25 @@ export function useWebSearchSettings(): WebSearchSettingsController {
         expectedRevision: webNs?.revision,
       });
 
-      // 3. 保存 web-deepseek-api 命名空间
-      const apiNs = settingsSnapshot?.namespaces.find((ns) => ns.ns === "web-deepseek-api");
+      // 3. 通过 settings/mutate 原子更新 web-deepseek-api 命名空间
+      // 遵循 DSH 契约：恢复默认端点使用 unset 操作，不向字符串字段写入 null
+      const apiNs = settingsSnapshot.namespaces.find((ns) => ns.ns === "web-deepseek-api");
       const normalizedCount = Math.min(50, Math.max(1, count));
       const normalizedBaseURL = baseURL.trim();
 
-      const apiPatch: Record<string, unknown> = {
-        count: normalizedCount,
-      };
+      const ops: Array<{ op: "set" | "unset"; path: string[]; value?: unknown }> = [
+        { op: "set", path: ["count"], value: normalizedCount },
+      ];
 
       if (providerType === "custom" && normalizedBaseURL) {
-        apiPatch.baseURL = normalizedBaseURL;
+        ops.push({ op: "set", path: ["baseURL"], value: normalizedBaseURL });
       } else {
-        // 恢复默认基础地址
-        apiPatch.baseURL = null;
+        ops.push({ op: "unset", path: ["baseURL"] });
       }
 
-      await rpc(Endpoints.settingsUpdate, {
+      await rpc(Endpoints.settingsMutate, {
         ns: "web-deepseek-api",
-        patch: apiPatch,
+        ops,
         expectedRevision: apiNs?.revision,
       });
 
@@ -170,6 +185,7 @@ export function useWebSearchSettings(): WebSearchSettingsController {
     hasKey,
     apiKeyDraft,
     setApiKeyDraft,
+    loaded,
     saving,
     message,
     error,

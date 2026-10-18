@@ -37,6 +37,31 @@ test("全新安装初始化时自动写入默认新版高速搜索配置", () =>
   }
 });
 
+test("老版空配置文档（带注释与 []）平滑正规化升级为合法 YAML", () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "qingwu-test-profile-"));
+  try {
+    fs.mkdirSync(tmp, { recursive: true });
+    fs.writeFileSync(path.join(tmp, "package.json"), "{}");
+    const legacyEmptyPatch = "# 青梧专属 profile 补丁层\n[]\n";
+    const patchPath = path.join(tmp, "cordis.patch.yml");
+    fs.writeFileSync(patchPath, legacyEmptyPatch);
+
+    const harness = setupHarness(tmp);
+    harness["ensureQingwuProfile"]();
+
+    const backupPath = `${patchPath}.bak`;
+    assert.ok(fs.existsSync(backupPath), "应当生成 .bak 安全备份文件");
+    assert.equal(fs.readFileSync(backupPath, "utf-8"), legacyEmptyPatch);
+
+    const upgradedContent = fs.readFileSync(patchPath, "utf-8");
+    assert.doesNotMatch(upgradedContent, /\[\]\s*-/, "不得生成含有 [] 与序列拼接的非法 YAML");
+    assert.match(upgradedContent, /id:\s*web/, "应当正规化包含 id: web 节点");
+    assert.match(upgradedContent, /searchProvider:\s*deepseek-search-api/);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 test("老用户存量配置安全平滑升级：保留已有模型配置，备份并安全追加新版搜索", () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "qingwu-test-profile-"));
   try {

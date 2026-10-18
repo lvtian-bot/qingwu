@@ -231,12 +231,12 @@ export class HarnessManager {
             } catch (bakErr) {
               console.warn("[Harness] 备份 cordis.patch.yml 失败:", bakErr);
             }
-            const trimmed = currentContent.trimEnd();
-            const separator = trimmed === "[]" || trimmed === "" ? "" : "\n";
-            const newContent =
-              trimmed === "[]"
-                ? `# 青梧专属 profile 补丁层\n${defaultWebPatch}\n`
-                : `${trimmed}${separator}${defaultWebPatch}\n`;
+            // 剔除注释与空白后判断是否为历史空文档（例如仅有 "# ...\n[]"）
+            const stripped = currentContent.replace(/#.*$/gm, "").trim();
+            const isLegacyEmpty = stripped === "[]" || stripped === "";
+            const newContent = isLegacyEmpty
+              ? `# 青梧专属 profile 补丁层\n${defaultWebPatch}\n`
+              : `${currentContent.trimEnd()}\n\n${defaultWebPatch}\n`;
             fs.writeFileSync(patchPath, newContent);
             console.log("[Harness] 已为青梧专属 profile 平滑补全新版 Web 搜索配置");
           }

@@ -65,6 +65,7 @@ export const settings: typeof zhSettings = {
     saving: "Saving…",
     savedSuccess: "Web search settings saved",
     savedFailed: "Failed to save web search settings: {message}",
+    loadFailed: "Failed to load web search settings. Saving is disabled to prevent accidental overwrite.",
     provider: {
       label: "Search Provider",
       desc: "Choose the service provider for agent search and page fetch. DeepSeek Fast API is recommended by default.",
