@@ -124,3 +124,28 @@ test("若用户已存在自定义 web 配置，则保持原有设置不予覆盖
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test("若用户配置带有行尾注释，仍可精准识别并不重复追加", () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "qingwu-test-profile-"));
+  try {
+    fs.mkdirSync(tmp, { recursive: true });
+    fs.writeFileSync(path.join(tmp, "package.json"), "{}");
+    const commentedCustomPatch = [
+      "- id: web # 用户自定义搜索",
+      '  name: "@deepseek-ai/dsh-web"',
+      "  config:",
+      "    searchProvider: custom-search-api",
+      "    fetchProvider: custom-fetch-api",
+    ].join("\n");
+    const patchPath = path.join(tmp, "cordis.patch.yml");
+    fs.writeFileSync(patchPath, commentedCustomPatch);
+
+    const harness = setupHarness(tmp);
+    harness["ensureQingwuProfile"]();
+
+    assert.equal(fs.existsSync(`${patchPath}.bak`), false, "带行尾注释时不应产生备份文件");
+    assert.equal(fs.readFileSync(patchPath, "utf-8"), commentedCustomPatch, "带行尾注释的配置必须原样保留");
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});

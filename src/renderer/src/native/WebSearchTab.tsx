@@ -43,6 +43,7 @@ export function WebSearchTab({ controller }: { controller: WebSearchSettingsCont
           <select
             className="native-settings-select"
             value={controller.providerType}
+            disabled={!controller.writable}
             onChange={(e) =>
               controller.setProviderType(e.target.value as "deepseek" | "custom")
             }
@@ -69,6 +70,7 @@ export function WebSearchTab({ controller }: { controller: WebSearchSettingsCont
             <input
               type={showKey ? "text" : "password"}
               className="native-settings-input"
+              disabled={!controller.writable}
               placeholder={
                 controller.hasKey
                   ? t("settings.webSearch.apiKey.placeholderConfigured")
@@ -107,6 +109,7 @@ export function WebSearchTab({ controller }: { controller: WebSearchSettingsCont
             <input
               type="text"
               className="native-settings-input"
+              disabled={!controller.writable}
               placeholder={DEFAULT_SEARCH_API_BASE_URL}
               value={controller.baseURL}
               onChange={(e) => controller.setBaseURL(e.target.value)}
@@ -122,6 +125,7 @@ export function WebSearchTab({ controller }: { controller: WebSearchSettingsCont
           <input
             type="number"
             className="native-settings-input"
+            disabled={!controller.writable}
             style={{ width: "90px" }}
             min={1}
             max={50}
@@ -140,7 +144,7 @@ export function WebSearchTab({ controller }: { controller: WebSearchSettingsCont
         <button
           type="button"
           className="native-btn native-btn-primary"
-          disabled={!controller.loaded || controller.saving}
+          disabled={!controller.loaded || !controller.writable || controller.saving}
           onClick={() => void controller.save()}
         >
           {controller.saving

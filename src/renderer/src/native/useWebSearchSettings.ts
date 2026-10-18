@@ -23,6 +23,8 @@ export interface WebSearchSettingsController {
   setApiKeyDraft: (key: string) => void;
   /** 配置是否已成功加载完成 */
   loaded: boolean;
+  /** 当前引擎设置是否具备写入能力（只读模式下为 false） */
+  writable: boolean;
   /** 是否正在保存 */
   saving: boolean;
   /** 操作成功反馈 */
@@ -39,6 +41,7 @@ export function useWebSearchSettings(): WebSearchSettingsController {
   const t = useT();
   const [settingsSnapshot, setSettingsSnapshot] = useState<SettingsDescribeValue | null>(null);
   const [loaded, setLoaded] = useState<boolean>(false);
+  const [writable, setWritable] = useState<boolean>(true);
   const [providerType, setProviderType] = useState<"deepseek" | "custom">("deepseek");
   const [baseURL, setBaseURL] = useState<string>("");
   const [count, setCount] = useState<number>(DEFAULT_SEARCH_COUNT);
@@ -66,6 +69,7 @@ export function useWebSearchSettings(): WebSearchSettingsController {
       if (settingsRes && Array.isArray(settingsRes.namespaces)) {
         setSettingsSnapshot(settingsRes);
         setLoaded(true);
+        setWritable(settingsRes.writable !== false);
         setError(null);
 
         const webNs = settingsRes.namespaces.find((ns) => ns.ns === "web");
@@ -111,8 +115,12 @@ export function useWebSearchSettings(): WebSearchSettingsController {
   }, [load]);
 
   const save = useCallback(async () => {
-    if (!settingsSnapshot) {
-      setError(t("settings.webSearch.loadFailed"));
+    if (!settingsSnapshot || !writable) {
+      setError(
+        !settingsSnapshot
+          ? t("settings.webSearch.loadFailed")
+          : t("settings.webSearch.readOnly"),
+      );
       return;
     }
 
@@ -170,6 +178,8 @@ export function useWebSearchSettings(): WebSearchSettingsController {
       const errMsg = err instanceof Error ? err.message : String(err);
       setError(t("settings.webSearch.savedFailed", { message: errMsg }));
       console.error("[WebSearchSettings] 保存配置失败:", err);
+      // 局部失败后重新同步远端快照，防范 revision 错位阻塞重试
+      await load().catch(() => {});
     } finally {
       setSaving(false);
     }
@@ -186,6 +196,7 @@ export function useWebSearchSettings(): WebSearchSettingsController {
     apiKeyDraft,
     setApiKeyDraft,
     loaded,
+    writable,
     saving,
     message,
     error,

@@ -224,7 +224,8 @@ export class HarnessManager {
         } else if (typeof fs.readFileSync === "function") {
           // 存量老用户平滑迁移：若补丁文件中尚未声明 id: web，则安全追加默认新版搜索配置
           const currentContent = fs.readFileSync(patchPath, "utf-8");
-          const hasWebEntry = /^\s*-\s*id:\s*['"]?web['"]?\s*$/m.test(currentContent);
+          const hasWebEntry =
+            /^\s*-\s*id:\s*['"]?web['"]?(?:\s*#.*|\s*)$/m.test(currentContent);
           if (!hasWebEntry) {
             try {
               fs.copyFileSync(patchPath, `${patchPath}.bak`);

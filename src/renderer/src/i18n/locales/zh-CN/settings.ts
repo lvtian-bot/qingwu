@@ -65,6 +65,7 @@ export const settings = {
     savedSuccess: "联网搜索配置已保存",
     savedFailed: "保存联网搜索配置失败: {message}",
     loadFailed: "读取联网搜索配置失败，已禁用保存以防意外覆盖",
+    readOnly: "当前运行环境设置处于只读模式，不可修改",
     provider: {
       label: "搜索服务商",
       desc: "选择 Agent 联网检索和网页抓取所使用的接口服务；默认优先推荐 DeepSeek 专用检索接口。",
