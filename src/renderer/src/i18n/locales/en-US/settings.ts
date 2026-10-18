@@ -60,7 +60,7 @@ export const settings: typeof zhSettings = {
   shared: {
     engineBadge: "(DSH engine settings)",
     engineBadgeTitle:
-      "Stored in the dedicated Qingwu profile folder (~/.dsh/profiles/qingwu); runs independently without affecting the official Web or Desktop clients.",
+      "Model and permission settings are stored in the Qingwu profile (~/.dsh/profiles/qingwu); API credentials are saved in ~/.dsh and shared across clients.",
     apiKey: "API key",
     apiProtocol: "API protocol",
     apiUrl: "API URL",

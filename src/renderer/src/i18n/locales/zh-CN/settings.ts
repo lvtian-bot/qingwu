@@ -60,7 +60,7 @@ export const settings = {
   shared: {
     engineBadge: "(DSH 引擎设置)",
     engineBadgeTitle:
-      "保存在青梧专属配置目录 (~/.dsh/profiles/qingwu)，独立运行，不影响官方 Web 或桌面版。",
+      "模型与权限保存在青梧专属目录 (~/.dsh/profiles/qingwu)；API 密钥凭据存放在 ~/.dsh 供各客户端通用。",
     apiKey: "API 密钥",
     apiProtocol: "API 协议",
     apiUrl: "API 地址",
