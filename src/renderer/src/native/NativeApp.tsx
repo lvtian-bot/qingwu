@@ -395,21 +395,21 @@ export function NativeApp({
 
   /**
    * 当前会话是否处于计划模式（Plan Mode）：
-   * 优先查 eventsRef 窗口里最近的 plan/mode 事件；
-   * 未出现事件时从 session/list 投影 currentProjections.plan 取值。
+   * 优先使用 DSH 宿主计算的 plan 投影作为权威源（支持 pending 意图计算与即时退出生效）；
+   * 仅在投影不可用时才回退至 eventsRef 历史窗口中的 plan/mode 事件兜底。
    */
   const isPlanMode = useMemo(() => {
     if (!currentId) return false;
+    const plan = currentProjections?.plan;
+    if (plan) {
+      return Boolean(plan.pending ? !plan.active : plan.active);
+    }
     for (let i = eventsRef.current.length - 1; i >= 0; i--) {
       const ev = eventsRef.current[i];
       if (ev.type === "plan/mode") {
         const active = (ev.data as { active?: boolean } | null)?.active;
         if (typeof active === "boolean") return active;
       }
-    }
-    const plan = currentProjections?.plan;
-    if (plan) {
-      return Boolean(plan.pending ? !plan.active : plan.active);
     }
     return false;
   }, [currentId, currentProjections, items, eventsRef]);
