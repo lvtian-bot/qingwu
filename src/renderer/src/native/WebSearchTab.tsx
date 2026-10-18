@@ -61,24 +61,32 @@ export function WebSearchTab({ controller }: { controller: WebSearchSettingsCont
         <SettingsRow
           label={t("settings.webSearch.apiKey.label")}
           desc={
-            !controller.keyWritable
-              ? t("settings.webSearch.apiKey.readOnlyDesc")
-              : controller.hasKey
-                ? t("settings.webSearch.apiKey.configuredDesc")
-                : t("settings.webSearch.apiKey.unconfiguredDesc")
+            !controller.keyStatusKnown
+              ? t("settings.webSearch.apiKey.statusErrorDesc")
+              : !controller.keyWritable
+                ? t("settings.webSearch.apiKey.readOnlyDesc")
+                : controller.hasKey
+                  ? t("settings.webSearch.apiKey.configuredDesc")
+                  : t("settings.webSearch.apiKey.unconfiguredDesc")
           }
         >
           <div className="native-key-input-wrapper">
             <input
               type={showKey ? "text" : "password"}
               className="native-settings-input"
-              disabled={!controller.writable || !controller.keyWritable}
+              disabled={
+                !controller.writable ||
+                !controller.keyWritable ||
+                !controller.keyStatusKnown
+              }
               placeholder={
-                !controller.keyWritable
-                  ? t("settings.webSearch.apiKey.readOnlyDesc")
-                  : controller.hasKey
-                    ? t("settings.webSearch.apiKey.placeholderConfigured")
-                    : t("settings.webSearch.apiKey.placeholderUnconfigured")
+                !controller.keyStatusKnown
+                  ? t("settings.webSearch.apiKey.statusErrorDesc")
+                  : !controller.keyWritable
+                    ? t("settings.webSearch.apiKey.readOnlyDesc")
+                    : controller.hasKey
+                      ? t("settings.webSearch.apiKey.placeholderConfigured")
+                      : t("settings.webSearch.apiKey.placeholderUnconfigured")
               }
               value={controller.apiKeyDraft}
               onChange={(e) => controller.setApiKeyDraft(e.target.value)}

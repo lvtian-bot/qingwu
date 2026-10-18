@@ -79,6 +79,7 @@ export const settings = {
       placeholderConfigured: "留空则保持当前密钥",
       placeholderUnconfigured: "输入 DeepSeek API Key",
       readOnlyDesc: "由系统环境变量提供，保持只读",
+      statusErrorDesc: "无法确认凭据状态，密钥编辑已禁用",
     },
     baseURL: {
       label: "接口基础地址",

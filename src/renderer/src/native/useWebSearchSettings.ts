@@ -18,8 +18,10 @@ export interface WebSearchSettingsController {
   setCount: (count: number) => void;
   /** 系统中是否已配置 DeepSeek API Key */
   hasKey: boolean;
-  /** 专用 API Key 是否可写（由环境变量提供时为 false） */
+  /** 专用 API Key 是否可写（由环境变量提供或状态未知时为 false） */
   keyWritable: boolean;
+  /** 凭据状态是否已成功获知（若查询失败则为 false，禁用编辑） */
+  keyStatusKnown: boolean;
   /** 专用 API Key 输入草稿 */
   apiKeyDraft: string;
   setApiKeyDraft: (key: string) => void;
@@ -45,6 +47,7 @@ export function useWebSearchSettings(): WebSearchSettingsController {
   const [loaded, setLoaded] = useState<boolean>(false);
   const [writable, setWritable] = useState<boolean>(true);
   const [keyWritable, setKeyWritable] = useState<boolean>(true);
+  const [keyStatusKnown, setKeyStatusKnown] = useState<boolean>(true);
   const [providerType, setProviderType] = useState<"deepseek" | "custom">("deepseek");
   const [loadedProviders, setLoadedProviders] = useState<{
     searchProvider: string;
@@ -115,8 +118,11 @@ export function useWebSearchSettings(): WebSearchSettingsController {
         const deepseekCred = credsRes["DEEPSEEK_API_KEY"];
         setHasKey(Boolean(deepseekCred?.configured));
         setKeyWritable(deepseekCred?.writable !== false);
+        setKeyStatusKnown(true);
       } else {
-        setKeyWritable(true);
+        setHasKey(false);
+        setKeyWritable(false);
+        setKeyStatusKnown(false);
       }
     } catch (err) {
       setLoaded(false);
@@ -222,6 +228,7 @@ export function useWebSearchSettings(): WebSearchSettingsController {
     loaded,
     writable,
     keyWritable,
+    keyStatusKnown,
     saving,
     message,
     error,

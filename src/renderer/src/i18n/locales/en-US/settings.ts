@@ -80,6 +80,7 @@ export const settings: typeof zhSettings = {
       placeholderConfigured: "Leave empty to keep current key",
       placeholderUnconfigured: "Enter DeepSeek API Key",
       readOnlyDesc: "Supplied by environment variable, read-only",
+      statusErrorDesc: "Unable to verify credential status, key editing disabled",
     },
     baseURL: {
       label: "API Base URL",
