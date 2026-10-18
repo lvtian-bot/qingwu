@@ -25,7 +25,6 @@ import {
   PANEL_DEFAULT_WIDTH,
   PANEL_MAX_WIDTH,
   PANEL_MIN_WIDTH,
-  saveLastPanelWidth,
   savePanelLayout,
   type PanelLayout,
   type PanelTab,
@@ -228,18 +227,15 @@ export const RightPanel = forwardRef<RightPanelHandle, RightPanelProps>(
     }, [narrow, onOpenChange]);
 
     // 宽度拖拽（仅普通展开态显示）
-    const dragRef = useRef<{
-      startX: number;
-      startWidth: number;
-      currentWidth: number;
-    } | null>(null);
+    const dragRef = useRef<{ startX: number; startWidth: number } | null>(null);
     const onResizerDown = (event: React.PointerEvent<HTMLDivElement>) => {
       event.preventDefault();
-      dragRef.current = {
-        startX: event.clientX,
-        startWidth: layout.width,
-        currentWidth: layout.width,
-      };
+      // 以当前受窗口半宽约束的实际渲染宽度为拖拽基线，消除窄窗口下的拖拽死区
+      const startWidth = Math.min(
+        layout.width,
+        Math.max(PANEL_MIN_WIDTH, Math.floor(window.innerWidth * 0.5)),
+      );
+      dragRef.current = { startX: event.clientX, startWidth };
       event.currentTarget.setPointerCapture(event.pointerId);
       setDragging(true);
     };
@@ -251,14 +247,9 @@ export const RightPanel = forwardRef<RightPanelHandle, RightPanelProps>(
         max,
         Math.max(PANEL_MIN_WIDTH, drag.startWidth + (drag.startX - event.clientX)),
       );
-      drag.currentWidth = width;
       setLayout((prev) => ({ ...prev, width }));
     };
     const onResizerUp = (event: React.PointerEvent<HTMLDivElement>) => {
-      const drag = dragRef.current;
-      if (drag) {
-        saveLastPanelWidth(drag.currentWidth);
-      }
       dragRef.current = null;
       setDragging(false);
       event.currentTarget.releasePointerCapture(event.pointerId);
@@ -303,10 +294,9 @@ export const RightPanel = forwardRef<RightPanelHandle, RightPanelProps>(
             onPointerDown={onResizerDown}
             onPointerMove={onResizerMove}
             onPointerUp={onResizerUp}
-            onDoubleClick={() => {
-              setLayout((prev) => ({ ...prev, width: PANEL_DEFAULT_WIDTH }));
-              saveLastPanelWidth(PANEL_DEFAULT_WIDTH);
-            }}
+            onDoubleClick={() =>
+              setLayout((prev) => ({ ...prev, width: PANEL_DEFAULT_WIDTH }))
+            }
           />
         )}
         <div
