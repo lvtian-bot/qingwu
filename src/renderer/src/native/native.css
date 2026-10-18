@@ -9,13 +9,14 @@ input,
 select,
 textarea {
   font-family:
-    "Microsoft YaHei",
     -apple-system,
     BlinkMacSystemFont,
     "Segoe UI",
     Roboto,
     "Helvetica Neue",
     Arial,
+    "Microsoft YaHei",
+    "PingFang SC",
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -29,13 +30,14 @@ textarea {
 .native-app select,
 .native-app textarea {
   font-family:
-    "Microsoft YaHei",
     -apple-system,
     BlinkMacSystemFont,
     "Segoe UI",
     Roboto,
     "Helvetica Neue",
     Arial,
+    "Microsoft YaHei",
+    "PingFang SC",
     sans-serif;
 }
 
@@ -2930,14 +2932,21 @@ body.native-ui-active .titlebar {
 
 @container (max-width: 320px) {
   .native-picker-model .native-pill-text,
-  .native-picker-permission .native-pill-text {
+  .native-picker-permission .native-pill-text,
+  .native-plan-chip .native-pill-text {
     display: none;
+  }
+  .native-plan-chip {
+    padding: 0 8px;
   }
 }
 
 @container (max-width: 170px) {
   .native-pill-chevron {
     display: none;
+  }
+  .native-plan-chip {
+    padding: 0 6px;
   }
 }
 
@@ -2998,6 +3007,60 @@ body.native-ui-active .titlebar {
 .native-pill:hover .native-pill-chevron,
 .native-pill.active .native-pill-chevron {
   color: var(--native-fg);
+}
+
+/* 计划模式状态胶囊：位于输入框工具栏左侧（访问模式控件右侧），对齐官方 PlanChip */
+.native-plan-chip {
+  background: rgba(58, 131, 247, 0.1);
+  color: var(--native-send, #3a83f7);
+  border: 1px solid rgba(58, 131, 247, 0.25);
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.native-plan-chip:hover {
+  background: rgba(58, 131, 247, 0.18);
+  color: var(--native-send, #3a83f7);
+  border-color: var(--native-send, #3a83f7);
+}
+
+@media (prefers-color-scheme: dark) {
+  .native-plan-chip {
+    background: rgba(58, 131, 247, 0.16);
+    color: #60a5fa;
+    border-color: rgba(96, 165, 250, 0.3);
+  }
+
+  .native-plan-chip:hover {
+    background: rgba(58, 131, 247, 0.25);
+    color: #93c5fd;
+    border-color: #60a5fa;
+  }
+}
+
+.native-plan-glyph {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.native-plan-glyph-hover {
+  display: none;
+}
+
+.native-plan-chip:hover .native-plan-glyph-rest,
+.native-plan-chip:focus-visible .native-plan-glyph-rest {
+  display: none;
+}
+
+.native-plan-chip:hover .native-plan-glyph-hover,
+.native-plan-chip:focus-visible .native-plan-glyph-hover {
+  display: inline-flex;
 }
 
 .native-pill.active .native-pill-chevron {
@@ -3844,12 +3907,50 @@ body.native-ui-active .titlebar {
 }
 
 .panel-preview-md {
-  padding: 12px 14px 20px;
+  padding: 20px 24px 32px;
+  box-sizing: border-box;
 }
 
-/* 面板内 Markdown 沿用正文字号（面板取会话区的底色与字号） */
+/* 面板内 Markdown 沿用正文字号与行高（对齐会话区质感），建立文档阅读呼吸感 */
 .panel-preview-md .native-md {
-  font-size: 13px;
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--native-fg);
+  word-break: break-word;
+}
+
+.panel-preview-md .native-md p {
+  margin: 0 0 12px;
+}
+
+.panel-preview-md .native-md h1 {
+  font-size: 1.4em;
+  margin: 22px 0 12px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--native-card-border);
+}
+
+.panel-preview-md .native-md h2 {
+  font-size: 1.22em;
+  margin: 20px 0 10px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--native-card-border);
+}
+
+.panel-preview-md .native-md h3 {
+  font-size: 1.1em;
+  margin: 16px 0 8px;
+}
+
+.panel-preview-md .native-md ul,
+.panel-preview-md .native-md ol {
+  margin: 0 0 12px;
+  padding-left: 22px;
+}
+
+.panel-preview-md .native-md li {
+  margin: 4px 0;
+  line-height: 1.65;
 }
 
 .panel-code {

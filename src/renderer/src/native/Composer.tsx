@@ -49,6 +49,8 @@ interface ComposerProps {
   onQueryFileReferences?: (query: string, signal: AbortSignal) => Promise<FileReferenceCandidate[]>;
   /** 弹出菜单展示方位：'top'（底部停靠输入框，向上浮出）或 'bottom'（空态居中卡片，向下内嵌展开）。缺省为 'top'。 */
   menuPlacement?: 'top' | 'bottom';
+  /** 当前会话是否处于计划模式。 */
+  isPlanMode?: boolean;
 }
 
 /** 输入框高度上限，与 .native-composer-box textarea 的 max-height 一致（超出后内部滚动）。 */
@@ -75,6 +77,7 @@ export function Composer({
   textareaRef,
   canSteerQueue,
   onSteerQueue,
+  isPlanMode,
   controls,
   meter,
   draftImages,
@@ -453,6 +456,8 @@ export function Composer({
         placeholder={
           canSteerQueue && !input && draftImages.length === 0
             ? steerQueueHint
+            : isPlanMode
+            ? t("composer.placeholderPlan")
             : t("composer.placeholder")
         }
         onFocus={() => {

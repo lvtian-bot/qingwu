@@ -678,6 +678,11 @@ export interface UserQuestionAnswer {
 
 // ---------- 会话摘要（session/list） ----------
 
+export interface PlanModeProjection {
+  active: boolean;
+  pending: boolean;
+}
+
 export interface SessionSummary {
   sessionId: string;
   updatedAt: number;
@@ -696,6 +701,7 @@ export interface SessionSummary {
       tokenUsage?: TokenUsageProjection;
       contextPressure?: ContextPressureProjection;
       contextBreakdown?: ContextBreakdownProjection;
+      plan?: PlanModeProjection;
       [key: string]: unknown;
     };
   };

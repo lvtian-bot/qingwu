@@ -113,6 +113,10 @@ interface ComposerControlsProps {
   permission: PermissionSelect | null;
   /** 控件标题补充（空态标明"新会话默认权限"）。 */
   permissionHint?: string;
+  /** 当前会话是否处于计划模式（Plan Mode）。 */
+  isPlanMode?: boolean;
+  /** 退出计划模式回调（派发 /plan off 命令）。 */
+  onExitPlanMode?: () => void;
   onModelPick: (selection: ModelSelection) => void;
   onEffortPick: (effortId: string | undefined) => void;
   onPermissionPick: (value: string) => void;
@@ -124,6 +128,8 @@ export function ComposerControls({
   selection,
   permission,
   permissionHint,
+  isPlanMode,
+  onExitPlanMode,
   onModelPick,
   onEffortPick,
   onPermissionPick,
@@ -270,6 +276,48 @@ export function ComposerControls({
             </div>
           )}
         </div>
+      )}
+
+      {isPlanMode && (
+        <button
+          type="button"
+          className="native-pill native-plan-chip"
+          onClick={onExitPlanMode}
+          title={t("composer.planChip.title")}
+          aria-label={t("composer.planChip.title")}
+        >
+          <span className="native-plan-glyph native-plan-glyph-rest" aria-hidden="true">
+            <svg
+              viewBox="0 0 16 16"
+              width="13"
+              height="13"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M5.5 2.5h5a1 1 0 0 1 1 1V4h1a1.5 1.5 0 0 1 1.5 1.5v8a1.5 1.5 0 0 1-1.5 1.5H3.5A1.5 1.5 0 0 1 2 13.5v-8A1.5 1.5 0 0 1 3.5 4h1v-.5a1 1 0 0 1 1-1Z" />
+              <path d="m5 9 2 2 4-4" />
+            </svg>
+          </span>
+          <span className="native-plan-glyph native-plan-glyph-hover" aria-hidden="true">
+            <svg
+              viewBox="0 0 16 16"
+              width="13"
+              height="13"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <circle cx="8" cy="8" r="6" />
+              <path d="m6 6 4 4m0-4-4 4" />
+            </svg>
+          </span>
+          <span className="native-pill-text">{t("composer.planChip.label")}</span>
+        </button>
       )}
 
       <span className="native-composer-controls-spacer" />

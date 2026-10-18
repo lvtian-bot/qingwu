@@ -53,6 +53,10 @@ interface ChatComposerProps {
   permission: PermissionSelect | null;
   /** 权限控件标题补充（空态标明「新会话默认权限」）。 */
   permissionHint?: string;
+  /** 当前会话是否处于计划模式。 */
+  isPlanMode?: boolean;
+  /** 退出计划模式回调。 */
+  onExitPlanMode?: () => void;
   onModelPick: (selection: ModelSelection) => void;
   onEffortPick: (effortId: string | undefined) => void;
   onPermissionPick: (value: string) => void;
@@ -83,6 +87,8 @@ export function ChatComposer({
   selection,
   permission,
   permissionHint,
+  isPlanMode,
+  onExitPlanMode,
   onModelPick,
   onEffortPick,
   onPermissionPick,
@@ -98,6 +104,7 @@ export function ChatComposer({
       running={running}
       onStop={onStop}
       textareaRef={textareaRef}
+      isPlanMode={isPlanMode}
       draftImages={draftImages}
       onRemoveDraftImage={onRemoveDraftImage}
       onAddImages={onAddImages}
@@ -116,6 +123,8 @@ export function ChatComposer({
           selection={selection}
           permission={permission}
           permissionHint={permissionHint}
+          isPlanMode={isPlanMode}
+          onExitPlanMode={onExitPlanMode}
           onModelPick={onModelPick}
           onEffortPick={onEffortPick}
           onPermissionPick={onPermissionPick}
