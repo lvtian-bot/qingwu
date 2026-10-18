@@ -60,6 +60,9 @@ function collectMismatches(dir) {
 
   // 第二层：声明仍在的依赖，实际安装版本必须与 lock 记录一致。
   // 声明已失配的包跳过——lock 快照不同步时版本比对只会重复报同一件事。
+  // lock 无记录或本地未装任一为空即失配：声明的依赖必须既被 lock 记录、
+  // 又被真正安装，两个空值不能互相抵消成「一致」（lock 被部分编辑或
+  // 合并冲突后的残留就在这里暴露）。
   for (const name of Object.keys(declared)) {
     if (declared[name] !== lockDeclared[name]) continue;
     const lockVersion = lock.packages?.[`node_modules/${name}`]?.version ?? null;
@@ -72,7 +75,7 @@ function collectMismatches(dir) {
         installed = 'package.json 损坏';
       }
     }
-    if (installed !== lockVersion) {
+    if (lockVersion === null || installed === null || installed !== lockVersion) {
       mismatches.push({ name, kind: 'version', lock: lockVersion, installed });
     }
   }

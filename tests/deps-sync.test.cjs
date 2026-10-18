@@ -104,6 +104,36 @@ test('包内 package.json 损坏时报可读错误而非崩溃', () => {
   ]);
 });
 
+test('声明健全但 lock 无记录且本地未装（两空值）不放行', () => {
+  // lock 被部分编辑或合并冲突后的残留形态：声明与快照一致，
+  // 但安装记录和实际安装双双缺失，不能互相抵消成「一致」
+  const dir = makeProject({
+    deps: { ws: '^8.0.0' },
+    lockEntries: {}, // lock 顶层无 ws 安装记录
+    installed: {}, // 本地也未安装
+  });
+  const { mismatches } = collectMismatches(dir);
+  assert.deepEqual(mismatches, [
+    { name: 'ws', kind: 'version', lock: null, installed: null },
+  ]);
+});
+
+test('声明健全但包存在却无 version 字段时视为未同步', () => {
+  const dir = makeProject({
+    deps: { ws: '^8.0.0' },
+    lockEntries: {}, // lock 顶层无记录
+    installed: {},
+  });
+  // 包目录存在，但 package.json 没有 version 字段（version 读出为 null）
+  const pkgDir = path.join(dir, 'node_modules', 'ws');
+  fs.mkdirSync(pkgDir, { recursive: true });
+  fs.writeFileSync(path.join(pkgDir, 'package.json'), JSON.stringify({ name: 'ws' }));
+  const { mismatches } = collectMismatches(dir);
+  assert.deepEqual(mismatches, [
+    { name: 'ws', kind: 'version', lock: null, installed: null },
+  ]);
+});
+
 test('升级声明与 lock 后未重新安装时报告过期包', () => {
   // 复现真实事故形态：package.json 与 lock 已是新版，node_modules 里还是旧版
   const dir = makeProject({
