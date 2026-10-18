@@ -168,45 +168,78 @@ export class HarnessManager {
    * 为什么需要专属 profile：
    * 1. 避免与终端下运行的官方 Web 版（~/.dsh/profiles/web）共享配置、插件与持久化；
    * 2. 对齐官方桌面端独立 profile 规范（官方桌面端使用 ~/.dsh/profiles/desktop）；
-   * 3. 首次使用自动初始化 manifest 与空补丁层，后续用户或青梧的定制不污染其他环境。
+   * 3. 首次使用自动初始化 manifest 与补丁层，存量配置平滑升级为默认新版高速搜索，后续用户或青梧的定制不污染其他环境。
    */
   private ensureQingwuProfile(): void {
     try {
       const profileDir = resolveQingwuProfileDir();
       const manifestPath = path.join(profileDir, "package.json");
-
-      if (fs.existsSync(manifestPath)) return;
+      const patchPath = path.join(profileDir, "cordis.patch.yml");
+      const workspacePath = path.join(profileDir, "pnpm-workspace.yaml");
 
       if (typeof fs.mkdirSync === "function") {
         fs.mkdirSync(profileDir, { recursive: true });
       }
 
-      const manifest = {
-        name: "dsh-profile-qingwu",
-        private: true,
-        dependencies: {},
-        dsh: {
-          profile: {
-            bundles: [
-              "@deepseek-ai/dsh-base",
-              "@deepseek-ai/dsh-web-app",
-            ],
+      if (!fs.existsSync(manifestPath)) {
+        const manifest = {
+          name: "dsh-profile-qingwu",
+          private: true,
+          dependencies: {},
+          dsh: {
+            profile: {
+              bundles: [
+                "@deepseek-ai/dsh-base",
+                "@deepseek-ai/dsh-web-app",
+              ],
+            },
           },
-        },
-      };
+        };
+        if (typeof fs.writeFileSync === "function") {
+          fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
+        }
+      }
+
+      if (!fs.existsSync(workspacePath) && typeof fs.writeFileSync === "function") {
+        fs.writeFileSync(
+          workspacePath,
+          "packages:\n  - .\n\nnodeLinker: hoisted\nautoInstallPeers: false\n",
+        );
+      }
+
+      const defaultWebPatch = [
+        "- id: web",
+        '  name: "@deepseek-ai/dsh-web"',
+        "  config:",
+        "    searchProvider: deepseek-search-api",
+        "    fetchProvider: deepseek-fetch-api",
+      ].join("\n");
 
       if (typeof fs.writeFileSync === "function") {
-        fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
-        const patchPath = path.join(profileDir, "cordis.patch.yml");
         if (!fs.existsSync(patchPath)) {
-          fs.writeFileSync(patchPath, "# 青梧专属 profile 补丁层\n[]\n");
-        }
-        const workspacePath = path.join(profileDir, "pnpm-workspace.yaml");
-        if (!fs.existsSync(workspacePath)) {
           fs.writeFileSync(
-            workspacePath,
-            "packages:\n  - .\n\nnodeLinker: hoisted\nautoInstallPeers: false\n",
+            patchPath,
+            `# 青梧专属 profile 补丁层\n${defaultWebPatch}\n`,
           );
+        } else if (typeof fs.readFileSync === "function") {
+          // 存量老用户平滑迁移：若补丁文件中尚未声明 id: web，则安全追加默认新版搜索配置
+          const currentContent = fs.readFileSync(patchPath, "utf-8");
+          const hasWebEntry = /^\s*-\s*id:\s*['"]?web['"]?\s*$/m.test(currentContent);
+          if (!hasWebEntry) {
+            try {
+              fs.copyFileSync(patchPath, `${patchPath}.bak`);
+            } catch (bakErr) {
+              console.warn("[Harness] 备份 cordis.patch.yml 失败:", bakErr);
+            }
+            const trimmed = currentContent.trimEnd();
+            const separator = trimmed === "[]" || trimmed === "" ? "" : "\n";
+            const newContent =
+              trimmed === "[]"
+                ? `# 青梧专属 profile 补丁层\n${defaultWebPatch}\n`
+                : `${trimmed}${separator}${defaultWebPatch}\n`;
+            fs.writeFileSync(patchPath, newContent);
+            console.log("[Harness] 已为青梧专属 profile 平滑补全新版 Web 搜索配置");
+          }
         }
       }
     } catch (err) {

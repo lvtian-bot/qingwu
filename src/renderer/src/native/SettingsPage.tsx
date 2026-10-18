@@ -11,6 +11,8 @@ import { ModelsTab } from "./ModelsTab";
 import { GeneralTab } from "./GeneralTab";
 import { ArchivedSessionsTab } from "./ArchivedSessionsTab";
 import { PermissionsTab } from "./PermissionsTab";
+import { WebSearchTab } from "./WebSearchTab";
+import { useWebSearchSettings } from "./useWebSearchSettings";
 
 export interface SettingsPageProps {
   onBack: () => void;
@@ -34,7 +36,7 @@ export interface SettingsPageProps {
   onOpenSession?: (sessionId: string) => void | Promise<void>;
 }
 
-type TabKey = "models" | "general" | "archivedSessions" | "permissions";
+type TabKey = "models" | "general" | "webSearch" | "archivedSessions" | "permissions";
 
 // 导航文案存词条 key，渲染处经 t() 取词
 const NAV_GROUPS: {
@@ -60,6 +62,15 @@ const NAV_GROUPS: {
         icon: (
           <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
             <path d="M6.5 1A1.5 1.5 0 0 0 5 2.5V3H2.5A1.5 1.5 0 0 0 1 4.5v9A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-9A1.5 1.5 0 0 0 13.5 3H11v-.5A1.5 1.5 0 0 0 9.5 1h-3zm0 1h3a.5.5 0 0 1 .5.5V3H6v-.5a.5.5 0 0 1 .5-.5zM2 4.5a.5.5 0 0 1 .5-.5h11a.5.5 0 0 1 .5.5V6H2V4.5zM2 7h12v6.5a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5V7z" />
+          </svg>
+        ),
+      },
+      {
+        key: "webSearch",
+        labelKey: "settings.nav.webSearch",
+        icon: (
+          <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
+            <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z" />
           </svg>
         ),
       },
@@ -132,6 +143,7 @@ export function SettingsPage({
 }: SettingsPageProps) {
   const [activeTab, setActiveTab] = useState<TabKey>("general");
   const dsh = useDshSettings();
+  const webSearch = useWebSearchSettings();
   const t = useT();
 
   // 按 Esc 键返回应用
@@ -255,6 +267,11 @@ export function SettingsPage({
             onRefreshCatalog={onRefreshCatalog}
             dsh={dsh}
           />
+        </div>
+
+        {/* 联网搜索 */}
+        <div className="native-settings-panel" style={panelStyle("webSearch")}>
+          <WebSearchTab controller={webSearch} />
         </div>
 
         {/* 常规 */}
