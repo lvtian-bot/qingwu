@@ -78,6 +78,7 @@ export const settings = {
       unconfiguredDesc: "未配置密钥。当前 Agent 无法联网，请填入有效的 DeepSeek API Key。",
       placeholderConfigured: "留空则保持当前密钥",
       placeholderUnconfigured: "输入 DeepSeek API Key",
+      readOnlyDesc: "由系统环境变量提供，保持只读",
     },
     baseURL: {
       label: "接口基础地址",

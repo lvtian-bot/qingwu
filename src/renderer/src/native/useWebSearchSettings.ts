@@ -18,6 +18,8 @@ export interface WebSearchSettingsController {
   setCount: (count: number) => void;
   /** 系统中是否已配置 DeepSeek API Key */
   hasKey: boolean;
+  /** 专用 API Key 是否可写（由环境变量提供时为 false） */
+  keyWritable: boolean;
   /** 专用 API Key 输入草稿 */
   apiKeyDraft: string;
   setApiKeyDraft: (key: string) => void;
@@ -42,7 +44,15 @@ export function useWebSearchSettings(): WebSearchSettingsController {
   const [settingsSnapshot, setSettingsSnapshot] = useState<SettingsDescribeValue | null>(null);
   const [loaded, setLoaded] = useState<boolean>(false);
   const [writable, setWritable] = useState<boolean>(true);
+  const [keyWritable, setKeyWritable] = useState<boolean>(true);
   const [providerType, setProviderType] = useState<"deepseek" | "custom">("deepseek");
+  const [loadedProviders, setLoadedProviders] = useState<{
+    searchProvider: string;
+    fetchProvider: string;
+  }>({
+    searchProvider: "deepseek-search-api",
+    fetchProvider: "deepseek-fetch-api",
+  });
   const [baseURL, setBaseURL] = useState<string>("");
   const [count, setCount] = useState<number>(DEFAULT_SEARCH_COUNT);
   const [hasKey, setHasKey] = useState<boolean>(false);
@@ -75,6 +85,8 @@ export function useWebSearchSettings(): WebSearchSettingsController {
         const webNs = settingsRes.namespaces.find((ns) => ns.ns === "web");
         const webVal = webNs?.value as { searchProvider?: string; fetchProvider?: string } | undefined;
         const searchProvider = webVal?.searchProvider ?? "deepseek-search-api";
+        const fetchProvider = webVal?.fetchProvider ?? "deepseek-fetch-api";
+        setLoadedProviders({ searchProvider, fetchProvider });
 
         const apiNs = settingsRes.namespaces.find((ns) => ns.ns === "web-deepseek-api");
         const apiVal = apiNs?.value as { baseURL?: string; count?: number } | undefined;
@@ -102,6 +114,9 @@ export function useWebSearchSettings(): WebSearchSettingsController {
       if (credsRes && typeof credsRes === "object") {
         const deepseekCred = credsRes["DEEPSEEK_API_KEY"];
         setHasKey(Boolean(deepseekCred?.configured));
+        setKeyWritable(deepseekCred?.writable !== false);
+      } else {
+        setKeyWritable(true);
       }
     } catch (err) {
       setLoaded(false);
@@ -129,8 +144,8 @@ export function useWebSearchSettings(): WebSearchSettingsController {
     setError(null);
 
     try {
-      // 1. 保存凭据（若用户输入了新 Key）
-      if (apiKeyDraft.trim()) {
+      // 1. 保存凭据（仅当密钥可写且用户输入了新 Key 时执行，环境变量只读时不破坏其余设置保存）
+      if (keyWritable && apiKeyDraft.trim()) {
         await rpc(Endpoints.credentialsSet, {
           ref: "DEEPSEEK_API_KEY",
           value: apiKeyDraft.trim(),
@@ -139,13 +154,22 @@ export function useWebSearchSettings(): WebSearchSettingsController {
         setHasKey(true);
       }
 
-      // 2. 保存 web 命名空间：确保 searchProvider 与 fetchProvider 一致
+      // 2. 保存 web 命名空间：选择 DeepSeek 官方时切换至官方 API；自定义模式保留已有的 provider 配置
+      const targetSearchProvider =
+        providerType === "deepseek"
+          ? "deepseek-search-api"
+          : loadedProviders.searchProvider || "deepseek-search-api";
+      const targetFetchProvider =
+        providerType === "deepseek"
+          ? "deepseek-fetch-api"
+          : loadedProviders.fetchProvider || "deepseek-fetch-api";
+
       const webNs = settingsSnapshot.namespaces.find((ns) => ns.ns === "web");
       await rpc(Endpoints.settingsUpdate, {
         ns: "web",
         patch: {
-          searchProvider: "deepseek-search-api",
-          fetchProvider: "deepseek-fetch-api",
+          searchProvider: targetSearchProvider,
+          fetchProvider: targetFetchProvider,
         },
         expectedRevision: webNs?.revision,
       });
@@ -197,6 +221,7 @@ export function useWebSearchSettings(): WebSearchSettingsController {
     setApiKeyDraft,
     loaded,
     writable,
+    keyWritable,
     saving,
     message,
     error,

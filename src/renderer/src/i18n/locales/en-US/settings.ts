@@ -79,6 +79,7 @@ export const settings: typeof zhSettings = {
       unconfiguredDesc: "No key configured. The agent cannot search the web until a valid DeepSeek API Key is provided.",
       placeholderConfigured: "Leave empty to keep current key",
       placeholderUnconfigured: "Enter DeepSeek API Key",
+      readOnlyDesc: "Supplied by environment variable, read-only",
     },
     baseURL: {
       label: "API Base URL",
