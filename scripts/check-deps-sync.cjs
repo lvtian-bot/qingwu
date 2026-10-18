@@ -7,9 +7,12 @@
 // 清单输出都是旧版的，曾造成过统计误判，且该情况随每次升级反复出现。
 // 正式安装包由 CI 按 lock 全新安装不受影响，本门禁只管本地开发环境。
 //
-// 核对口径：package-lock.json 是上次安装的快照，顶层依赖在 node_modules
-// 里的实际版本必须与 lock 记录一致；包缺失同样视为不同步。两处对不上
-// 即失败并提示先安装，让问题在开工第一秒被拦下，不依赖人工记性。
+// 核对口径（三层一致）：
+// 1. package.json 的依赖声明必须与 lock 根节点复刻的声明一致——改了声明
+//    未重新安装时，lock 与本地往往同旧，仅比对后两者会误放行；
+// 2. 顶层依赖在 node_modules 的实际版本必须与 lock 记录一致；
+// 3. 包缺失同样视为不同步。
+// 三处任一对不上即失败并提示先安装，让问题在开工第一秒被拦下。
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -18,9 +21,11 @@ const path = require('node:path');
  * 比对一个项目目录的依赖一致性。
  *
  * @param {string} dir 含 package.json、package-lock.json 与 node_modules 的目录。
- * @returns {{ mismatches: Array<{ name: string, lock: string|null, installed: string|null }>,
+ * @returns {{ mismatches: Array<{ name: string, kind: 'declared'|'version', declared?: string,
+ *            lockDecl?: string, lock?: string|null, installed?: string|null }>,
  *            missingLock: boolean }}
- *   mismatches 为版本对不上或包缺失的顶层依赖清单；missingLock 表示缺 lock 文件。
+ *   mismatches 按核对层分类：declared 为声明与 lock 快照不符，version 为
+ *   实际版本与 lock 记录不符或包缺失；missingLock 表示缺 lock 文件。
  */
 function collectMismatches(dir) {
   const readJson = (p) => JSON.parse(fs.readFileSync(p, 'utf8'));
@@ -30,10 +35,18 @@ function collectMismatches(dir) {
     return { mismatches: [], missingLock: true };
   }
   const lock = readJson(lockPath);
+  const lockRoot = lock.packages?.[''] ?? {};
 
   const wanted = { ...pkg.dependencies, ...pkg.devDependencies };
   const mismatches = [];
-  for (const name of Object.keys(wanted)) {
+  for (const [name, declared] of Object.entries(wanted)) {
+    // 第一层：声明必须与 lock 根快照一致（npm install 时复刻，改声明未重装即失配）
+    const lockDeclared = { ...lockRoot.dependencies, ...lockRoot.devDependencies }[name];
+    if (lockDeclared !== undefined && declared !== lockDeclared) {
+      mismatches.push({ name, kind: 'declared', declared, lockDecl: lockDeclared });
+    }
+
+    // 第二层：实际安装版本必须与 lock 记录一致
     const lockVersion = lock.packages?.[`node_modules/${name}`]?.version ?? null;
     const installedPath = path.join(dir, 'node_modules', name, 'package.json');
     let installed = null;
@@ -41,7 +54,7 @@ function collectMismatches(dir) {
       installed = readJson(installedPath).version;
     }
     if (installed !== lockVersion) {
-      mismatches.push({ name, lock: lockVersion, installed });
+      mismatches.push({ name, kind: 'version', lock: lockVersion, installed });
     }
   }
   return { mismatches, missingLock: false };
@@ -57,15 +70,19 @@ function main() {
     return;
   }
   if (mismatches.length === 0) {
-    console.log('[deps-sync] 依赖一致性核对通过：node_modules 与 package-lock.json 同步');
+    console.log('[deps-sync] 依赖一致性核对通过：声明、lock 与 node_modules 三方同步');
     return;
   }
 
-  console.error('[deps-sync] 本地依赖与 lock 文件不同步，检查中止（升级后未重新安装的典型症状）：');
-  for (const { name, lock, installed } of mismatches) {
-    const installedText = installed ?? '未安装';
-    const lockText = lock ?? 'lock 未记录';
-    console.error(`  ${name}: lock ${lockText} / 实际 ${installedText}`);
+  console.error('[deps-sync] 本地依赖不同步，检查中止（升级或改声明后未重新安装的典型症状）：');
+  for (const m of mismatches) {
+    if (m.kind === 'declared') {
+      console.error(`  ${m.name}: 声明 ${m.declared} / lock 快照 ${m.lockDecl}（package.json 改动未落 lock）`);
+    } else {
+      const installedText = m.installed ?? '未安装';
+      const lockText = m.lock ?? 'lock 未记录';
+      console.error(`  ${m.name}: lock ${lockText} / 实际 ${installedText}`);
+    }
   }
   console.error('请先运行 npm install 同步依赖后再继续。');
   process.exitCode = 1;
