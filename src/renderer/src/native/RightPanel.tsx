@@ -25,6 +25,7 @@ import {
   PANEL_DEFAULT_WIDTH,
   PANEL_MAX_WIDTH,
   PANEL_MIN_WIDTH,
+  saveLastPanelWidth,
   savePanelLayout,
   type PanelLayout,
   type PanelTab,
@@ -248,6 +249,7 @@ export const RightPanel = forwardRef<RightPanelHandle, RightPanelProps>(
       dragRef.current = null;
       setDragging(false);
       event.currentTarget.releasePointerCapture(event.pointerId);
+      saveLastPanelWidth(layout.width);
     };
 
     if (!open) return null;
@@ -289,9 +291,10 @@ export const RightPanel = forwardRef<RightPanelHandle, RightPanelProps>(
             onPointerDown={onResizerDown}
             onPointerMove={onResizerMove}
             onPointerUp={onResizerUp}
-            onDoubleClick={() =>
-              setLayout((prev) => ({ ...prev, width: PANEL_DEFAULT_WIDTH }))
-            }
+            onDoubleClick={() => {
+              setLayout((prev) => ({ ...prev, width: PANEL_DEFAULT_WIDTH }));
+              saveLastPanelWidth(PANEL_DEFAULT_WIDTH);
+            }}
           />
         )}
         <div

@@ -19,15 +19,43 @@ export interface PanelLayout {
 
 export const PANEL_MIN_WIDTH = 240;
 export const PANEL_MAX_WIDTH = 720;
-export const PANEL_DEFAULT_WIDTH = 500;
+export const PANEL_DEFAULT_WIDTH = 600;
+
+export const PANEL_LAST_WIDTH_KEY = "qingwu.panel.lastWidth";
 
 const storageKeyOf = (sessionId: string) => `qingwu.panel.layout.${sessionId}`;
+
+export function getLastPanelWidth(): number {
+  try {
+    const raw = window.localStorage.getItem(PANEL_LAST_WIDTH_KEY);
+    if (!raw) return PANEL_DEFAULT_WIDTH;
+    const val = Number(raw);
+    if (Number.isFinite(val) && val >= PANEL_MIN_WIDTH && val <= PANEL_MAX_WIDTH) {
+      return Math.round(val);
+    }
+  } catch {
+    // localStorage 不可用时回退
+  }
+  return PANEL_DEFAULT_WIDTH;
+}
+
+export function saveLastPanelWidth(width: number): void {
+  try {
+    const clamped = Math.min(
+      PANEL_MAX_WIDTH,
+      Math.max(PANEL_MIN_WIDTH, Math.round(width)),
+    );
+    window.localStorage.setItem(PANEL_LAST_WIDTH_KEY, String(clamped));
+  } catch {
+    // 存储失败时忽略
+  }
+}
 
 export function defaultPanelLayout(): PanelLayout {
   return {
     expanded: false,
     fullscreen: false,
-    width: PANEL_DEFAULT_WIDTH,
+    width: getLastPanelWidth(),
     tabs: [],
     activeTabId: null,
   };
@@ -56,18 +84,18 @@ export function loadPanelLayout(sessionId: string | null): PanelLayout {
       tabs.some((tab) => tab.id === parsed.activeTabId)
         ? parsed.activeTabId
         : (tabs[tabs.length - 1]?.id ?? null);
+    const hasSavedWidth =
+      typeof parsed.width === "number" && Number.isFinite(parsed.width);
+    const initialWidth = hasSavedWidth
+      ? Math.round(parsed.width as number)
+      : getLastPanelWidth();
     return {
       expanded: parsed.expanded === true,
       fullscreen: parsed.fullscreen === true,
       // 默认宽度上调后，历史记录里窄于默认的宽度抬升到新默认（拖窄只在会话内生效）
       width: Math.min(
         PANEL_MAX_WIDTH,
-        Math.max(
-          PANEL_DEFAULT_WIDTH,
-          typeof parsed.width === "number" && Number.isFinite(parsed.width)
-            ? Math.round(parsed.width)
-            : PANEL_DEFAULT_WIDTH,
-        ),
+        Math.max(PANEL_DEFAULT_WIDTH, initialWidth),
       ),
       tabs,
       activeTabId,
@@ -85,6 +113,9 @@ export function loadPanelLayout(sessionId: string | null): PanelLayout {
 export function savePanelLayout(sessionId: string, layout: PanelLayout): void {
   try {
     window.localStorage.setItem(storageKeyOf(sessionId), JSON.stringify(layout));
+    if (typeof layout.width === "number" && Number.isFinite(layout.width)) {
+      saveLastPanelWidth(layout.width);
+    }
   } catch {
     // 存储失败时当前布局仍可在内存中使用
   }
