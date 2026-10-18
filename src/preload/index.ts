@@ -162,7 +162,8 @@ const api: QingwuApi = {
     ipcRenderer.on('appSettings:changed', handler);
     return () => ipcRenderer.removeListener('appSettings:changed', handler);
   },
-  openUserDataFolder: () => ipcRenderer.invoke('appSettings:openUserData'),
+  openProfileFolder: () => ipcRenderer.invoke('appSettings:openProfileFolder'),
+  openUserDataFolder: () => ipcRenderer.invoke('appSettings:openProfileFolder'),
 
   openTerminal: (targetPath) => ipcRenderer.invoke('workspace:openTerminal', targetPath),
   openPath: (targetPath) => ipcRenderer.invoke('workspace:openPath', targetPath),

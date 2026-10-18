@@ -44,9 +44,11 @@ export function GeneralTab({ dsh }: { dsh: DshSettingsController }) {
     }
   };
 
-  // 打开青梧本地数据目录
-  const handleOpenAppData = async () => {
-    if (window.qingwu?.openUserDataFolder) {
+  // 打开青梧专属配置目录
+  const handleOpenProfileDir = async () => {
+    if (window.qingwu?.openProfileFolder) {
+      await window.qingwu.openProfileFolder();
+    } else if (window.qingwu?.openUserDataFolder) {
       await window.qingwu.openUserDataFolder();
     }
   };
@@ -142,28 +144,22 @@ export function GeneralTab({ dsh }: { dsh: DshSettingsController }) {
         </SettingsRow>
 
         <SettingsRow
-          label={t("settings.general.appData.label")}
-          desc={t("settings.general.appData.desc")}
+          label={t("settings.general.profileDir.label")}
+          desc={t("settings.general.profileDir.desc")}
         >
           <button
             type="button"
             className="native-btn native-btn-secondary"
-            onClick={handleOpenAppData}
+            onClick={handleOpenProfileDir}
           >
-            {t("settings.general.appData.open")}
+            {t("settings.general.profileDir.openFolder")}
           </button>
-        </SettingsRow>
-
-        <SettingsRow
-          label={t("settings.general.dshConfig.label")}
-          desc={t("settings.general.dshConfig.desc")}
-        >
           <button
             type="button"
             className="native-btn native-btn-secondary"
             onClick={() => void dsh.openDshConfig()}
           >
-            {t("settings.general.dshConfig.open")}
+            {t("settings.general.profileDir.openFile")}
           </button>
         </SettingsRow>
       </div>

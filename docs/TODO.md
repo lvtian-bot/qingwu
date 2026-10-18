@@ -20,6 +20,8 @@
 
 ## Bug 修复
 
+- [x] 优化配置目录与文件入口：对齐 DSH 官方桌面端规范，移除过时的 %APPDATA% 应用目录与不存在的 settings.json 描述，合并为单一「青梧配置目录」入口，提供打开专属 Profile 目录（~/.dsh/profiles/qingwu）与编辑器直开 cordis.patch.yml 补丁；修正共享误导提示 ✅ 2026-10-18
+
 ## 暂不考虑
 
 - [ ] macOS / Linux 发行版
