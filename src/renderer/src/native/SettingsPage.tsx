@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useT } from "../i18n";
 import {
   type ModelCatalog,
@@ -143,8 +143,14 @@ export function SettingsPage({
 }: SettingsPageProps) {
   const [activeTab, setActiveTab] = useState<TabKey>("general");
   const dsh = useDshSettings();
+  const [credentialVersion, setCredentialVersion] = useState(0);
+  const handleRefreshCredentials = useCallback(() => {
+    setCredentialVersion((v) => v + 1);
+    onRefreshCatalog?.();
+  }, [onRefreshCatalog]);
+
   const webSearch = useWebSearchSettings({
-    onRefreshCredentials: onRefreshCatalog,
+    onRefreshCredentials: handleRefreshCredentials,
   });
   const t = useT();
 
@@ -280,7 +286,8 @@ export function SettingsPage({
         <div className="native-settings-panel" style={panelStyle("models")}>
           <ModelsTab
             modelCatalog={modelCatalog}
-            onRefreshCatalog={onRefreshCatalog}
+            onRefreshCatalog={handleRefreshCredentials}
+            credentialVersion={credentialVersion}
             dsh={dsh}
           />
         </div>

@@ -178,12 +178,13 @@ export function useWebSearchSettings(
   }, [load]);
 
   const save = useCallback(async () => {
-    if (!settingsSnapshot || !writable) {
-      setError(
-        !settingsSnapshot
-          ? t("settings.webSearch.loadFailed")
-          : t("settings.webSearch.readOnly"),
-      );
+    const hasKeyChange = Boolean(keyWritable && apiKeyDraft.trim());
+    if (!settingsSnapshot) {
+      setError(t("settings.webSearch.loadFailed"));
+      return;
+    }
+    if (!writable && !hasKeyChange) {
+      setError(t("settings.webSearch.readOnly"));
       return;
     }
 
@@ -208,7 +209,7 @@ export function useWebSearchSettings(
     try {
       let keySaved = false;
       // 1. 凭据差分：仅当密钥可写且输入了新 Key 时写入
-      if (keyWritable && apiKeyDraft.trim()) {
+      if (hasKeyChange) {
         await rpc(Endpoints.credentialsSet, {
           ref: keyRef,
           value: apiKeyDraft.trim(),
@@ -218,71 +219,77 @@ export function useWebSearchSettings(
         keySaved = true;
       }
 
-      // 2. 服务商差分：仅在服务商模式真正改变时提交更新
-      if (providerType !== baseline.providerType) {
-        const targetSearchProvider =
-          providerType === "deepseek"
-            ? "deepseek-search-api"
-            : baseline.searchProvider || "deepseek-search-api";
-        const targetFetchProvider =
-          providerType === "deepseek"
-            ? "deepseek-fetch-api"
-            : baseline.fetchProvider || "deepseek-fetch-api";
+      // 2. 设置项差分：仅在设置允许写入时提交服务商与端点配置
+      if (writable) {
+        // 2.1 服务商差分：仅在服务商模式真正改变时提交更新
+        if (providerType !== baseline.providerType) {
+          const targetSearchProvider =
+            providerType === "deepseek"
+              ? "deepseek-search-api"
+              : baseline.searchProvider || "deepseek-search-api";
+          const targetFetchProvider =
+            providerType === "deepseek"
+              ? "deepseek-fetch-api"
+              : baseline.fetchProvider || "deepseek-fetch-api";
 
-        const webNs = settingsSnapshot.namespaces.find((ns) => ns.ns === "web");
-        await rpc(Endpoints.settingsUpdate, {
-          ns: "web",
-          patch: {
-            searchProvider: targetSearchProvider,
-            fetchProvider: targetFetchProvider,
-          },
-          expectedRevision: webNs?.revision,
-        });
-      }
-
-      // 3. API 命名空间差分比对：原子提交修改项
-      const apiNs = settingsSnapshot.namespaces.find((ns) => ns.ns === "web-deepseek-api");
-      const apiVal = apiNs?.value as { baseURL?: string } | undefined;
-      const effectiveBaseURL = typeof apiVal?.baseURL === "string" ? apiVal.baseURL : "";
-      const userSection = apiNs?.user as Record<string, unknown> | undefined;
-      const hasBaseURLInUserLayer = Boolean(userSection && "baseURL" in userSection);
-
-      const ops: Array<{ op: "set" | "unset"; path: string[]; value?: unknown }> = [];
-
-      // 3.1 条数差分：仅当用户改动了 count 时才提交
-      const normalizedCount = Math.min(50, Math.max(1, count));
-      if (normalizedCount !== baseline.count) {
-        ops.push({ op: "set", path: ["count"], value: normalizedCount });
-      }
-
-      // 3.2 端点差分：
-      if (providerType === "custom") {
-        if (normalizedBaseURL) {
-          // 自定义模式填入端点：变动时 set
-          if (normalizedBaseURL !== baseline.baseURL) {
-            ops.push({ op: "set", path: ["baseURL"], value: normalizedBaseURL });
-          }
-        } else if (hasBaseURLInUserLayer || (baseline.baseURL && baseline.baseURL !== "")) {
-          // 用户清空自定义端点：移除用户层覆盖以恢复底层默认继承，避免显式 set 固化官方端点
-          ops.push({ op: "unset", path: ["baseURL"] });
-        }
-      } else if (providerType === "deepseek") {
-        // 官方模式：必须确保当前有效端点为官方默认端点
-        if (effectiveBaseURL !== DEFAULT_SEARCH_API_BASE_URL) {
-          ops.push({
-            op: "set",
-            path: ["baseURL"],
-            value: DEFAULT_SEARCH_API_BASE_URL,
+          const webNs = settingsSnapshot.namespaces.find((ns) => ns.ns === "web");
+          await rpc(Endpoints.settingsUpdate, {
+            ns: "web",
+            patch: {
+              searchProvider: targetSearchProvider,
+              fetchProvider: targetFetchProvider,
+            },
+            expectedRevision: webNs?.revision,
           });
         }
-      }
 
-      if (ops.length > 0) {
-        await rpc(Endpoints.settingsMutate, {
-          ns: "web-deepseek-api",
-          ops,
-          expectedRevision: apiNs?.revision,
-        });
+        // 2.2 API 命名空间差分比对：原子提交修改项
+        const apiNs = settingsSnapshot.namespaces.find((ns) => ns.ns === "web-deepseek-api");
+        const apiVal = apiNs?.value as { baseURL?: string } | undefined;
+        const effectiveBaseURL = typeof apiVal?.baseURL === "string" ? apiVal.baseURL : "";
+        const userSection = apiNs?.user as Record<string, unknown> | undefined;
+        const hasBaseURLInUserLayer = Boolean(userSection && "baseURL" in userSection);
+
+        const ops: Array<{ op: "set" | "unset"; path: string[]; value?: unknown }> = [];
+
+        // 条数差分：仅当用户改动了 count 时才提交
+        const normalizedCount = Math.min(50, Math.max(1, count));
+        if (normalizedCount !== baseline.count) {
+          ops.push({ op: "set", path: ["count"], value: normalizedCount });
+        }
+
+        // 端点差分：
+        if (providerType === "custom") {
+          if (normalizedBaseURL) {
+            // 自定义模式填入端点：变动时 set
+            if (normalizedBaseURL !== baseline.baseURL) {
+              ops.push({ op: "set", path: ["baseURL"], value: normalizedBaseURL });
+            }
+          } else if (hasBaseURLInUserLayer) {
+            // 用户清空自定义端点且原端点在用户层：移除用户层覆盖以恢复底层继承
+            ops.push({ op: "unset", path: ["baseURL"] });
+          } else if (baseline.baseURL && baseline.baseURL !== "") {
+            // 用户清空端点但原端点来自底层继承层（用户层无覆盖）：显式覆写为官方默认端点，确保留空恢复默认生效
+            ops.push({ op: "set", path: ["baseURL"], value: DEFAULT_SEARCH_API_BASE_URL });
+          }
+        } else if (providerType === "deepseek") {
+          // 官方模式：必须确保当前有效端点为官方默认端点
+          if (effectiveBaseURL !== DEFAULT_SEARCH_API_BASE_URL) {
+            ops.push({
+              op: "set",
+              path: ["baseURL"],
+              value: DEFAULT_SEARCH_API_BASE_URL,
+            });
+          }
+        }
+
+        if (ops.length > 0) {
+          await rpc(Endpoints.settingsMutate, {
+            ns: "web-deepseek-api",
+            ops,
+            expectedRevision: apiNs?.revision,
+          });
+        }
       }
 
       setMessage(t("settings.webSearch.savedSuccess"));

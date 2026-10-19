@@ -10,10 +10,17 @@ export function WebSearchTab({ controller }: { controller: WebSearchSettingsCont
   const t = useT();
   const [showKey, setShowKey] = useState(false);
 
-  // 正交统一的表单禁用状态：加载未完成、运行环境只读、或正在保存中
-  const formDisabled = !controller.loaded || !controller.writable || controller.saving;
+  // 忙碌状态：加载未完成或正在保存中
+  const isBusy = !controller.loaded || controller.saving;
+  // 设置项只读/禁用状态：忙碌中或系统设置不可写
+  const settingsDisabled = isBusy || !controller.writable;
+  // 密钥独立禁用状态：忙碌中、密钥不可写（如环境变量注入）、或凭据状态未知（与系统设置只读解耦）
   const keyInputDisabled =
-    formDisabled || !controller.keyWritable || !controller.keyStatusKnown;
+    isBusy || !controller.keyWritable || !controller.keyStatusKnown;
+  // 保存可用性：系统设置允许写入，或密钥凭据可独立保存
+  const canSave =
+    controller.writable || (controller.keyWritable && controller.keyStatusKnown);
+  const saveDisabled = isBusy || !canSave;
 
   return (
     <>
@@ -48,7 +55,7 @@ export function WebSearchTab({ controller }: { controller: WebSearchSettingsCont
           <select
             className="native-settings-select"
             value={controller.providerType}
-            disabled={formDisabled}
+            disabled={settingsDisabled}
             onChange={(e) =>
               controller.setProviderType(e.target.value as "deepseek" | "custom")
             }
@@ -122,7 +129,7 @@ export function WebSearchTab({ controller }: { controller: WebSearchSettingsCont
             <input
               type="text"
               className="native-settings-input"
-              disabled={formDisabled}
+              disabled={settingsDisabled}
               placeholder={DEFAULT_SEARCH_API_BASE_URL}
               value={controller.baseURL}
               onChange={(e) => controller.setBaseURL(e.target.value)}
@@ -138,7 +145,7 @@ export function WebSearchTab({ controller }: { controller: WebSearchSettingsCont
           <input
             type="number"
             className="native-settings-input"
-            disabled={formDisabled}
+            disabled={settingsDisabled}
             style={{ width: "90px" }}
             min={1}
             max={50}
@@ -157,7 +164,7 @@ export function WebSearchTab({ controller }: { controller: WebSearchSettingsCont
         <button
           type="button"
           className="native-btn native-btn-primary"
-          disabled={formDisabled}
+          disabled={saveDisabled}
           onClick={() => void controller.save()}
         >
           {controller.saving

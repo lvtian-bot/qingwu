@@ -3,6 +3,7 @@ import type { ChildProcess } from "node:child_process";
 import http from "node:http";
 import path from "node:path";
 import fs from "node:fs";
+import YAML from "yaml";
 import { app } from "electron";
 import { CONFIG } from "./config";
 import { resolveQingwuProfileDir } from "./dsh-paths";
@@ -224,8 +225,31 @@ export class HarnessManager {
         } else if (typeof fs.readFileSync === "function") {
           // 存量老用户平滑迁移：若补丁文件中尚未声明 id: web，则安全追加默认新版搜索配置
           const currentContent = fs.readFileSync(patchPath, "utf-8");
-          const hasWebEntry =
-            /^\s*-\s*id:\s*['"]?web['"]?(?:\s*#.*|\s*)$/m.test(currentContent);
+          let hasWebEntry = false;
+          let isLegacyEmpty = false;
+          try {
+            const parsed = YAML.parse(currentContent);
+            if (Array.isArray(parsed)) {
+              hasWebEntry = parsed.some(
+                (item) =>
+                  item &&
+                  typeof item === "object" &&
+                  (item as Record<string, unknown>).id === "web",
+              );
+              isLegacyEmpty = parsed.length === 0;
+            } else if (parsed === null || parsed === undefined) {
+              isLegacyEmpty = true;
+            }
+          } catch {
+            // 解析失败时降级容错：结合多行与流式 JSON 风格检查，避免语法微瑕时重复追加
+            hasWebEntry =
+              /(?:^|\s|-|\{)\s*id:\s*['"]?web['"]?(?:\s*[,}#]|\s*$)/m.test(
+                currentContent,
+              );
+            const stripped = currentContent.replace(/#.*$/gm, "").trim();
+            isLegacyEmpty = stripped === "[]" || stripped === "";
+          }
+
           if (!hasWebEntry) {
             const backupPath = `${patchPath}.bak`;
             if (fs.existsSync(backupPath)) {
@@ -251,9 +275,6 @@ export class HarnessManager {
                 return;
               }
             }
-            // 剔除注释与空白后判断是否为历史空文档（例如仅有 "# ...\n[]"）
-            const stripped = currentContent.replace(/#.*$/gm, "").trim();
-            const isLegacyEmpty = stripped === "[]" || stripped === "";
             const newContent = isLegacyEmpty
               ? `# 青梧专属 profile 补丁层\n${defaultWebPatch}\n`
               : `${currentContent.trimEnd()}\n\n${defaultWebPatch}\n`;

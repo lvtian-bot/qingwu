@@ -199,3 +199,41 @@ test("若存量 .bak 路径存在但非普通文件（如目录），则中止�
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test("若用户配置为单行流式 JSON 风格 YAML（- { id: web }），仍可精准识别并不重复追加", () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "qingwu-test-profile-"));
+  try {
+    fs.mkdirSync(tmp, { recursive: true });
+    fs.writeFileSync(path.join(tmp, "package.json"), "{}");
+    const flowPatch = '- { id: web, name: "@deepseek-ai/dsh-web", config: { searchProvider: custom } }\n';
+    const patchPath = path.join(tmp, "cordis.patch.yml");
+    fs.writeFileSync(patchPath, flowPatch);
+
+    const harness = setupHarness(tmp);
+    harness["ensureQingwuProfile"]();
+
+    assert.equal(fs.existsSync(`${patchPath}.bak`), false, "流式语法已存在时不应产生备份文件");
+    assert.equal(fs.readFileSync(patchPath, "utf-8"), flowPatch, "流式语法配置必须原样保留，不得重复追加");
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("若用户配置为全流式数组语法（[{ id: web }]），仍可精准识别并不重复追加", () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "qingwu-test-profile-"));
+  try {
+    fs.mkdirSync(tmp, { recursive: true });
+    fs.writeFileSync(path.join(tmp, "package.json"), "{}");
+    const flowArrayPatch = '[{ id: web, name: "@deepseek-ai/dsh-web" }]\n';
+    const patchPath = path.join(tmp, "cordis.patch.yml");
+    fs.writeFileSync(patchPath, flowArrayPatch);
+
+    const harness = setupHarness(tmp);
+    harness["ensureQingwuProfile"]();
+
+    assert.equal(fs.existsSync(`${patchPath}.bak`), false, "流式数组语法已存在时不应产生备份文件");
+    assert.equal(fs.readFileSync(patchPath, "utf-8"), flowArrayPatch, "流式数组语法配置必须原样保留，不得重复追加");
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
