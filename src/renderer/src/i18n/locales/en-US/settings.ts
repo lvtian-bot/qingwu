@@ -67,6 +67,7 @@ export const settings: typeof zhSettings = {
     savedFailed: "Failed to save web search settings: {message}",
     loadFailed: "Failed to load web search settings. Saving is disabled to prevent accidental overwrite.",
     readOnly: "Settings are currently in read-only mode and cannot be modified.",
+    invalidBaseURL: "Please enter a valid endpoint URL starting with http:// or https://",
     provider: {
       label: "Search Provider",
       desc: "Choose the service provider for agent search and page fetch. DeepSeek Fast API is recommended by default.",
