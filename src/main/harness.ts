@@ -228,7 +228,19 @@ export class HarnessManager {
             /^\s*-\s*id:\s*['"]?web['"]?(?:\s*#.*|\s*)$/m.test(currentContent);
           if (!hasWebEntry) {
             const backupPath = `${patchPath}.bak`;
-            if (!fs.existsSync(backupPath)) {
+            if (fs.existsSync(backupPath)) {
+              let isUsableBackup = false;
+              try {
+                isUsableBackup = fs.statSync(backupPath).isFile();
+              } catch {}
+              if (!isUsableBackup) {
+                console.warn(
+                  "[Harness] 存量备份路径存在但非普通文件，中止平滑升级以保护原配置:",
+                  backupPath,
+                );
+                return;
+              }
+            } else {
               try {
                 fs.copyFileSync(patchPath, backupPath);
               } catch (bakErr) {

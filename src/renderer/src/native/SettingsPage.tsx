@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useT } from "../i18n";
 import {
   type ModelCatalog,
@@ -159,12 +159,16 @@ export function SettingsPage({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onBack]);
 
-  // 引擎重连成功且配置或凭据状态尚未就绪时，自动重刷，恢复界面可用状态；若已完全加载则保留当前草稿
+  // 严格监听连接状态的边沿跳变（从断开变更为已连接）：
+  // 仅在真实重连边沿且配置或凭据尚未就绪时执行刷新自愈，避免初次挂载时产生重复的初始加载请求
+  const prevConnectedRef = useRef<boolean | undefined>(dshConnected);
   const refreshWebSearch = webSearch.refresh;
   const webSearchLoaded = webSearch.loaded;
   const webSearchKeyKnown = webSearch.keyStatusKnown;
   useEffect(() => {
-    if (dshConnected && (!webSearchLoaded || !webSearchKeyKnown)) {
+    const wasDisconnected = prevConnectedRef.current === false;
+    prevConnectedRef.current = dshConnected;
+    if (wasDisconnected && dshConnected && (!webSearchLoaded || !webSearchKeyKnown)) {
       void refreshWebSearch();
     }
   }, [dshConnected, webSearchLoaded, webSearchKeyKnown, refreshWebSearch]);

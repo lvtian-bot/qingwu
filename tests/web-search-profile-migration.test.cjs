@@ -176,3 +176,26 @@ test("若创建 .bak 备份失败，则立即中止迁移保护原始文件不�
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test("若存量 .bak 路径存在但非普通文件（如目录），则中止迁移保护原始文件", () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "qingwu-test-profile-"));
+  try {
+    fs.mkdirSync(tmp, { recursive: true });
+    fs.writeFileSync(path.join(tmp, "package.json"), "{}");
+    const rawContent = "- id: agent-default-model\n  config: { model: test }\n";
+    const patchPath = path.join(tmp, "cordis.patch.yml");
+    fs.writeFileSync(patchPath, rawContent);
+
+    // 将备份路径预建为目录（非普通文件）
+    const backupPath = `${patchPath}.bak`;
+    fs.mkdirSync(backupPath);
+
+    const harness = setupHarness(tmp);
+    harness["ensureQingwuProfile"]();
+
+    // 原始文件必须原封不动
+    assert.equal(fs.readFileSync(patchPath, "utf-8"), rawContent);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
