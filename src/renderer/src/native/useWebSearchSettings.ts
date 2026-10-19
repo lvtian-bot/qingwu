@@ -4,7 +4,7 @@ import { Endpoints, type CredentialInfo, type SettingsDescribeValue } from "./pr
 import { rpc } from "./rpc";
 
 export const DEFAULT_SEARCH_API_BASE_URL = "https://api.deepseek.com/v1/tools";
-export const DEFAULT_SEARCH_COUNT = 10;
+export const DEFAULT_SEARCH_COUNT = 8;
 
 export interface WebSearchSettingsOptions {
   /** 当凭据（API Key）更新保存后触发，用于联动刷新模型设置等其他分区的凭据状态 */
@@ -123,7 +123,10 @@ export function useWebSearchSettings(
         const currentBaseURL = typeof apiVal?.baseURL === "string" ? apiVal.baseURL : "";
         setBaseURL(currentBaseURL);
 
-        const currentCount = typeof apiVal?.count === "number" ? apiVal.count : DEFAULT_SEARCH_COUNT;
+        const currentCount =
+          typeof apiVal?.count === "number"
+            ? Math.min(8, Math.max(1, apiVal.count))
+            : DEFAULT_SEARCH_COUNT;
         setCount(currentCount);
 
         const isOfficialProviders =
@@ -207,16 +210,27 @@ export function useWebSearchSettings(
     setError(null);
 
     try {
-      let keySaved = false;
       // 1. 凭据差分：仅当密钥可写且输入了新 Key 时写入
       if (hasKeyChange) {
         await rpc(Endpoints.credentialsSet, {
           ref: keyRef,
           value: apiKeyDraft.trim(),
         });
+
+        // 遵循 DSH 官方契约回读核验凭据：确认凭据被底层提供商真正持久化落盘
+        const verifyRes = await rpc<Record<string, CredentialInfo>>(
+          Endpoints.credentialsDescribe,
+          { refs: [keyRef] },
+        ).catch(() => null);
+        const verifiedCred = verifyRes?.[keyRef];
+        if (!verifiedCred?.configured) {
+          throw new Error("Credential write failed verification: key not retained by provider");
+        }
+
         setApiKeyDraft("");
         setHasKey(true);
-        keySaved = true;
+        // 回读核验通过后立即通知外部凭据消费者（即使后续设置项报错，凭据已生效也需同步更新）
+        options?.onRefreshCredentials?.();
       }
 
       // 2. 设置项差分：仅在设置允许写入时提交服务商与端点配置
@@ -252,8 +266,8 @@ export function useWebSearchSettings(
 
         const ops: Array<{ op: "set" | "unset"; path: string[]; value?: unknown }> = [];
 
-        // 条数差分：仅当用户改动了 count 时才提交
-        const normalizedCount = Math.min(50, Math.max(1, count));
+        // 条数差分：仅当用户改动了 count 时才提交（上限与 DSH 工具硬限制 8 严格对齐）
+        const normalizedCount = Math.min(8, Math.max(1, count));
         if (normalizedCount !== baseline.count) {
           ops.push({ op: "set", path: ["count"], value: normalizedCount });
         }
@@ -273,8 +287,12 @@ export function useWebSearchSettings(
             ops.push({ op: "set", path: ["baseURL"], value: DEFAULT_SEARCH_API_BASE_URL });
           }
         } else if (providerType === "deepseek") {
-          // 官方模式：必须确保当前有效端点为官方默认端点
-          if (effectiveBaseURL !== DEFAULT_SEARCH_API_BASE_URL) {
+          // 官方模式：端点留空即代表官方默认，严禁在无意修改时把官方端点固化写入用户层
+          if (hasBaseURLInUserLayer) {
+            // 用户层曾有覆盖：在官方模式下一律 unset 移除覆盖，恢复原生继承
+            ops.push({ op: "unset", path: ["baseURL"] });
+          } else if (effectiveBaseURL && effectiveBaseURL !== DEFAULT_SEARCH_API_BASE_URL) {
+            // 来自底层继承的自定义端点（用户层无覆盖）：必须显式覆写为官方默认端点，以覆盖继承的非官方端点
             ops.push({
               op: "set",
               path: ["baseURL"],
@@ -294,11 +312,6 @@ export function useWebSearchSettings(
 
       setMessage(t("settings.webSearch.savedSuccess"));
       await load();
-
-      // 若保存了共享凭据，同步通知外部刷新
-      if (keySaved) {
-        options?.onRefreshCredentials?.();
-      }
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
       const formattedError = t("settings.webSearch.savedFailed", { message: errMsg });

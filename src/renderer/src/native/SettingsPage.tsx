@@ -144,14 +144,24 @@ export function SettingsPage({
   const [activeTab, setActiveTab] = useState<TabKey>("general");
   const dsh = useDshSettings();
   const [credentialVersion, setCredentialVersion] = useState(0);
-  const handleRefreshCredentials = useCallback(() => {
+
+  // 搜索页更新凭据时触发：推进版本号以通知已挂载的模型设置页重新读取凭据，并同步刷新模型目录
+  const handleWebSearchCredentialChange = useCallback(() => {
     setCredentialVersion((v) => v + 1);
     onRefreshCatalog?.();
   }, [onRefreshCatalog]);
 
   const webSearch = useWebSearchSettings({
-    onRefreshCredentials: handleRefreshCredentials,
+    onRefreshCredentials: handleWebSearchCredentialChange,
   });
+
+  // 模型页等其他分区修改凭据时触发：推进版本号，通知模型目录，并反向刷新已挂载的搜索页凭据状态
+  const refreshWebSearch = webSearch.refresh;
+  const handleModelCredentialChange = useCallback(() => {
+    setCredentialVersion((v) => v + 1);
+    onRefreshCatalog?.();
+    void refreshWebSearch();
+  }, [onRefreshCatalog, refreshWebSearch]);
   const t = useT();
 
   // 按 Esc 键返回应用
@@ -168,7 +178,6 @@ export function SettingsPage({
   // 严格监听连接状态的边沿跳变（从断开变更为已连接）：
   // 仅在真实重连边沿且配置或凭据尚未就绪时执行刷新自愈，避免初次挂载时产生重复的初始加载请求
   const prevConnectedRef = useRef<boolean | undefined>(dshConnected);
-  const refreshWebSearch = webSearch.refresh;
   const webSearchLoaded = webSearch.loaded;
   const webSearchKeyKnown = webSearch.keyStatusKnown;
   useEffect(() => {
@@ -286,7 +295,7 @@ export function SettingsPage({
         <div className="native-settings-panel" style={panelStyle("models")}>
           <ModelsTab
             modelCatalog={modelCatalog}
-            onRefreshCatalog={handleRefreshCredentials}
+            onRefreshCatalog={handleModelCredentialChange}
             credentialVersion={credentialVersion}
             dsh={dsh}
           />

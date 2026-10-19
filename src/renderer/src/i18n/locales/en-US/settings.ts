@@ -90,7 +90,7 @@ export const settings: typeof zhSettings = {
     },
     count: {
       label: "Results per search",
-      desc: "Number of search results returned per query, between 1 and 50. Default is 10.",
+      desc: "Number of search results returned per query, between 1 and 8. Default is 8.",
     },
   },
   shared: {

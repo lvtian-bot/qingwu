@@ -148,7 +148,7 @@ export function WebSearchTab({ controller }: { controller: WebSearchSettingsCont
             disabled={settingsDisabled}
             style={{ width: "90px" }}
             min={1}
-            max={50}
+            max={8}
             value={controller.count}
             onChange={(e) => {
               const val = Number.parseInt(e.target.value, 10);
