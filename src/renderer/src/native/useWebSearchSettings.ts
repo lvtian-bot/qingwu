@@ -42,8 +42,10 @@ export interface WebSearchSettingsController {
   error: string | null;
   /** 提交保存所有修改 */
   save: () => Promise<void>;
-  /** 重新加载当前配置 */
+  /** 重新加载当前配置全量快照（会重置未保存表单） */
   refresh: () => Promise<void>;
+  /** 仅刷新 API Key 凭据状态，不冲刷正在编辑中的表单草稿（用于模型设置页联动） */
+  refreshCredentials: () => Promise<void>;
 }
 
 interface SavedBaseline {
@@ -176,6 +178,32 @@ export function useWebSearchSettings(
     }
   }, [t]);
 
+  // 仅刷新凭据状态：用于模型页修改凭据时跨分区联动，不冲刷用户正在搜索页编辑中的表单草稿
+  const refreshCredentials = useCallback(async () => {
+    try {
+      const credsRes = await rpc<Record<string, CredentialInfo>>(
+        Endpoints.credentialsDescribe,
+        { refs: [keyRef] },
+      ).catch((e) => {
+        console.warn("[WebSearchSettings] 刷新凭据状态失败:", e);
+        return null;
+      });
+
+      if (credsRes && typeof credsRes === "object") {
+        const targetCred = credsRes[keyRef];
+        setHasKey(Boolean(targetCred?.configured));
+        setKeyWritable(targetCred?.writable !== false);
+        setKeyStatusKnown(true);
+      } else {
+        setHasKey(false);
+        setKeyWritable(false);
+        setKeyStatusKnown(false);
+      }
+    } catch (err) {
+      console.error("[WebSearchSettings] 刷新凭据异常:", err);
+    }
+  }, [keyRef]);
+
   useEffect(() => {
     void load();
   }, [load]);
@@ -287,10 +315,25 @@ export function useWebSearchSettings(
             ops.push({ op: "set", path: ["baseURL"], value: DEFAULT_SEARCH_API_BASE_URL });
           }
         } else if (providerType === "deepseek") {
-          // 官方模式：端点留空即代表官方默认，严禁在无意修改时把官方端点固化写入用户层
+          // 官方模式：端点留空即代表官方默认
+          const baseSection = apiNs?.base as { baseURL?: string } | undefined;
+          const inheritedBaseURL =
+            typeof baseSection?.baseURL === "string" ? baseSection.baseURL : "";
+          const isInheritedOfficial =
+            !inheritedBaseURL || inheritedBaseURL === DEFAULT_SEARCH_API_BASE_URL;
+
           if (hasBaseURLInUserLayer) {
-            // 用户层曾有覆盖：在官方模式下一律 unset 移除覆盖，恢复原生继承
-            ops.push({ op: "unset", path: ["baseURL"] });
+            // 用户层曾有覆盖：仅当继承层本身也是官方默认时，才安全 unset 恢复原生继承；
+            // 若继承层为非官方自定义端点，则必须维持用户层的官方默认覆盖，绝不可 unset 暴露继承端点
+            if (isInheritedOfficial) {
+              ops.push({ op: "unset", path: ["baseURL"] });
+            } else if (effectiveBaseURL !== DEFAULT_SEARCH_API_BASE_URL) {
+              ops.push({
+                op: "set",
+                path: ["baseURL"],
+                value: DEFAULT_SEARCH_API_BASE_URL,
+              });
+            }
           } else if (effectiveBaseURL && effectiveBaseURL !== DEFAULT_SEARCH_API_BASE_URL) {
             // 来自底层继承的自定义端点（用户层无覆盖）：必须显式覆写为官方默认端点，以覆盖继承的非官方端点
             ops.push({
@@ -358,5 +401,6 @@ export function useWebSearchSettings(
     error,
     save,
     refresh: load,
+    refreshCredentials,
   };
 }

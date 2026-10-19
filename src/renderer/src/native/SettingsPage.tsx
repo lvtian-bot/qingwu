@@ -155,13 +155,13 @@ export function SettingsPage({
     onRefreshCredentials: handleWebSearchCredentialChange,
   });
 
-  // 模型页等其他分区修改凭据时触发：推进版本号，通知模型目录，并反向刷新已挂载的搜索页凭据状态
-  const refreshWebSearch = webSearch.refresh;
+  // 模型页等其他分区修改凭据时触发：推进版本号，通知模型目录，并仅刷新搜索页凭据状态（绝不冲刷未保存的设置草稿）
+  const refreshSearchCredentials = webSearch.refreshCredentials;
   const handleModelCredentialChange = useCallback(() => {
     setCredentialVersion((v) => v + 1);
     onRefreshCatalog?.();
-    void refreshWebSearch();
-  }, [onRefreshCatalog, refreshWebSearch]);
+    void refreshSearchCredentials();
+  }, [onRefreshCatalog, refreshSearchCredentials]);
   const t = useT();
 
   // 按 Esc 键返回应用
@@ -178,6 +178,7 @@ export function SettingsPage({
   // 严格监听连接状态的边沿跳变（从断开变更为已连接）：
   // 仅在真实重连边沿且配置或凭据尚未就绪时执行刷新自愈，避免初次挂载时产生重复的初始加载请求
   const prevConnectedRef = useRef<boolean | undefined>(dshConnected);
+  const refreshWebSearch = webSearch.refresh;
   const webSearchLoaded = webSearch.loaded;
   const webSearchKeyKnown = webSearch.keyStatusKnown;
   useEffect(() => {

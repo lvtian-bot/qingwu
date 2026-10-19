@@ -237,3 +237,28 @@ test("若用户配置为全流式数组语法（[{ id: web }]），仍可精准�
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test("若存量配置为流式根序列（[{ id: permission }]），追加时保持合法流式序列", () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "qingwu-test-profile-"));
+  try {
+    fs.mkdirSync(tmp, { recursive: true });
+    fs.writeFileSync(path.join(tmp, "package.json"), "{}");
+    const flowPatch = '[{ id: permission, config: { model: test } }]\n';
+    const patchPath = path.join(tmp, "cordis.patch.yml");
+    fs.writeFileSync(patchPath, flowPatch);
+
+    const harness = setupHarness(tmp);
+    harness["ensureQingwuProfile"]();
+
+    assert.equal(fs.existsSync(`${patchPath}.bak`), true, "未包含 web 时应产生备份文件");
+    const updatedContent = fs.readFileSync(patchPath, "utf-8");
+    const YAML = require("yaml");
+    const parsed = YAML.parse(updatedContent);
+    assert.ok(Array.isArray(parsed), "追加后必须仍能解析为合法数组");
+    assert.equal(parsed.length, 2, "应包含原条目与新加的 web 条目");
+    assert.equal(parsed[0].id, "permission");
+    assert.equal(parsed[1].id, "web");
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});

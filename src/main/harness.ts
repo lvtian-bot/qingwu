@@ -275,9 +275,29 @@ export class HarnessManager {
                 return;
               }
             }
-            const newContent = isLegacyEmpty
-              ? `# 青梧专属 profile 补丁层\n${defaultWebPatch}\n`
-              : `${currentContent.trimEnd()}\n\n${defaultWebPatch}\n`;
+            let newContent: string;
+            if (isLegacyEmpty) {
+              newContent = `# 青梧专属 profile 补丁层\n${defaultWebPatch}\n`;
+            } else {
+              try {
+                const doc = YAML.parseDocument(currentContent);
+                if (YAML.isSeq(doc.contents)) {
+                  doc.add({
+                    id: "web",
+                    name: "@deepseek-ai/dsh-web",
+                    config: {
+                      searchProvider: "deepseek-search-api",
+                      fetchProvider: "deepseek-fetch-api",
+                    },
+                  });
+                  newContent = doc.toString();
+                } else {
+                  newContent = `${currentContent.trimEnd()}\n\n${defaultWebPatch}\n`;
+                }
+              } catch {
+                newContent = `${currentContent.trimEnd()}\n\n${defaultWebPatch}\n`;
+              }
+            }
 
             // 原子写盘：先写入同级临时文件，成功后再原子重命名替换，防止写途中断电或磁盘满造成文件损坏
             const tmpPath = `${patchPath}.tmp-${Date.now()}`;
