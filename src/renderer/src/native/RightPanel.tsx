@@ -269,7 +269,11 @@ export const RightPanel = forwardRef<RightPanelHandle, RightPanelProps>(
       }
       dragRef.current = null;
       setDragging(false);
-      event.currentTarget.releasePointerCapture(event.pointerId);
+      try {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      } catch {
+        // pointercancel 等中断时 pointerCapture 可能已被系统释放，安全容错
+      }
     };
 
     if (!open) return null;
@@ -311,6 +315,7 @@ export const RightPanel = forwardRef<RightPanelHandle, RightPanelProps>(
             onPointerDown={onResizerDown}
             onPointerMove={onResizerMove}
             onPointerUp={onResizerUp}
+            onPointerCancel={onResizerUp}
             onDoubleClick={() => {
               setLayout((prev) => ({ ...prev, width: PANEL_DEFAULT_WIDTH }));
               savePanelWidth(PANEL_DEFAULT_WIDTH);
