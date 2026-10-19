@@ -209,6 +209,9 @@ export function useWebSearchSettings(
   }, [load]);
 
   const save = useCallback(async () => {
+    setMessage(null);
+    setError(null);
+
     const hasKeyChange = Boolean(keyWritable && apiKeyDraft.trim());
     if (!settingsSnapshot) {
       setError(t("settings.webSearch.loadFailed"));
@@ -234,8 +237,6 @@ export function useWebSearchSettings(
     }
 
     setSaving(true);
-    setMessage(null);
-    setError(null);
 
     try {
       // 1. 凭据差分：仅当密钥可写且输入了新 Key 时写入
@@ -300,6 +301,12 @@ export function useWebSearchSettings(
           ops.push({ op: "set", path: ["count"], value: normalizedCount });
         }
 
+        const baseSection = apiNs?.base as { baseURL?: string } | undefined;
+        const inheritedBaseURL =
+          typeof baseSection?.baseURL === "string" ? baseSection.baseURL : "";
+        const isInheritedOfficial =
+          !inheritedBaseURL || inheritedBaseURL === DEFAULT_SEARCH_API_BASE_URL;
+
         // 端点差分：
         if (providerType === "custom") {
           if (normalizedBaseURL) {
@@ -307,21 +314,17 @@ export function useWebSearchSettings(
             if (normalizedBaseURL !== baseline.baseURL) {
               ops.push({ op: "set", path: ["baseURL"], value: normalizedBaseURL });
             }
+          } else if (!isInheritedOfficial) {
+            // 用户清空自定义端点，但继承层是非官方自定义端点：显式写入官方默认端点，绝不能 unset 暴露继承端点
+            if (effectiveBaseURL !== DEFAULT_SEARCH_API_BASE_URL) {
+              ops.push({ op: "set", path: ["baseURL"], value: DEFAULT_SEARCH_API_BASE_URL });
+            }
           } else if (hasBaseURLInUserLayer) {
-            // 用户清空自定义端点且原端点在用户层：移除用户层覆盖以恢复底层继承
+            // 继承层是官方默认：可以安全 unset 移除用户层覆盖
             ops.push({ op: "unset", path: ["baseURL"] });
-          } else if (baseline.baseURL && baseline.baseURL !== "") {
-            // 用户清空端点但原端点来自底层继承层（用户层无覆盖）：显式覆写为官方默认端点，确保留空恢复默认生效
-            ops.push({ op: "set", path: ["baseURL"], value: DEFAULT_SEARCH_API_BASE_URL });
           }
         } else if (providerType === "deepseek") {
           // 官方模式：端点留空即代表官方默认
-          const baseSection = apiNs?.base as { baseURL?: string } | undefined;
-          const inheritedBaseURL =
-            typeof baseSection?.baseURL === "string" ? baseSection.baseURL : "";
-          const isInheritedOfficial =
-            !inheritedBaseURL || inheritedBaseURL === DEFAULT_SEARCH_API_BASE_URL;
-
           if (hasBaseURLInUserLayer) {
             // 用户层曾有覆盖：仅当继承层本身也是官方默认时，才安全 unset 恢复原生继承；
             // 若继承层为非官方自定义端点，则必须维持用户层的官方默认覆盖，绝不可 unset 暴露继承端点

@@ -37,7 +37,7 @@ test("全新安装初始化时自动写入默认新版高速搜索配置", () =>
   }
 });
 
-test("老版空配置文档（带注释与 []）平滑正规化升级为合法 YAML", () => {
+test("老版未定制空配置文档（带注释与 []）平滑升级为默认新版搜索配置", () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "qingwu-test-profile-"));
   try {
     fs.mkdirSync(tmp, { recursive: true });
@@ -49,10 +49,6 @@ test("老版空配置文档（带注释与 []）平滑正规化升级为合法 Y
     const harness = setupHarness(tmp);
     harness["ensureQingwuProfile"]();
 
-    const backupPath = `${patchPath}.bak`;
-    assert.ok(fs.existsSync(backupPath), "应当生成 .bak 安全备份文件");
-    assert.equal(fs.readFileSync(backupPath, "utf-8"), legacyEmptyPatch);
-
     const upgradedContent = fs.readFileSync(patchPath, "utf-8");
     assert.doesNotMatch(upgradedContent, /\[\]\s*-/, "不得生成含有 [] 与序列拼接的非法 YAML");
     assert.match(upgradedContent, /id:\s*web/, "应当正规化包含 id: web 节点");
@@ -62,7 +58,7 @@ test("老版空配置文档（带注释与 []）平滑正规化升级为合法 Y
   }
 });
 
-test("老用户存量配置安全平滑升级：保留已有模型配置，备份并安全追加新版搜索", () => {
+test("用户已定制的存量配置文件保持绝对原样，绝不擅自修改", () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "qingwu-test-profile-"));
   try {
     fs.mkdirSync(tmp, { recursive: true });
@@ -85,16 +81,27 @@ test("老用户存量配置安全平滑升级：保留已有模型配置，备�
     const harness = setupHarness(tmp);
     harness["ensureQingwuProfile"]();
 
-    const backupPath = `${patchPath}.bak`;
-    assert.ok(fs.existsSync(backupPath), "应当生成 .bak 安全备份文件");
-    assert.equal(fs.readFileSync(backupPath, "utf-8"), initialPatch, "备份内容必须与原始配置一致");
+    // 用户已定制的配置文件必须保持一模一样，绝不擅自追加或覆盖
+    assert.equal(fs.readFileSync(patchPath, "utf-8"), initialPatch);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
 
-    const upgradedContent = fs.readFileSync(patchPath, "utf-8");
-    assert.match(upgradedContent, /agent-default-model/, "老用户的默认模型必须保留");
-    assert.match(upgradedContent, /google-antigravity\/gemini-3.8-flash/, "老用户的模型选择必须保留");
-    assert.match(upgradedContent, /permission/, "老用户的权限配置必须保留");
-    assert.match(upgradedContent, /id:\s*web/, "应当追加 id: web 节点");
-    assert.match(upgradedContent, /deepseek-search-api/, "应当追加新版搜索配置");
+test("用户手动移除 web 后的文件在后续启动中绝对不再重新追加", () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "qingwu-test-profile-"));
+  try {
+    fs.mkdirSync(tmp, { recursive: true });
+    fs.writeFileSync(path.join(tmp, "package.json"), "{}");
+    const userModifiedPatch = '[{ id: permission, config: { model: test } }]\n';
+    const patchPath = path.join(tmp, "cordis.patch.yml");
+    fs.writeFileSync(patchPath, userModifiedPatch);
+
+    const harness = setupHarness(tmp);
+    harness["ensureQingwuProfile"]();
+
+    // 用户已手动移除 web 的配置必须完整尊重，绝不可重复追加
+    assert.equal(fs.readFileSync(patchPath, "utf-8"), userModifiedPatch);
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
@@ -118,146 +125,7 @@ test("若用户已存在自定义 web 配置，则保持原有设置不予覆盖
     const harness = setupHarness(tmp);
     harness["ensureQingwuProfile"]();
 
-    assert.equal(fs.existsSync(`${patchPath}.bak`), false, "未发生改动时不应产生备份文件");
     assert.equal(fs.readFileSync(patchPath, "utf-8"), customPatch, "用户自定义配置必须原样保留");
-  } finally {
-    fs.rmSync(tmp, { recursive: true, force: true });
-  }
-});
-
-test("若用户配置带有行尾注释，仍可精准识别并不重复追加", () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "qingwu-test-profile-"));
-  try {
-    fs.mkdirSync(tmp, { recursive: true });
-    fs.writeFileSync(path.join(tmp, "package.json"), "{}");
-    const commentedCustomPatch = [
-      "- id: web # 用户自定义搜索",
-      '  name: "@deepseek-ai/dsh-web"',
-      "  config:",
-      "    searchProvider: custom-search-api",
-      "    fetchProvider: custom-fetch-api",
-    ].join("\n");
-    const patchPath = path.join(tmp, "cordis.patch.yml");
-    fs.writeFileSync(patchPath, commentedCustomPatch);
-
-    const harness = setupHarness(tmp);
-    harness["ensureQingwuProfile"]();
-
-    assert.equal(fs.existsSync(`${patchPath}.bak`), false, "带行尾注释时不应产生备份文件");
-    assert.equal(fs.readFileSync(patchPath, "utf-8"), commentedCustomPatch, "带行尾注释的配置必须原样保留");
-  } finally {
-    fs.rmSync(tmp, { recursive: true, force: true });
-  }
-});
-
-test("若创建 .bak 备份失败，则立即中止迁移保护原始文件不被覆写", () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "qingwu-test-profile-"));
-  try {
-    fs.mkdirSync(tmp, { recursive: true });
-    fs.writeFileSync(path.join(tmp, "package.json"), "{}");
-    const rawContent = "- id: agent-default-model\n  config: { model: test }\n";
-    const patchPath = path.join(tmp, "cordis.patch.yml");
-    fs.writeFileSync(patchPath, rawContent);
-
-    const origCopy = fs.copyFileSync;
-    fs.copyFileSync = () => {
-      throw new Error("Simulated copy error during backup");
-    };
-    try {
-      const harness = setupHarness(tmp);
-      harness["ensureQingwuProfile"]();
-    } finally {
-      fs.copyFileSync = origCopy;
-    }
-
-    // 原始文件必须保持一模一样，绝不被带病覆写
-    assert.equal(fs.readFileSync(patchPath, "utf-8"), rawContent);
-  } finally {
-    fs.rmSync(tmp, { recursive: true, force: true });
-  }
-});
-
-test("若存量 .bak 路径存在但非普通文件（如目录），则中止迁移保护原始文件", () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "qingwu-test-profile-"));
-  try {
-    fs.mkdirSync(tmp, { recursive: true });
-    fs.writeFileSync(path.join(tmp, "package.json"), "{}");
-    const rawContent = "- id: agent-default-model\n  config: { model: test }\n";
-    const patchPath = path.join(tmp, "cordis.patch.yml");
-    fs.writeFileSync(patchPath, rawContent);
-
-    // 将备份路径预建为目录（非普通文件）
-    const backupPath = `${patchPath}.bak`;
-    fs.mkdirSync(backupPath);
-
-    const harness = setupHarness(tmp);
-    harness["ensureQingwuProfile"]();
-
-    // 原始文件必须原封不动
-    assert.equal(fs.readFileSync(patchPath, "utf-8"), rawContent);
-  } finally {
-    fs.rmSync(tmp, { recursive: true, force: true });
-  }
-});
-
-test("若用户配置为单行流式 JSON 风格 YAML（- { id: web }），仍可精准识别并不重复追加", () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "qingwu-test-profile-"));
-  try {
-    fs.mkdirSync(tmp, { recursive: true });
-    fs.writeFileSync(path.join(tmp, "package.json"), "{}");
-    const flowPatch = '- { id: web, name: "@deepseek-ai/dsh-web", config: { searchProvider: custom } }\n';
-    const patchPath = path.join(tmp, "cordis.patch.yml");
-    fs.writeFileSync(patchPath, flowPatch);
-
-    const harness = setupHarness(tmp);
-    harness["ensureQingwuProfile"]();
-
-    assert.equal(fs.existsSync(`${patchPath}.bak`), false, "流式语法已存在时不应产生备份文件");
-    assert.equal(fs.readFileSync(patchPath, "utf-8"), flowPatch, "流式语法配置必须原样保留，不得重复追加");
-  } finally {
-    fs.rmSync(tmp, { recursive: true, force: true });
-  }
-});
-
-test("若用户配置为全流式数组语法（[{ id: web }]），仍可精准识别并不重复追加", () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "qingwu-test-profile-"));
-  try {
-    fs.mkdirSync(tmp, { recursive: true });
-    fs.writeFileSync(path.join(tmp, "package.json"), "{}");
-    const flowArrayPatch = '[{ id: web, name: "@deepseek-ai/dsh-web" }]\n';
-    const patchPath = path.join(tmp, "cordis.patch.yml");
-    fs.writeFileSync(patchPath, flowArrayPatch);
-
-    const harness = setupHarness(tmp);
-    harness["ensureQingwuProfile"]();
-
-    assert.equal(fs.existsSync(`${patchPath}.bak`), false, "流式数组语法已存在时不应产生备份文件");
-    assert.equal(fs.readFileSync(patchPath, "utf-8"), flowArrayPatch, "流式数组语法配置必须原样保留，不得重复追加");
-  } finally {
-    fs.rmSync(tmp, { recursive: true, force: true });
-  }
-});
-
-test("若存量配置为流式根序列（[{ id: permission }]），追加时保持合法流式序列", () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "qingwu-test-profile-"));
-  try {
-    fs.mkdirSync(tmp, { recursive: true });
-    fs.writeFileSync(path.join(tmp, "package.json"), "{}");
-    const flowPatch = '[{ id: permission, config: { model: test } }]\n';
-    const patchPath = path.join(tmp, "cordis.patch.yml");
-    fs.writeFileSync(patchPath, flowPatch);
-
-    const harness = setupHarness(tmp);
-    harness["ensureQingwuProfile"]();
-
-    assert.equal(fs.existsSync(`${patchPath}.bak`), true, "未包含 web 时应产生备份文件");
-    const updatedContent = fs.readFileSync(patchPath, "utf-8");
-    const YAML = require("yaml");
-    const parsed = YAML.parse(updatedContent);
-    assert.ok(Array.isArray(parsed), "追加后必须仍能解析为合法数组");
-    assert.equal(parsed.length, 2, "应包含原条目与新加的 web 条目");
-    assert.equal(parsed[0].id, "permission");
-    assert.equal(parsed[1].id, "web");
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

@@ -3,7 +3,6 @@ import type { ChildProcess } from "node:child_process";
 import http from "node:http";
 import path from "node:path";
 import fs from "node:fs";
-import YAML from "yaml";
 import { app } from "electron";
 import { CONFIG } from "./config";
 import { resolveQingwuProfileDir } from "./dsh-paths";
@@ -223,94 +222,14 @@ export class HarnessManager {
             `# 青梧专属 profile 补丁层\n${defaultWebPatch}\n`,
           );
         } else if (typeof fs.readFileSync === "function") {
-          // 存量老用户平滑迁移：若补丁文件中尚未声明 id: web，则安全追加默认新版搜索配置
+          // 仅对未定制的历史空补丁（# ...\n[]）补全默认配置；已定制用户文件绝不擅自覆写
           const currentContent = fs.readFileSync(patchPath, "utf-8");
-          let hasWebEntry = false;
-          let isLegacyEmpty = false;
-          try {
-            const parsed = YAML.parse(currentContent);
-            if (Array.isArray(parsed)) {
-              hasWebEntry = parsed.some(
-                (item) =>
-                  item &&
-                  typeof item === "object" &&
-                  (item as Record<string, unknown>).id === "web",
-              );
-              isLegacyEmpty = parsed.length === 0;
-            } else if (parsed === null || parsed === undefined) {
-              isLegacyEmpty = true;
-            }
-          } catch {
-            // 解析失败时降级容错：结合多行与流式 JSON 风格检查，避免语法微瑕时重复追加
-            hasWebEntry =
-              /(?:^|\s|-|\{)\s*id:\s*['"]?web['"]?(?:\s*[,}#]|\s*$)/m.test(
-                currentContent,
-              );
-            const stripped = currentContent.replace(/#.*$/gm, "").trim();
-            isLegacyEmpty = stripped === "[]" || stripped === "";
-          }
-
-          if (!hasWebEntry) {
-            const backupPath = `${patchPath}.bak`;
-            if (fs.existsSync(backupPath)) {
-              let isUsableBackup = false;
-              try {
-                isUsableBackup = fs.statSync(backupPath).isFile();
-              } catch {}
-              if (!isUsableBackup) {
-                console.warn(
-                  "[Harness] 存量备份路径存在但非普通文件，中止平滑升级以保护原配置:",
-                  backupPath,
-                );
-                return;
-              }
-            } else {
-              try {
-                fs.copyFileSync(patchPath, backupPath);
-              } catch (bakErr) {
-                console.warn(
-                  "[Harness] 备份 cordis.patch.yml 失败，为保护存量配置中止平滑升级:",
-                  bakErr,
-                );
-                return;
-              }
-            }
-            let newContent: string;
-            if (isLegacyEmpty) {
-              newContent = `# 青梧专属 profile 补丁层\n${defaultWebPatch}\n`;
-            } else {
-              try {
-                const doc = YAML.parseDocument(currentContent);
-                if (YAML.isSeq(doc.contents)) {
-                  doc.add({
-                    id: "web",
-                    name: "@deepseek-ai/dsh-web",
-                    config: {
-                      searchProvider: "deepseek-search-api",
-                      fetchProvider: "deepseek-fetch-api",
-                    },
-                  });
-                  newContent = doc.toString();
-                } else {
-                  newContent = `${currentContent.trimEnd()}\n\n${defaultWebPatch}\n`;
-                }
-              } catch {
-                newContent = `${currentContent.trimEnd()}\n\n${defaultWebPatch}\n`;
-              }
-            }
-
-            // 原子写盘：先写入同级临时文件，成功后再原子重命名替换，防止写途中断电或磁盘满造成文件损坏
-            const tmpPath = `${patchPath}.tmp-${Date.now()}`;
-            try {
-              fs.writeFileSync(tmpPath, newContent);
-              fs.renameSync(tmpPath, patchPath);
-              console.log("[Harness] 已为青梧专属 profile 平滑补全新版 Web 搜索配置");
-            } catch (writeErr) {
-              try {
-                if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
-              } catch {}
-              console.warn("[Harness] 原子写入补丁文件失败，中止更新:", writeErr);
-            }
+          const stripped = currentContent.replace(/#.*$/gm, "").trim();
+          if (stripped === "[]" || stripped === "") {
+            fs.writeFileSync(
+              patchPath,
+              `# 青梧专属 profile 补丁层\n${defaultWebPatch}\n`,
+            );
           }
         }
       }
