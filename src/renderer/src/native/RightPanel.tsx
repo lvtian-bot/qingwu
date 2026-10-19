@@ -22,10 +22,12 @@ import { basename, fileInfoOf, isSameWorkspacePath } from "./panel/workspace-fil
 import {
   defaultPanelLayout,
   loadPanelLayout,
+  loadPanelWidth,
   PANEL_DEFAULT_WIDTH,
   PANEL_MAX_WIDTH,
   PANEL_MIN_WIDTH,
   savePanelLayout,
+  savePanelWidth,
   type PanelLayout,
   type PanelTab,
 } from "./panel/layout";
@@ -84,7 +86,7 @@ export const RightPanel = forwardRef<RightPanelHandle, RightPanelProps>(
     /** 载入后吞掉一次持久化：setLayout 应用前的过渡帧会带着旧会话的布局。 */
     const skipPersistRef = useRef(false);
 
-    // 每会话载入布局（展开态由父层持有并注入）
+    // 每会话载入布局（展开态由父层持有并注入；宽度对齐官方 DSH，跨会话全局稳定）
     useEffect(() => {
       loadedForRef.current = null;
       if (!sessionId) {
@@ -94,7 +96,7 @@ export const RightPanel = forwardRef<RightPanelHandle, RightPanelProps>(
       }
       const saved = loadPanelLayout(sessionId);
       skipPersistRef.current = true;
-      setLayout(saved);
+      setLayout({ ...saved, width: loadPanelWidth() });
       loadedForRef.current = sessionId;
       if (saved.expanded !== open) onOpenChange(saved.expanded);
       // open 变化不触发重载：载入只跟随会话切换
@@ -253,6 +255,7 @@ export const RightPanel = forwardRef<RightPanelHandle, RightPanelProps>(
       dragRef.current = null;
       setDragging(false);
       event.currentTarget.releasePointerCapture(event.pointerId);
+      savePanelWidth(layout.width);
     };
 
     if (!open) return null;
@@ -294,9 +297,10 @@ export const RightPanel = forwardRef<RightPanelHandle, RightPanelProps>(
             onPointerDown={onResizerDown}
             onPointerMove={onResizerMove}
             onPointerUp={onResizerUp}
-            onDoubleClick={() =>
-              setLayout((prev) => ({ ...prev, width: PANEL_DEFAULT_WIDTH }))
-            }
+            onDoubleClick={() => {
+              setLayout((prev) => ({ ...prev, width: PANEL_DEFAULT_WIDTH }));
+              savePanelWidth(PANEL_DEFAULT_WIDTH);
+            }}
           />
         )}
         <div

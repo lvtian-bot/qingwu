@@ -20,14 +20,48 @@ export interface PanelLayout {
 export const PANEL_MIN_WIDTH = 240;
 export const PANEL_MAX_WIDTH = 720;
 export const PANEL_DEFAULT_WIDTH = 600;
+export const PANEL_WIDTH_KEY = "qingwu.panel.width";
 
 const storageKeyOf = (sessionId: string) => `qingwu.panel.layout.${sessionId}`;
+
+/**
+ * 读取全局统一的面板宽度（对齐官方 DSH 与成熟桌面标杆）：
+ * 宽度属于全局桌面视口容器属性，跨会话统一保持；老旧 500px 默认值平滑抬升至 600px。
+ */
+export function loadPanelWidth(): number {
+  try {
+    const raw =
+      window.localStorage.getItem(PANEL_WIDTH_KEY) ??
+      window.localStorage.getItem("qingwu.panel.lastWidth");
+    if (!raw) return PANEL_DEFAULT_WIDTH;
+    const val = Number(raw);
+    if (Number.isFinite(val) && val >= PANEL_MIN_WIDTH && val <= PANEL_MAX_WIDTH) {
+      return val === 500 ? PANEL_DEFAULT_WIDTH : Math.round(val);
+    }
+  } catch {
+    // localStorage 不可用时回退
+  }
+  return PANEL_DEFAULT_WIDTH;
+}
+
+/** 持久化全局面板宽度（拖拽释放或双击重置时写入）。 */
+export function savePanelWidth(width: number): void {
+  try {
+    const clamped = Math.min(
+      PANEL_MAX_WIDTH,
+      Math.max(PANEL_MIN_WIDTH, Math.round(width)),
+    );
+    window.localStorage.setItem(PANEL_WIDTH_KEY, String(clamped));
+  } catch {
+    // 存储失败时忽略
+  }
+}
 
 export function defaultPanelLayout(): PanelLayout {
   return {
     expanded: false,
     fullscreen: false,
-    width: PANEL_DEFAULT_WIDTH,
+    width: loadPanelWidth(),
     tabs: [],
     activeTabId: null,
   };
@@ -44,10 +78,11 @@ function isPanelTab(value: unknown): value is PanelTab {
 }
 
 export function loadPanelLayout(sessionId: string | null): PanelLayout {
-  if (!sessionId) return defaultPanelLayout();
+  const width = loadPanelWidth();
+  if (!sessionId) return { ...defaultPanelLayout(), width };
   try {
     const raw = window.localStorage.getItem(storageKeyOf(sessionId));
-    if (!raw) return defaultPanelLayout();
+    if (!raw) return { ...defaultPanelLayout(), width };
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     if (!parsed || typeof parsed !== "object") throw new Error("bad layout");
     const tabs = Array.isArray(parsed.tabs) ? parsed.tabs.filter(isPanelTab) : [];
@@ -56,17 +91,6 @@ export function loadPanelLayout(sessionId: string | null): PanelLayout {
       tabs.some((tab) => tab.id === parsed.activeTabId)
         ? parsed.activeTabId
         : (tabs[tabs.length - 1]?.id ?? null);
-    const hasSavedWidth =
-      typeof parsed.width === "number" && Number.isFinite(parsed.width);
-    const rawWidth = hasSavedWidth
-      ? Math.round(parsed.width as number)
-      : PANEL_DEFAULT_WIDTH;
-    // 老版本默认值为 500px，未作个性化调整的历史数据抬升至新默认 600px；
-    // 其余在合法区间（240~720px）内的有效保存宽度均予以保留。
-    const width =
-      rawWidth === 500
-        ? PANEL_DEFAULT_WIDTH
-        : Math.min(PANEL_MAX_WIDTH, Math.max(PANEL_MIN_WIDTH, rawWidth));
     return {
       expanded: parsed.expanded === true,
       fullscreen: parsed.fullscreen === true,
@@ -80,7 +104,7 @@ export function loadPanelLayout(sessionId: string | null): PanelLayout {
     } catch {
       // localStorage 不可用时忽略
     }
-    return defaultPanelLayout();
+    return { ...defaultPanelLayout(), width };
   }
 }
 
