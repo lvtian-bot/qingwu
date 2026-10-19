@@ -159,12 +159,16 @@ test("若创建 .bak 备份失败，则立即中止迁移保护原始文件不�
     const patchPath = path.join(tmp, "cordis.patch.yml");
     fs.writeFileSync(patchPath, rawContent);
 
-    // 将备份路径预建为目录，使 copyFileSync 抛出 EISDIR 异常模拟备份失败
-    const backupPath = `${patchPath}.bak`;
-    fs.mkdirSync(backupPath);
-
-    const harness = setupHarness(tmp);
-    harness["ensureQingwuProfile"]();
+    const origCopy = fs.copyFileSync;
+    fs.copyFileSync = () => {
+      throw new Error("Simulated copy error during backup");
+    };
+    try {
+      const harness = setupHarness(tmp);
+      harness["ensureQingwuProfile"]();
+    } finally {
+      fs.copyFileSync = origCopy;
+    }
 
     // 原始文件必须保持一模一样，绝不被带病覆写
     assert.equal(fs.readFileSync(patchPath, "utf-8"), rawContent);

@@ -227,14 +227,17 @@ export class HarnessManager {
           const hasWebEntry =
             /^\s*-\s*id:\s*['"]?web['"]?(?:\s*#.*|\s*)$/m.test(currentContent);
           if (!hasWebEntry) {
-            try {
-              fs.copyFileSync(patchPath, `${patchPath}.bak`);
-            } catch (bakErr) {
-              console.warn(
-                "[Harness] 备份 cordis.patch.yml 失败，为保护存量配置中止平滑升级:",
-                bakErr,
-              );
-              return;
+            const backupPath = `${patchPath}.bak`;
+            if (!fs.existsSync(backupPath)) {
+              try {
+                fs.copyFileSync(patchPath, backupPath);
+              } catch (bakErr) {
+                console.warn(
+                  "[Harness] 备份 cordis.patch.yml 失败，为保护存量配置中止平滑升级:",
+                  bakErr,
+                );
+                return;
+              }
             }
             // 剔除注释与空白后判断是否为历史空文档（例如仅有 "# ...\n[]"）
             const stripped = currentContent.replace(/#.*$/gm, "").trim();
@@ -242,8 +245,19 @@ export class HarnessManager {
             const newContent = isLegacyEmpty
               ? `# 青梧专属 profile 补丁层\n${defaultWebPatch}\n`
               : `${currentContent.trimEnd()}\n\n${defaultWebPatch}\n`;
-            fs.writeFileSync(patchPath, newContent);
-            console.log("[Harness] 已为青梧专属 profile 平滑补全新版 Web 搜索配置");
+
+            // 原子写盘：先写入同级临时文件，成功后再原子重命名替换，防止写途中断电或磁盘满造成文件损坏
+            const tmpPath = `${patchPath}.tmp-${Date.now()}`;
+            try {
+              fs.writeFileSync(tmpPath, newContent);
+              fs.renameSync(tmpPath, patchPath);
+              console.log("[Harness] 已为青梧专属 profile 平滑补全新版 Web 搜索配置");
+            } catch (writeErr) {
+              try {
+                if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
+              } catch {}
+              console.warn("[Harness] 原子写入补丁文件失败，中止更新:", writeErr);
+            }
           }
         }
       }
