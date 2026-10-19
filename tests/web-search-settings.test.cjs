@@ -146,6 +146,46 @@ test("独立搜索密钥使用独立引用，聊天密钥不改写，成功后�
   assert.equal(h.snapshot().namespaces.find((n) => n.ns === "llm-deepseek").value.apiKeyEnv, "DEEPSEEK_API_KEY");
 });
 
+for (const mode of ["api", "messages"]) {
+  test(`${mode} 模式的预设独立引用与模型重名时，查询并写入不同的搜索引用`, async () => {
+    const data = initial(), shared = fields.SEARCH_MODES[mode].independentRef;
+    data.namespaces.find((ns) => ns.ns === "llm-deepseek").value.apiKeyEnv = shared;
+    data.namespaces.find((ns) => ns.ns === fields.SEARCH_MODES[mode].ns).value.apiKeyEnv = shared;
+    const h = setup(data);
+    h.credentialStore[shared] = { configured: true, writable: true, source: "environment" };
+    await h.mount(); h.render().changeMode(mode);
+    edit(h, "keySource", "independent");
+    const target = fields.targetKeyRef(data, mode, "independent");
+    assert.notEqual(target, shared);
+    assert.ok(h.calls.some((c) => c.endpoint === "credentials/describe" && c.args.refs.includes(target)));
+    assert.equal(h.render().keyStatusKnown, true);
+    assert.equal(h.render().keyWritable, true);
+    assert.equal(h.render().hasKey, false);
+    edit(h, "apiKeyDraft", "fixture-search-value"); await h.render().save();
+    assert.equal(h.render().error, null);
+    assert.deepEqual(h.calls.filter((c) => c.endpoint === "credentials/set").map((c) => c.args.ref), [target]);
+    assert.deepEqual(h.credentialStore[shared], { configured: true, writable: true, source: "environment" });
+    assert.equal(h.snapshot().namespaces.find((ns) => ns.ns === fields.SEARCH_MODES[mode].ns).value.apiKeyEnv, target);
+    edit(h, "keySource", "model"); await h.render().save();
+    assert.equal(h.render().hasKey, true);
+    assert.equal(h.snapshot().namespaces.find((ns) => ns.ns === fields.SEARCH_MODES[mode].ns).value.apiKeyEnv, shared);
+  });
+}
+
+test("独立引用重名且配置只读时，不写模型凭据或无法绑定的新凭据", async () => {
+  const data = initial(), shared = fields.SEARCH_MODES.api.independentRef;
+  data.writable = false;
+  data.namespaces[1].value.apiKeyEnv = shared;
+  data.namespaces[3].value.apiKeyEnv = shared;
+  const h = setup(data); await h.mount();
+  edit(h, "keySource", "independent"); edit(h, "apiKeyDraft", "fixture-search-value");
+  assert.equal(h.render().keyWritable, false);
+  await h.render().save();
+  assert.equal(h.render().error, "settings.webSearch.readOnly");
+  assert.equal(h.calls.some((c) => c.endpoint === "credentials/set"), false);
+  assert.equal(writes(h).length, 0);
+});
+
 test("已有独立引用原样复用，原始配置字面密钥在显式切换后停止优先生效", async () => {
   const data = initial(), ns = data.namespaces[1];
   ns.value.apiKeyEnv = "CUSTOM_SEARCH_REF"; ns.secrets = [{ path: ["apiKey"], set: true }];
@@ -200,6 +240,24 @@ test("刷新和翻译变化保留未保存字段；新的默认值仍能更新�
   await h.render().refresh();
   assert.equal(h.render().baseURL, "https://edited.example.test/tools");
   assert.equal(h.render().limit, "12");
+});
+
+test("完整刷新更新凭据、继承值与修订号，保留草稿并按新修订号保存", async () => {
+  const h = setup(); await h.mount();
+  edit(h, "baseURL", "https://edited.example.test/tools");
+  const ns = h.snapshot().namespaces[1];
+  ns.value.count = 12; ns.value.apiKeyEnv = "RECONNECTED_SEARCH_REF"; ns.revision = 20;
+  h.credentialStore.RECONNECTED_SEARCH_REF = { configured: true, writable: false, source: "environment" };
+  await h.render().refresh();
+  assert.equal(h.render().baseURL, "https://edited.example.test/tools");
+  assert.equal(h.render().limit, "12");
+  assert.equal(h.render().keySource, "independent");
+  assert.equal(h.render().hasKey, true);
+  assert.equal(h.render().keyWritable, false);
+  await h.render().save();
+  assert.equal(h.render().error, null);
+  assert.equal(writes(h)[0].args.expectedRevision, 20);
+  assert.deepEqual(writes(h)[0].args.ops, [{ op: "set", path: ["baseURL"], value: "https://edited.example.test/tools" }]);
 });
 
 test("初次凭据查询未完成时禁止编辑凭据；后到的旧回执不得覆盖新状态", async () => {

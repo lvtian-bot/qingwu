@@ -61,7 +61,9 @@ export function targetKeyRef(snapshot: SettingsDescribeValue, mode: DeepSeekSear
   const shared = modelKeyRef(snapshot);
   if (source === "model") return shared;
   const current = searchKeyRef(namespace(snapshot, SEARCH_MODES[mode].ns));
-  return current !== shared ? current : SEARCH_MODES[mode].independentRef;
+  if (current !== shared) return current;
+  const independent = SEARCH_MODES[mode].independentRef;
+  return independent !== shared ? independent : `${independent}_INDEPENDENT`;
 }
 /** 刷新只更新未编辑字段，保留草稿。 */
 export function rebaseDraft(draft: SearchDraft, before: SearchDraft, after: SearchDraft): SearchDraft {

@@ -44,7 +44,7 @@ export function useWebSearchSettings(options?: WebSearchSettingsOptions) {
     if (!current) return;
     const sequence = ++credentialSequence.current;
     const refs = [...new Set([modelKeyRef(current), ...(["api", "messages"] as const).flatMap((key) => [
-      searchKeyRef(namespace(current, SEARCH_MODES[key].ns)), SEARCH_MODES[key].independentRef,
+      searchKeyRef(namespace(current, SEARCH_MODES[key].ns)), targetKeyRef(current, key, "independent"),
     ])])];
     setCredentials((before) => Object.fromEntries(refs.map((ref) => [ref, { ...before[ref], known: false }])));
     try {

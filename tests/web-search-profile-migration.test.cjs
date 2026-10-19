@@ -91,6 +91,16 @@ test("更高优先级的 Harness home 配置依旧生效", async (t) => {
   assert.equal(find(f.composed(), "web").config.searchProvider, "perplexity");
 });
 
+test("仅设置搜索提供方的用户补丁按 dsh 整段替换语义保留，不注入抓取配置", async (t) => {
+  const patch = "- id: web\n  config: { searchProvider: exa }\n";
+  const f = fixture(t, patch);
+  const before = find(f.composed(), "web").config;
+  await f.harness.ensureQingwuProfile();
+  assert.deepEqual(find(f.composed(), "web").config, before);
+  assert.deepEqual(before, { searchProvider: "exa" });
+  assert.equal(fs.readFileSync(f.patch, "utf8"), patch);
+});
+
 test("不采用基础 bundle 的自定义配置保持清单原样", async (t) => {
   const f = fixture(t, "[]\n", []);
   await f.harness.ensureQingwuProfile();

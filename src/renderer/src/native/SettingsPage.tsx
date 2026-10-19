@@ -176,18 +176,16 @@ export function SettingsPage({
   }, [onBack]);
 
   // 严格监听连接状态的边沿跳变（从断开变更为已连接）：
-  // 仅在真实重连边沿且配置或凭据尚未就绪时执行刷新自愈，避免初次挂载时产生重复的初始加载请求
+  // 每次真实重连均回读配置和凭据；初次挂载由 hook 加载，刷新由其保留未保存草稿
   const prevConnectedRef = useRef<boolean | undefined>(dshConnected);
   const refreshWebSearch = webSearch.refresh;
-  const webSearchLoaded = webSearch.loaded;
-  const webSearchKeyKnown = webSearch.keyStatusKnown;
   useEffect(() => {
     const wasDisconnected = prevConnectedRef.current === false;
     prevConnectedRef.current = dshConnected;
-    if (wasDisconnected && dshConnected && (!webSearchLoaded || !webSearchKeyKnown)) {
+    if (wasDisconnected && dshConnected) {
       void refreshWebSearch();
     }
-  }, [dshConnected, webSearchLoaded, webSearchKeyKnown, refreshWebSearch]);
+  }, [dshConnected, refreshWebSearch]);
 
   const panelStyle = (key: TabKey) =>
     activeTab === key ? undefined : ({ display: "none" } as const);
