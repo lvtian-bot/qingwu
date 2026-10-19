@@ -143,7 +143,9 @@ export function SettingsPage({
 }: SettingsPageProps) {
   const [activeTab, setActiveTab] = useState<TabKey>("general");
   const dsh = useDshSettings();
-  const webSearch = useWebSearchSettings();
+  const webSearch = useWebSearchSettings({
+    onRefreshCredentials: onRefreshCatalog,
+  });
   const t = useT();
 
   // 按 Esc 键返回应用
@@ -157,13 +159,14 @@ export function SettingsPage({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onBack]);
 
-  // 引擎重连成功后，自动重刷联网搜索配置，避免重连后页面仍处于断连错误状态
+  // 引擎重连成功且尚未加载配置时，自动重刷，避免重连后页面仍处于断连错误状态；若已加载则保留当前草稿
   const refreshWebSearch = webSearch.refresh;
+  const webSearchLoaded = webSearch.loaded;
   useEffect(() => {
-    if (dshConnected) {
+    if (dshConnected && !webSearchLoaded) {
       void refreshWebSearch();
     }
-  }, [dshConnected, refreshWebSearch]);
+  }, [dshConnected, webSearchLoaded, refreshWebSearch]);
 
   const panelStyle = (key: TabKey) =>
     activeTab === key ? undefined : ({ display: "none" } as const);

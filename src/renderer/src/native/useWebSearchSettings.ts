@@ -6,6 +6,11 @@ import { rpc } from "./rpc";
 export const DEFAULT_SEARCH_API_BASE_URL = "https://api.deepseek.com/v1/tools";
 export const DEFAULT_SEARCH_COUNT = 10;
 
+export interface WebSearchSettingsOptions {
+  /** 当凭据（API Key）更新保存后触发，用于联动刷新模型设置等其他分区的凭据状态 */
+  onRefreshCredentials?: () => void;
+}
+
 export interface WebSearchSettingsController {
   /** 搜索服务商模式：deepseek（官方高速）或 custom（自定义） */
   providerType: "deepseek" | "custom";
@@ -16,7 +21,7 @@ export interface WebSearchSettingsController {
   /** 每次搜索条数（1-50） */
   count: number;
   setCount: (count: number) => void;
-  /** 系统中是否已配置 DeepSeek API Key */
+  /** 系统中是否已配置有效的 API Key */
   hasKey: boolean;
   /** 专用 API Key 是否可写（由环境变量提供或状态未知时为 false） */
   keyWritable: boolean;
@@ -41,7 +46,9 @@ export interface WebSearchSettingsController {
   refresh: () => Promise<void>;
 }
 
-export function useWebSearchSettings(): WebSearchSettingsController {
+export function useWebSearchSettings(
+  options?: WebSearchSettingsOptions,
+): WebSearchSettingsController {
   const t = useT();
   const [settingsSnapshot, setSettingsSnapshot] = useState<SettingsDescribeValue | null>(null);
   const [loaded, setLoaded] = useState<boolean>(false);
@@ -59,6 +66,7 @@ export function useWebSearchSettings(): WebSearchSettingsController {
   });
   const [baseURL, setBaseURL] = useState<string>("");
   const [count, setCount] = useState<number>(DEFAULT_SEARCH_COUNT);
+  const [countDirty, setCountDirty] = useState<boolean>(false);
   const [hasKey, setHasKey] = useState<boolean>(false);
   const [apiKeyDraft, setApiKeyDraft] = useState<string>("");
   const [saving, setSaving] = useState<boolean>(false);
@@ -106,6 +114,7 @@ export function useWebSearchSettings(): WebSearchSettingsController {
 
         const currentCount = typeof apiVal?.count === "number" ? apiVal.count : DEFAULT_SEARCH_COUNT;
         setCount(currentCount);
+        setCountDirty(false);
 
         // 如果配置了非默认的 searchProvider 或者自定义了端点，则识别为自定义模式
         if (
@@ -151,6 +160,11 @@ export function useWebSearchSettings(): WebSearchSettingsController {
     void load();
   }, [load]);
 
+  const handleSetCount = useCallback((nextCount: number) => {
+    setCount(nextCount);
+    setCountDirty(true);
+  }, []);
+
   const save = useCallback(async () => {
     if (!settingsSnapshot || !writable) {
       setError(
@@ -166,6 +180,7 @@ export function useWebSearchSettings(): WebSearchSettingsController {
     setError(null);
 
     try {
+      let keySaved = false;
       // 1. 保存凭据（仅当密钥可写且用户输入了新 Key 时执行，环境变量只读时不破坏其余设置保存）
       if (keyWritable && apiKeyDraft.trim()) {
         await rpc(Endpoints.credentialsSet, {
@@ -174,6 +189,7 @@ export function useWebSearchSettings(): WebSearchSettingsController {
         });
         setApiKeyDraft("");
         setHasKey(true);
+        keySaved = true;
       }
 
       // 2. 保存 web 命名空间：选择 DeepSeek 官方时切换至官方 API；自定义模式保留已有的 provider 配置
@@ -197,29 +213,41 @@ export function useWebSearchSettings(): WebSearchSettingsController {
       });
 
       // 3. 通过 settings/mutate 原子更新 web-deepseek-api 命名空间
-      // 遵循 DSH 契约：恢复默认端点使用 unset 操作，不向字符串字段写入 null
       const apiNs = settingsSnapshot.namespaces.find((ns) => ns.ns === "web-deepseek-api");
-      const normalizedCount = Math.min(50, Math.max(1, count));
+      const apiVal = apiNs?.value as { baseURL?: string } | undefined;
+      const hasBaseURLOverride = typeof apiVal?.baseURL === "string" && apiVal.baseURL !== "";
       const normalizedBaseURL = baseURL.trim();
 
-      const ops: Array<{ op: "set" | "unset"; path: string[]; value?: unknown }> = [
-        { op: "set", path: ["count"], value: normalizedCount },
-      ];
+      const ops: Array<{ op: "set" | "unset"; path: string[]; value?: unknown }> = [];
 
+      // 仅当用户真正修改过 count 时才写入该覆盖项；未动过则保留底层默认或 profile 继承
+      if (countDirty) {
+        const normalizedCount = Math.min(50, Math.max(1, count));
+        ops.push({ op: "set", path: ["count"], value: normalizedCount });
+      }
+
+      // 端点处理：自定义且非空则 set；选默认或清空且原存在覆盖则 unset；原未覆盖且选默认则不产生无意义操作
       if (providerType === "custom" && normalizedBaseURL) {
         ops.push({ op: "set", path: ["baseURL"], value: normalizedBaseURL });
-      } else {
+      } else if (hasBaseURLOverride) {
         ops.push({ op: "unset", path: ["baseURL"] });
       }
 
-      await rpc(Endpoints.settingsMutate, {
-        ns: "web-deepseek-api",
-        ops,
-        expectedRevision: apiNs?.revision,
-      });
+      if (ops.length > 0) {
+        await rpc(Endpoints.settingsMutate, {
+          ns: "web-deepseek-api",
+          ops,
+          expectedRevision: apiNs?.revision,
+        });
+      }
 
       setMessage(t("settings.webSearch.savedSuccess"));
       await load();
+
+      // 若保存了共享凭据，同步通知外部刷新（如模型设置中的供应商列表）
+      if (keySaved) {
+        options?.onRefreshCredentials?.();
+      }
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
       const formattedError = t("settings.webSearch.savedFailed", { message: errMsg });
@@ -232,7 +260,21 @@ export function useWebSearchSettings(): WebSearchSettingsController {
     } finally {
       setSaving(false);
     }
-  }, [apiKeyDraft, baseURL, count, load, providerType, settingsSnapshot, t]);
+  }, [
+    apiKeyDraft,
+    baseURL,
+    count,
+    countDirty,
+    keyRef,
+    keyWritable,
+    load,
+    loadedProviders,
+    options,
+    providerType,
+    settingsSnapshot,
+    t,
+    writable,
+  ]);
 
   return {
     providerType,
@@ -240,7 +282,7 @@ export function useWebSearchSettings(): WebSearchSettingsController {
     baseURL,
     setBaseURL,
     count,
-    setCount,
+    setCount: handleSetCount,
     hasKey,
     apiKeyDraft,
     setApiKeyDraft,
