@@ -14,6 +14,7 @@
 
 ## 不可忽略的技术约束
 
+- **应用默认配置层**：`@qingwu/dsh-profile` 是随包的原生配置 bundle，在 `@deepseek-ai/dsh-base` 之后、后续 bundle 和用户补丁之前组合。启动前以 `dsh-atomic-write` 的锁和原子替换补充 profile 清单中的 bundle；用户 `cordis.patch.yml` 不读取、不改写，模型或权限补丁不会阻止搜索默认值升级，明确的搜索配置仍按 dsh 层级覆盖。清单初始化失败则终止本次启动；异步初始化期间收到退出请求不得再启动子进程。本地配置包通过 npm `install-links=true` 安装为普通依赖目录，以便随安装包保留。
 - **RPC 信封**：一元调用是 `POST /api/<endpoint>`，`client-request` 包含 `rpcId`、`method` 和 `payload: { args: ... }`。`$events` 的审批、问答回执也必须向 `/api/$events/result` 发送 `{ args: { clientId, eventId, outcome } }`。这层 `args` 曾遗漏，造成宿主仍等待回答而界面误以为提交成功；失败时必须显示错误并保留待处理项。
 - **鉴权和流**：桥从引擎给出的鉴权地址换取 cookie，WebSocket 握手携带 cookie；查询参数 token 不能代替流握手 cookie。`/api/remote.mux` 使用 `open/cancel` 与 `item/error/end` 管理逻辑流。日志及异常不得输出 token、cookie 或密钥。
 - **进程与控制台**：Windows 安装版用随包控制台子系统 `node.exe` 跑 dsh CLI，使引擎及逐层派生的命令进程继承主进程隐藏控制台。若改用 GUI 子系统的 `electron.exe` 作为 Node 运行时，或主进程未取得控制台，Agent 执行命令可能反复闪出黑窗。随包 Node 由脚本校验后准备，版本应与 Electron 内置 Node 对齐；缺失时开发运行可退回其他 Node/Electron，表现不能代表安装版。

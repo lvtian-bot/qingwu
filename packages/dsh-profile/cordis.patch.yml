@@ -1,0 +1,5 @@
+# 应用默认层位于 dsh-base 之后、用户配置之前，由 dsh 自行组合。
+- id: web
+  config:
+    searchProvider: deepseek-search-api
+    fetchProvider: deepseek-fetch-api

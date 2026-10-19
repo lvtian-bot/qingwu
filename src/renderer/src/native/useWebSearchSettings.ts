@@ -1,409 +1,184 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useT } from "../i18n";
 import { Endpoints, type CredentialInfo, type SettingsDescribeValue } from "./protocol";
 import { rpc } from "./rpc";
+import {
+  SEARCH_MODES, configOps, draftFrom, hasLiteralKey, modelKeyRef, namespace,
+  rebaseDraft, searchKeyRef, section, selectedMode, selectionOps, targetKeyRef, validateDraft,
+  type DeepSeekSearchMode, type SearchDraft, type SearchMode,
+} from "./web-search-settings";
 
-export const DEFAULT_SEARCH_API_BASE_URL = "https://api.deepseek.com/v1/tools";
-export const DEFAULT_SEARCH_COUNT = 8;
+interface CredentialState extends Partial<CredentialInfo> { known: boolean }
+export interface WebSearchSettingsOptions { onRefreshCredentials?: () => void }
+const emptyDraft = (): SearchDraft => ({ baseURL: "", limit: "", keySource: "model", apiKeyDraft: "" });
 
-export interface WebSearchSettingsOptions {
-  /** 当凭据（API Key）更新保存后触发，用于联动刷新模型设置等其他分区的凭据状态 */
-  onRefreshCredentials?: () => void;
-}
-
-export interface WebSearchSettingsController {
-  /** 搜索服务商模式：deepseek（官方高速）或 custom（自定义代理） */
-  providerType: "deepseek" | "custom";
-  setProviderType: (type: "deepseek" | "custom") => void;
-  /** 自定义 Search / Fetch 接口基础地址草稿 */
-  baseURL: string;
-  setBaseURL: (url: string) => void;
-  /** 每次搜索条数（1-50） */
-  count: number;
-  setCount: (count: number) => void;
-  /** 系统中是否已配置有效的 API Key */
-  hasKey: boolean;
-  /** 专用 API Key 是否可写（由环境变量提供或状态未知时为 false） */
-  keyWritable: boolean;
-  /** 凭据状态是否已成功获知（若查询失败则为 false，禁用编辑） */
-  keyStatusKnown: boolean;
-  /** 专用 API Key 输入草稿 */
-  apiKeyDraft: string;
-  setApiKeyDraft: (key: string) => void;
-  /** 配置是否已成功加载完成 */
-  loaded: boolean;
-  /** 当前引擎设置是否具备写入能力（只读模式下为 false） */
-  writable: boolean;
-  /** 是否正在保存 */
-  saving: boolean;
-  /** 操作成功反馈 */
-  message: string | null;
-  /** 操作错误提示 */
-  error: string | null;
-  /** 提交保存所有修改 */
-  save: () => Promise<void>;
-  /** 重新加载当前配置全量快照（会重置未保存表单） */
-  refresh: () => Promise<void>;
-  /** 仅刷新 API Key 凭据状态，不冲刷正在编辑中的表单草稿（用于模型设置页联动） */
-  refreshCredentials: () => Promise<void>;
-}
-
-interface SavedBaseline {
-  providerType: "deepseek" | "custom";
-  baseURL: string;
-  count: number;
-  searchProvider: string;
-  fetchProvider: string;
-}
-
-export function useWebSearchSettings(
-  options?: WebSearchSettingsOptions,
-): WebSearchSettingsController {
+export function useWebSearchSettings(options?: WebSearchSettingsOptions) {
   const t = useT();
-  const [settingsSnapshot, setSettingsSnapshot] = useState<SettingsDescribeValue | null>(null);
-  const [loaded, setLoaded] = useState<boolean>(false);
-  const [writable, setWritable] = useState<boolean>(true);
-  const [keyWritable, setKeyWritable] = useState<boolean>(true);
-  const [keyStatusKnown, setKeyStatusKnown] = useState<boolean>(true);
-  const [keyRef, setKeyRef] = useState<string>("DEEPSEEK_API_KEY");
-
-  // 表单编辑字段状态
-  const [providerType, setProviderType] = useState<"deepseek" | "custom">("deepseek");
-  const [baseURL, setBaseURL] = useState<string>("");
-  const [count, setCount] = useState<number>(DEFAULT_SEARCH_COUNT);
-  const [hasKey, setHasKey] = useState<boolean>(false);
-  const [apiKeyDraft, setApiKeyDraft] = useState<string>("");
-
-  // 加载基线：用于保存时纯粹的差分比对（Diff），防止固化未修改的继承项
-  const [baseline, setBaseline] = useState<SavedBaseline>({
-    providerType: "deepseek",
-    baseURL: "",
-    count: DEFAULT_SEARCH_COUNT,
-    searchProvider: "deepseek-search-api",
-    fetchProvider: "deepseek-fetch-api",
-  });
-
-  const [saving, setSaving] = useState<boolean>(false);
+  const translation = useRef(t);
+  translation.current = t;
+  const callbacks = useRef(options);
+  callbacks.current = options;
+  const snapshot = useRef<SettingsDescribeValue | null>(null);
+  const draftsRef = useRef({ api: emptyDraft(), messages: emptyDraft() });
+  const modeRef = useRef<SearchMode>("api");
+  const savingRef = useRef(false);
+  const alive = useRef(true);
+  const loadSequence = useRef(0);
+  const credentialSequence = useRef(0);
+  const [drafts, setDrafts] = useState(draftsRef.current);
+  const [mode, setMode] = useState<SearchMode>("api");
+  const [loaded, setLoaded] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [writable, setWritable] = useState(false);
+  const [credentials, setCredentials] = useState<Record<string, CredentialState>>({});
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    try {
-      const settingsRes = await rpc<SettingsDescribeValue>(
-        Endpoints.settingsDescribe,
-        {},
-      ).catch((e) => {
-        console.warn("[WebSearchSettings] 读取 settingsDescribe 失败:", e);
-        return null;
-      });
-
-      let activeKeyRef = "DEEPSEEK_API_KEY";
-
-      if (settingsRes && Array.isArray(settingsRes.namespaces)) {
-        setSettingsSnapshot(settingsRes);
-        setLoaded(true);
-        setWritable(settingsRes.writable !== false);
-        setError(null);
-
-        const webNs = settingsRes.namespaces.find((ns) => ns.ns === "web");
-        const webVal = webNs?.value as { searchProvider?: string; fetchProvider?: string } | undefined;
-        const searchProvider = webVal?.searchProvider ?? "deepseek-search-api";
-        const fetchProvider = webVal?.fetchProvider ?? "deepseek-fetch-api";
-
-        const apiNs = settingsRes.namespaces.find((ns) => ns.ns === "web-deepseek-api");
-        const apiVal = apiNs?.value as {
-          baseURL?: string;
-          count?: number;
-          apiKeyEnv?: string;
-        } | undefined;
-
-        if (typeof apiVal?.apiKeyEnv === "string" && apiVal.apiKeyEnv.trim() !== "") {
-          activeKeyRef = apiVal.apiKeyEnv.trim();
-        }
-        setKeyRef(activeKeyRef);
-
-        const currentBaseURL = typeof apiVal?.baseURL === "string" ? apiVal.baseURL : "";
-        setBaseURL(currentBaseURL);
-
-        const currentCount =
-          typeof apiVal?.count === "number"
-            ? Math.min(8, Math.max(1, apiVal.count))
-            : DEFAULT_SEARCH_COUNT;
-        setCount(currentCount);
-
-        const isOfficialProviders =
-          searchProvider === "deepseek-search-api" &&
-          fetchProvider === "deepseek-fetch-api";
-        const isOfficialBaseURL =
-          !currentBaseURL || currentBaseURL === DEFAULT_SEARCH_API_BASE_URL;
-
-        const resolvedType = !isOfficialProviders || !isOfficialBaseURL ? "custom" : "deepseek";
-        setProviderType(resolvedType);
-
-        setBaseline({
-          providerType: resolvedType,
-          baseURL: currentBaseURL,
-          count: currentCount,
-          searchProvider,
-          fetchProvider,
-        });
-      } else {
-        setLoaded(false);
-        setError(t("settings.webSearch.loadFailed"));
-      }
-
-      // 按照当前插件生效的凭据引用查询密钥状态
-      const credsRes = await rpc<Record<string, CredentialInfo>>(
-        Endpoints.credentialsDescribe,
-        { refs: [activeKeyRef] },
-      ).catch((e) => {
-        console.warn("[WebSearchSettings] 读取 credentialsDescribe 失败:", e);
-        return null;
-      });
-
-      if (credsRes && typeof credsRes === "object") {
-        const targetCred = credsRes[activeKeyRef];
-        setHasKey(Boolean(targetCred?.configured));
-        setKeyWritable(targetCred?.writable !== false);
-        setKeyStatusKnown(true);
-      } else {
-        setHasKey(false);
-        setKeyWritable(false);
-        setKeyStatusKnown(false);
-      }
-    } catch (err) {
-      setLoaded(false);
-      setError(t("settings.webSearch.loadFailed"));
-      console.error("[WebSearchSettings] 加载配置异常:", err);
-    }
-  }, [t]);
-
-  // 仅刷新凭据状态：用于模型页修改凭据时跨分区联动，不冲刷用户正在搜索页编辑中的表单草稿
+  const publishDrafts = useCallback((next: typeof draftsRef.current) => {
+    draftsRef.current = next;
+    setDrafts(next);
+  }, []);
   const refreshCredentials = useCallback(async () => {
+    const current = snapshot.current;
+    if (!current) return;
+    const sequence = ++credentialSequence.current;
+    const refs = [...new Set([modelKeyRef(current), ...(["api", "messages"] as const).flatMap((key) => [
+      searchKeyRef(namespace(current, SEARCH_MODES[key].ns)), SEARCH_MODES[key].independentRef,
+    ])])];
+    setCredentials((before) => Object.fromEntries(refs.map((ref) => [ref, { ...before[ref], known: false }])));
     try {
-      const credsRes = await rpc<Record<string, CredentialInfo>>(
-        Endpoints.credentialsDescribe,
-        { refs: [keyRef] },
-      ).catch((e) => {
-        console.warn("[WebSearchSettings] 刷新凭据状态失败:", e);
-        return null;
-      });
-
-      if (credsRes && typeof credsRes === "object") {
-        const targetCred = credsRes[keyRef];
-        setHasKey(Boolean(targetCred?.configured));
-        setKeyWritable(targetCred?.writable !== false);
-        setKeyStatusKnown(true);
-      } else {
-        setHasKey(false);
-        setKeyWritable(false);
-        setKeyStatusKnown(false);
-      }
-    } catch (err) {
-      console.error("[WebSearchSettings] 刷新凭据异常:", err);
+      const result = await rpc<Record<string, CredentialInfo>>(Endpoints.credentialsDescribe, { refs });
+      if (!alive.current || sequence !== credentialSequence.current) return;
+      setCredentials(Object.fromEntries(refs.map((ref) => [ref, result?.[ref]
+        ? { ...result[ref], known: true } : { known: false }])));
+    } catch {
+      // 状态未知时禁用凭据编辑，仍允许不涉及凭据的配置保存。
     }
-  }, [keyRef]);
-
+  }, []);
+  const load = useCallback(async (savedMode?: DeepSeekSearchMode) => {
+    const sequence = ++loadSequence.current;
+    try {
+      const result = await rpc<SettingsDescribeValue>(Endpoints.settingsDescribe, {});
+      if (!alive.current || sequence !== loadSequence.current) return false;
+      if (!Array.isArray(result?.namespaces) || !namespace(result, "web")) throw new Error("配置不可用");
+      const previous = snapshot.current;
+      const next = { ...draftsRef.current };
+      for (const key of ["api", "messages"] as const) {
+        next[key] = previous && key !== savedMode
+          ? rebaseDraft(next[key], draftFrom(previous, key), draftFrom(result, key)) : draftFrom(result, key);
+      }
+      if (!previous || modeRef.current === selectedMode(previous)) {
+        modeRef.current = selectedMode(result);
+        setMode(modeRef.current);
+      }
+      snapshot.current = result;
+      publishDrafts(next);
+      setWritable(result.writable === true);
+      setLoaded(true);
+      await refreshCredentials();
+      return true;
+    } catch {
+      if (!alive.current || sequence !== loadSequence.current) return false;
+      setLoaded(false);
+      setError(translation.current("settings.webSearch.loadFailed"));
+      return false;
+    }
+  }, [publishDrafts, refreshCredentials]);
   useEffect(() => {
+    alive.current = true;
     void load();
+    return () => { alive.current = false; ++loadSequence.current; ++credentialSequence.current; };
   }, [load]);
 
-  const save = useCallback(async () => {
+  const edit = useCallback((field: keyof SearchDraft, value: string) => {
+    const currentMode = modeRef.current;
+    if (savingRef.current || currentMode === "external") return;
+    publishDrafts({ ...draftsRef.current, [currentMode]: { ...draftsRef.current[currentMode], [field]: value } });
     setMessage(null);
     setError(null);
+  }, [publishDrafts]);
+  const changeMode = useCallback((value: SearchMode) => {
+    if (savingRef.current) return;
+    modeRef.current = value;
+    setMode(value);
+    setMessage(null);
+    setError(null);
+  }, []);
 
-    const hasKeyChange = Boolean(keyWritable && apiKeyDraft.trim());
-    if (!settingsSnapshot) {
-      setError(t("settings.webSearch.loadFailed"));
-      return;
-    }
-    if (!writable && !hasKeyChange) {
-      setError(t("settings.webSearch.readOnly"));
-      return;
-    }
+  const currentNamespace = mode === "external" ? undefined : namespace(snapshot.current, SEARCH_MODES[mode].ns);
+  const draft = mode === "external" ? emptyDraft() : drafts[mode];
+  const activeRef = snapshot.current && mode !== "external" ? targetKeyRef(snapshot.current, mode, draft.keySource) : "";
+  const credential = credentials[activeRef];
+  const baseline = snapshot.current && mode !== "external" ? draftFrom(snapshot.current, mode) : emptyDraft();
+  const literalRetained = hasLiteralKey(currentNamespace) && draft.keySource === baseline.keySource && !draft.apiKeyDraft.trim();
+  const needsBinding = Boolean(currentNamespace && (searchKeyRef(currentNamespace) !== activeRef || hasLiteralKey(currentNamespace)));
+  const formAvailable = mode !== "external" && Boolean(currentNamespace);
 
-    const normalizedBaseURL = baseURL.trim();
-    // 校验自定义端点 URL 合法性
-    if (providerType === "custom" && normalizedBaseURL) {
-      try {
-        const parsed = new URL(normalizedBaseURL);
-        if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-          throw new Error("Invalid protocol");
-        }
-      } catch {
-        setError(t("settings.webSearch.invalidBaseURL"));
-        return;
-      }
+  const save = async () => {
+    if (savingRef.current) return;
+    setMessage(null);
+    setError(null);
+    const current = snapshot.current;
+    const targetMode = modeRef.current;
+    if (!loaded || !current || targetMode === "external") return;
+    const targetNs = namespace(current, SEARCH_MODES[targetMode].ns);
+    if (!targetNs) return;
+    const selectedDraft = draftsRef.current[targetMode];
+    const invalid = validateDraft(targetMode, selectedDraft);
+    if (invalid) { setError(translation.current("settings.webSearch." + invalid)); return; }
+    const ops = configOps(current, targetMode, selectedDraft);
+    const selectOps = selectionOps(current, targetMode);
+    if (!current.writable && (ops.length || selectOps.length)) {
+      setError(translation.current("settings.webSearch.readOnly")); return;
     }
-
+    const ref = targetKeyRef(current, targetMode, selectedDraft.keySource);
+    const keyChange = selectedDraft.keySource === "independent" && Boolean(selectedDraft.apiKeyDraft.trim());
+    const literalKept = hasLiteralKey(targetNs) && !ops.some((op) => op.path[0] === "apiKey");
+    if (selectedDraft.keySource === "independent" && !literalKept && !credentials[ref]?.configured && !keyChange) {
+      setError(translation.current("settings.webSearch.keyRequired")); return;
+    }
+    if (keyChange && (!credentials[ref]?.known || credentials[ref]?.writable !== true)) {
+      setError(translation.current("settings.webSearch.apiKey.statusErrorDesc")); return;
+    }
+    savingRef.current = true;
     setSaving(true);
-
+    let serviceSaved = false;
     try {
-      // 1. 凭据差分：仅当密钥可写且输入了新 Key 时写入
-      if (hasKeyChange) {
-        await rpc(Endpoints.credentialsSet, {
-          ref: keyRef,
-          value: apiKeyDraft.trim(),
-        });
-
-        // 遵循 DSH 官方契约回读核验凭据：确认凭据被底层提供商真正持久化落盘
-        const verifyRes = await rpc<Record<string, CredentialInfo>>(
-          Endpoints.credentialsDescribe,
-          { refs: [keyRef] },
-        ).catch(() => null);
-        const verifiedCred = verifyRes?.[keyRef];
-        if (!verifiedCred?.configured) {
-          throw new Error("Credential write failed verification: key not retained by provider");
-        }
-
-        setApiKeyDraft("");
-        setHasKey(true);
-        // 回读核验通过后立即通知外部凭据消费者（即使后续设置项报错，凭据已生效也需同步更新）
-        options?.onRefreshCredentials?.();
+      if (keyChange) {
+        await rpc(Endpoints.credentialsSet, { ref, value: selectedDraft.apiKeyDraft.trim() });
+        const verified = await rpc<Record<string, CredentialInfo>>(Endpoints.credentialsDescribe, { refs: [ref] });
+        if (!verified?.[ref]?.configured) throw new Error("凭据未保存");
+        publishDrafts({ ...draftsRef.current, [targetMode]: { ...draftsRef.current[targetMode], apiKeyDraft: "" } });
+        callbacks.current?.onRefreshCredentials?.();
       }
-
-      // 2. 设置项差分：仅在设置允许写入时提交服务商与端点配置
-      if (writable) {
-        // 2.1 服务商差分：仅在服务商模式真正改变时提交更新
-        if (providerType !== baseline.providerType) {
-          const targetSearchProvider =
-            providerType === "deepseek"
-              ? "deepseek-search-api"
-              : baseline.searchProvider || "deepseek-search-api";
-          const targetFetchProvider =
-            providerType === "deepseek"
-              ? "deepseek-fetch-api"
-              : baseline.fetchProvider || "deepseek-fetch-api";
-
-          const webNs = settingsSnapshot.namespaces.find((ns) => ns.ns === "web");
-          await rpc(Endpoints.settingsUpdate, {
-            ns: "web",
-            patch: {
-              searchProvider: targetSearchProvider,
-              fetchProvider: targetFetchProvider,
-            },
-            expectedRevision: webNs?.revision,
-          });
-        }
-
-        // 2.2 API 命名空间差分比对：原子提交修改项
-        const apiNs = settingsSnapshot.namespaces.find((ns) => ns.ns === "web-deepseek-api");
-        const apiVal = apiNs?.value as { baseURL?: string } | undefined;
-        const effectiveBaseURL = typeof apiVal?.baseURL === "string" ? apiVal.baseURL : "";
-        const userSection = apiNs?.user as Record<string, unknown> | undefined;
-        const hasBaseURLInUserLayer = Boolean(userSection && "baseURL" in userSection);
-
-        const ops: Array<{ op: "set" | "unset"; path: string[]; value?: unknown }> = [];
-
-        // 条数差分：仅当用户改动了 count 时才提交（上限与 DSH 工具硬限制 8 严格对齐）
-        const normalizedCount = Math.min(8, Math.max(1, count));
-        if (normalizedCount !== baseline.count) {
-          ops.push({ op: "set", path: ["count"], value: normalizedCount });
-        }
-
-        const baseSection = apiNs?.base as { baseURL?: string } | undefined;
-        const inheritedBaseURL =
-          typeof baseSection?.baseURL === "string" ? baseSection.baseURL : "";
-        const isInheritedOfficial =
-          !inheritedBaseURL || inheritedBaseURL === DEFAULT_SEARCH_API_BASE_URL;
-
-        // 端点差分：
-        if (providerType === "custom") {
-          if (normalizedBaseURL) {
-            // 自定义模式填入端点：变动时 set
-            if (normalizedBaseURL !== baseline.baseURL) {
-              ops.push({ op: "set", path: ["baseURL"], value: normalizedBaseURL });
-            }
-          } else if (!isInheritedOfficial) {
-            // 用户清空自定义端点，但继承层是非官方自定义端点：显式写入官方默认端点，绝不能 unset 暴露继承端点
-            if (effectiveBaseURL !== DEFAULT_SEARCH_API_BASE_URL) {
-              ops.push({ op: "set", path: ["baseURL"], value: DEFAULT_SEARCH_API_BASE_URL });
-            }
-          } else if (hasBaseURLInUserLayer) {
-            // 继承层是官方默认：可以安全 unset 移除用户层覆盖
-            ops.push({ op: "unset", path: ["baseURL"] });
-          }
-        } else if (providerType === "deepseek") {
-          // 官方模式：端点留空即代表官方默认
-          if (hasBaseURLInUserLayer) {
-            // 用户层曾有覆盖：仅当继承层本身也是官方默认时，才安全 unset 恢复原生继承；
-            // 若继承层为非官方自定义端点，则必须维持用户层的官方默认覆盖，绝不可 unset 暴露继承端点
-            if (isInheritedOfficial) {
-              ops.push({ op: "unset", path: ["baseURL"] });
-            } else if (effectiveBaseURL !== DEFAULT_SEARCH_API_BASE_URL) {
-              ops.push({
-                op: "set",
-                path: ["baseURL"],
-                value: DEFAULT_SEARCH_API_BASE_URL,
-              });
-            }
-          } else if (effectiveBaseURL && effectiveBaseURL !== DEFAULT_SEARCH_API_BASE_URL) {
-            // 来自底层继承的自定义端点（用户层无覆盖）：必须显式覆写为官方默认端点，以覆盖继承的非官方端点
-            ops.push({
-              op: "set",
-              path: ["baseURL"],
-              value: DEFAULT_SEARCH_API_BASE_URL,
-            });
-          }
-        }
-
-        if (ops.length > 0) {
-          await rpc(Endpoints.settingsMutate, {
-            ns: "web-deepseek-api",
-            ops,
-            expectedRevision: apiNs?.revision,
-          });
-        }
+      // 与 dsh 官方一致：目标服务设置先落盘，最后才启用它。
+      if (ops.length) {
+        await rpc(Endpoints.settingsMutate, { ns: targetNs.ns, ops, expectedRevision: targetNs.revision });
+        serviceSaved = true;
       }
-
-      setMessage(t("settings.webSearch.savedSuccess"));
-      await load();
-    } catch (err) {
-      const errMsg = err instanceof Error ? err.message : String(err);
-      const formattedError = t("settings.webSearch.savedFailed", { message: errMsg });
-      setError(formattedError);
-      console.error("[WebSearchSettings] 保存配置失败:", err);
-      // 局部失败后重新同步远端快照，防范 revision 错位阻塞重试
-      await load().catch(() => {});
-      // 恢复被 load() 重置的保存失败提示，保留失败原因供用户查看
-      setError(formattedError);
+      if (selectOps.length) await rpc(Endpoints.settingsMutate, {
+        ns: "web", ops: selectOps, expectedRevision: namespace(current, "web")!.revision,
+      });
+      if (await load(targetMode) && alive.current) setMessage(translation.current("settings.webSearch.savedSuccess"));
+    } catch {
+      // 错误原文可能含凭据，不放进界面或日志。回读快照供重试，保留未保存草稿。
+      await load(serviceSaved ? targetMode : undefined);
+      if (alive.current) setError(translation.current("settings.webSearch.saveFailed"));
     } finally {
-      setSaving(false);
+      savingRef.current = false;
+      if (alive.current) setSaving(false);
     }
-  }, [
-    apiKeyDraft,
-    baseURL,
-    baseline,
-    count,
-    keyRef,
-    keyWritable,
-    load,
-    options,
-    providerType,
-    settingsSnapshot,
-    t,
-    writable,
-  ]);
+  };
 
   return {
-    providerType,
-    setProviderType,
-    baseURL,
-    setBaseURL,
-    count,
-    setCount,
-    hasKey,
-    apiKeyDraft,
-    setApiKeyDraft,
-    loaded,
-    writable,
-    keyWritable,
-    keyStatusKnown,
-    saving,
-    message,
-    error,
-    save,
-    refresh: load,
-    refreshCredentials,
+    mode, changeMode, ...draft, edit, loaded, saving, writable, formAvailable,
+    availableModes: (["api", "messages"] as const).filter((key) => namespace(snapshot.current, SEARCH_MODES[key].ns)),
+    hasExternalConfiguration: Boolean(snapshot.current && selectedMode(snapshot.current) === "external"),
+    externalProvider: String(section(namespace(snapshot.current, "web")).searchProvider ?? ""),
+    hasKey: Boolean(literalRetained || credential?.configured),
+    keyStatusKnown: Boolean(literalRetained || credential?.known),
+    keyWritable: Boolean(credential?.known && credential.writable && (writable || !needsBinding)),
+    message, error, save, refresh: load, refreshCredentials,
   };
 }
+export type WebSearchSettingsController = ReturnType<typeof useWebSearchSettings>;

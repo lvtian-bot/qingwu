@@ -1,0 +1,8 @@
+{
+  "name": "@qingwu/dsh-profile",
+  "version": "0.0.1",
+  "private": true,
+  "description": "青梧的 dsh 默认配置层",
+  "files": ["cordis.patch.yml"],
+  "dsh": { "bundle": { "patch": "./cordis.patch.yml" } }
+}
