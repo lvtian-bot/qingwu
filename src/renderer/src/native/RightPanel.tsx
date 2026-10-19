@@ -229,7 +229,11 @@ export const RightPanel = forwardRef<RightPanelHandle, RightPanelProps>(
     }, [narrow, onOpenChange]);
 
     // 宽度拖拽（仅普通展开态显示）
-    const dragRef = useRef<{ startX: number; startWidth: number } | null>(null);
+    const dragRef = useRef<{
+      startX: number;
+      startWidth: number;
+      currentWidth: number;
+    } | null>(null);
     const onResizerDown = (event: React.PointerEvent<HTMLDivElement>) => {
       event.preventDefault();
       // 以当前受窗口半宽约束的实际渲染宽度为拖拽基线，消除窄窗口下的拖拽死区
@@ -237,7 +241,11 @@ export const RightPanel = forwardRef<RightPanelHandle, RightPanelProps>(
         layout.width,
         Math.max(PANEL_MIN_WIDTH, Math.floor(window.innerWidth * 0.5)),
       );
-      dragRef.current = { startX: event.clientX, startWidth };
+      dragRef.current = {
+        startX: event.clientX,
+        startWidth,
+        currentWidth: startWidth,
+      };
       event.currentTarget.setPointerCapture(event.pointerId);
       setDragging(true);
     };
@@ -249,13 +257,17 @@ export const RightPanel = forwardRef<RightPanelHandle, RightPanelProps>(
         max,
         Math.max(PANEL_MIN_WIDTH, drag.startWidth + (drag.startX - event.clientX)),
       );
+      drag.currentWidth = width;
       setLayout((prev) => ({ ...prev, width }));
     };
     const onResizerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+      const drag = dragRef.current;
+      if (drag) {
+        savePanelWidth(drag.currentWidth);
+      }
       dragRef.current = null;
       setDragging(false);
       event.currentTarget.releasePointerCapture(event.pointerId);
-      savePanelWidth(layout.width);
     };
 
     if (!open) return null;

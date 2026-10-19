@@ -78,7 +78,7 @@ function isPanelTab(value: unknown): value is PanelTab {
 }
 
 export function loadPanelLayout(sessionId: string | null): PanelLayout {
-  const width = loadPanelWidth();
+  let width = loadPanelWidth();
   if (!sessionId) return { ...defaultPanelLayout(), width };
   try {
     const raw = window.localStorage.getItem(storageKeyOf(sessionId));
@@ -91,6 +91,27 @@ export function loadPanelLayout(sessionId: string | null): PanelLayout {
       tabs.some((tab) => tab.id === parsed.activeTabId)
         ? parsed.activeTabId
         : (tabs[tabs.length - 1]?.id ?? null);
+
+    // 平滑迁移：若全局宽度尚无记录，且老会话保存了非 500 的自定义有效宽度，平滑提升为全局宽度
+    const hasGlobalRecord =
+      window.localStorage.getItem(PANEL_WIDTH_KEY) !== null ||
+      window.localStorage.getItem("qingwu.panel.lastWidth") !== null;
+    if (
+      !hasGlobalRecord &&
+      typeof parsed.width === "number" &&
+      Number.isFinite(parsed.width)
+    ) {
+      const legacyWidth = Math.round(parsed.width);
+      if (
+        legacyWidth !== 500 &&
+        legacyWidth >= PANEL_MIN_WIDTH &&
+        legacyWidth <= PANEL_MAX_WIDTH
+      ) {
+        savePanelWidth(legacyWidth);
+        width = legacyWidth;
+      }
+    }
+
     return {
       expanded: parsed.expanded === true,
       fullscreen: parsed.fullscreen === true,

@@ -94,6 +94,23 @@ test('loadPanelLayout 跨会话统一保持全局面板宽度，页签内容保�
   assert.equal(layout2.tabs.length, 0);
 });
 
+test('loadPanelLayout 在无全局记录时平滑迁移老会话保存的自定义宽度', () => {
+  storage.clear();
+  // 全局 key 尚未存在，老会话中保存了自定义的 650px
+  storage.set('qingwu.panel.layout.session-legacy', JSON.stringify({
+    expanded: true,
+    fullscreen: false,
+    width: 650,
+    tabs: [{ id: 'tab-1', kind: 'guide' }],
+    activeTabId: 'tab-1',
+  }));
+
+  const layout = loadPanelLayout('session-legacy');
+  assert.equal(layout.width, 650);
+  // 已成功平滑写入全局存储
+  assert.equal(loadPanelWidth(), 650);
+});
+
 test('savePanelLayout 保证各会话独立状态互不干扰', () => {
   storage.clear();
   savePanelLayout('session-a', {
