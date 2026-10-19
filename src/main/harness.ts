@@ -230,7 +230,11 @@ export class HarnessManager {
             try {
               fs.copyFileSync(patchPath, `${patchPath}.bak`);
             } catch (bakErr) {
-              console.warn("[Harness] 备份 cordis.patch.yml 失败:", bakErr);
+              console.warn(
+                "[Harness] 备份 cordis.patch.yml 失败，为保护存量配置中止平滑升级:",
+                bakErr,
+              );
+              return;
             }
             // 剔除注释与空白后判断是否为历史空文档（例如仅有 "# ...\n[]"）
             const stripped = currentContent.replace(/#.*$/gm, "").trim();

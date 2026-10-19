@@ -149,3 +149,26 @@ test("若用户配置带有行尾注释，仍可精准识别并不重复追加",
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test("若创建 .bak 备份失败，则立即中止迁移保护原始文件不被覆写", () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "qingwu-test-profile-"));
+  try {
+    fs.mkdirSync(tmp, { recursive: true });
+    fs.writeFileSync(path.join(tmp, "package.json"), "{}");
+    const rawContent = "- id: agent-default-model\n  config: { model: test }\n";
+    const patchPath = path.join(tmp, "cordis.patch.yml");
+    fs.writeFileSync(patchPath, rawContent);
+
+    // 将备份路径预建为目录，使 copyFileSync 抛出 EISDIR 异常模拟备份失败
+    const backupPath = `${patchPath}.bak`;
+    fs.mkdirSync(backupPath);
+
+    const harness = setupHarness(tmp);
+    harness["ensureQingwuProfile"]();
+
+    // 原始文件必须保持一模一样，绝不被带病覆写
+    assert.equal(fs.readFileSync(patchPath, "utf-8"), rawContent);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});

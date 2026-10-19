@@ -12,7 +12,7 @@ export interface WebSearchSettingsOptions {
 }
 
 export interface WebSearchSettingsController {
-  /** 搜索服务商模式：deepseek（官方高速）或 custom（自定义） */
+  /** 搜索服务商模式：deepseek（官方高速）或 custom（自定义代理） */
   providerType: "deepseek" | "custom";
   setProviderType: (type: "deepseek" | "custom") => void;
   /** 自定义 Search / Fetch 接口基础地址草稿 */
@@ -46,6 +46,14 @@ export interface WebSearchSettingsController {
   refresh: () => Promise<void>;
 }
 
+interface SavedBaseline {
+  providerType: "deepseek" | "custom";
+  baseURL: string;
+  count: number;
+  searchProvider: string;
+  fetchProvider: string;
+}
+
 export function useWebSearchSettings(
   options?: WebSearchSettingsOptions,
 ): WebSearchSettingsController {
@@ -56,20 +64,23 @@ export function useWebSearchSettings(
   const [keyWritable, setKeyWritable] = useState<boolean>(true);
   const [keyStatusKnown, setKeyStatusKnown] = useState<boolean>(true);
   const [keyRef, setKeyRef] = useState<string>("DEEPSEEK_API_KEY");
+
+  // 表单编辑字段状态
   const [providerType, setProviderType] = useState<"deepseek" | "custom">("deepseek");
-  const [providerDirty, setProviderDirty] = useState<boolean>(false);
-  const [loadedProviders, setLoadedProviders] = useState<{
-    searchProvider: string;
-    fetchProvider: string;
-  }>({
+  const [baseURL, setBaseURL] = useState<string>("");
+  const [count, setCount] = useState<number>(DEFAULT_SEARCH_COUNT);
+  const [hasKey, setHasKey] = useState<boolean>(false);
+  const [apiKeyDraft, setApiKeyDraft] = useState<string>("");
+
+  // 加载基线：用于保存时纯粹的差分比对（Diff），防止固化未修改的继承项
+  const [baseline, setBaseline] = useState<SavedBaseline>({
+    providerType: "deepseek",
+    baseURL: "",
+    count: DEFAULT_SEARCH_COUNT,
     searchProvider: "deepseek-search-api",
     fetchProvider: "deepseek-fetch-api",
   });
-  const [baseURL, setBaseURL] = useState<string>("");
-  const [count, setCount] = useState<number>(DEFAULT_SEARCH_COUNT);
-  const [countDirty, setCountDirty] = useState<boolean>(false);
-  const [hasKey, setHasKey] = useState<boolean>(false);
-  const [apiKeyDraft, setApiKeyDraft] = useState<string>("");
+
   const [saving, setSaving] = useState<boolean>(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -96,7 +107,6 @@ export function useWebSearchSettings(
         const webVal = webNs?.value as { searchProvider?: string; fetchProvider?: string } | undefined;
         const searchProvider = webVal?.searchProvider ?? "deepseek-search-api";
         const fetchProvider = webVal?.fetchProvider ?? "deepseek-fetch-api";
-        setLoadedProviders({ searchProvider, fetchProvider });
 
         const apiNs = settingsRes.namespaces.find((ns) => ns.ns === "web-deepseek-api");
         const apiVal = apiNs?.value as {
@@ -115,21 +125,23 @@ export function useWebSearchSettings(
 
         const currentCount = typeof apiVal?.count === "number" ? apiVal.count : DEFAULT_SEARCH_COUNT;
         setCount(currentCount);
-        setCountDirty(false);
-        setProviderDirty(false);
 
-        // 同时核对 searchProvider、fetchProvider 与 baseURL，任一偏离官方默认即标为自定义代理模式
         const isOfficialProviders =
           searchProvider === "deepseek-search-api" &&
           fetchProvider === "deepseek-fetch-api";
         const isOfficialBaseURL =
           !currentBaseURL || currentBaseURL === DEFAULT_SEARCH_API_BASE_URL;
 
-        if (!isOfficialProviders || !isOfficialBaseURL) {
-          setProviderType("custom");
-        } else {
-          setProviderType("deepseek");
-        }
+        const resolvedType = !isOfficialProviders || !isOfficialBaseURL ? "custom" : "deepseek";
+        setProviderType(resolvedType);
+
+        setBaseline({
+          providerType: resolvedType,
+          baseURL: currentBaseURL,
+          count: currentCount,
+          searchProvider,
+          fetchProvider,
+        });
       } else {
         setLoaded(false);
         setError(t("settings.webSearch.loadFailed"));
@@ -165,16 +177,6 @@ export function useWebSearchSettings(
     void load();
   }, [load]);
 
-  const handleSetProviderType = useCallback((type: "deepseek" | "custom") => {
-    setProviderType(type);
-    setProviderDirty(true);
-  }, []);
-
-  const handleSetCount = useCallback((nextCount: number) => {
-    setCount(nextCount);
-    setCountDirty(true);
-  }, []);
-
   const save = useCallback(async () => {
     if (!settingsSnapshot || !writable) {
       setError(
@@ -205,7 +207,7 @@ export function useWebSearchSettings(
 
     try {
       let keySaved = false;
-      // 1. 保存凭据（仅当密钥可写且用户输入了新 Key 时执行，环境变量只读时不破坏其余设置保存）
+      // 1. 凭据差分：仅当密钥可写且输入了新 Key 时写入
       if (keyWritable && apiKeyDraft.trim()) {
         await rpc(Endpoints.credentialsSet, {
           ref: keyRef,
@@ -216,16 +218,16 @@ export function useWebSearchSettings(
         keySaved = true;
       }
 
-      // 2. 保存 web 命名空间：仅在用户显式改动过服务商类型时才提交，未修改时避免将继承的 provider 固化入库
-      if (providerDirty) {
+      // 2. 服务商差分：仅在服务商模式真正改变时提交更新
+      if (providerType !== baseline.providerType) {
         const targetSearchProvider =
           providerType === "deepseek"
             ? "deepseek-search-api"
-            : loadedProviders.searchProvider || "deepseek-search-api";
+            : baseline.searchProvider || "deepseek-search-api";
         const targetFetchProvider =
           providerType === "deepseek"
             ? "deepseek-fetch-api"
-            : loadedProviders.fetchProvider || "deepseek-fetch-api";
+            : baseline.fetchProvider || "deepseek-fetch-api";
 
         const webNs = settingsSnapshot.namespaces.find((ns) => ns.ns === "web");
         await rpc(Endpoints.settingsUpdate, {
@@ -238,28 +240,43 @@ export function useWebSearchSettings(
         });
       }
 
-      // 3. 通过 settings/mutate 原子更新 web-deepseek-api 命名空间
+      // 3. API 命名空间差分比对：原子提交修改项
       const apiNs = settingsSnapshot.namespaces.find((ns) => ns.ns === "web-deepseek-api");
       const apiVal = apiNs?.value as { baseURL?: string } | undefined;
       const effectiveBaseURL = typeof apiVal?.baseURL === "string" ? apiVal.baseURL : "";
       const userSection = apiNs?.user as Record<string, unknown> | undefined;
+      const hasBaseURLInUserLayer = Boolean(userSection && "baseURL" in userSection);
 
       const ops: Array<{ op: "set" | "unset"; path: string[]; value?: unknown }> = [];
 
-      // 仅当用户真正修改过 count 时才写入该覆盖项；未动过则保留底层默认或 profile 继承
-      if (countDirty) {
-        const normalizedCount = Math.min(50, Math.max(1, count));
+      // 3.1 条数差分：仅当用户改动了 count 时才提交
+      const normalizedCount = Math.min(50, Math.max(1, count));
+      if (normalizedCount !== baseline.count) {
         ops.push({ op: "set", path: ["count"], value: normalizedCount });
       }
 
-      // 端点处理：
-      // - 自定义模式且填入地址：写入用户层覆盖
-      // - 官方模式：若有效端点偏离官方默认值，显式写入官方默认端点覆盖，避免 unset 导致可能存在的上层继承值反复回弹
-      if (providerType === "custom" && normalizedBaseURL) {
-        if (userSection?.baseURL !== normalizedBaseURL) {
-          ops.push({ op: "set", path: ["baseURL"], value: normalizedBaseURL });
+      // 3.2 端点差分：
+      if (providerType === "custom") {
+        if (normalizedBaseURL) {
+          // 自定义模式填入端点：变动时 set
+          if (normalizedBaseURL !== baseline.baseURL) {
+            ops.push({ op: "set", path: ["baseURL"], value: normalizedBaseURL });
+          }
+        } else if (hasBaseURLInUserLayer || (baseline.baseURL && baseline.baseURL !== "")) {
+          // 用户清空自定义端点：彻底清除旧覆盖，并确保回退至官方端点
+          if (hasBaseURLInUserLayer) {
+            ops.push({ op: "unset", path: ["baseURL"] });
+          }
+          if (effectiveBaseURL !== DEFAULT_SEARCH_API_BASE_URL) {
+            ops.push({
+              op: "set",
+              path: ["baseURL"],
+              value: DEFAULT_SEARCH_API_BASE_URL,
+            });
+          }
         }
       } else if (providerType === "deepseek") {
+        // 官方模式：必须确保当前有效端点为官方默认端点
         if (effectiveBaseURL !== DEFAULT_SEARCH_API_BASE_URL) {
           ops.push({
             op: "set",
@@ -280,7 +297,7 @@ export function useWebSearchSettings(
       setMessage(t("settings.webSearch.savedSuccess"));
       await load();
 
-      // 若保存了共享凭据，同步通知外部刷新（如模型设置中的供应商列表）
+      // 若保存了共享凭据，同步通知外部刷新
       if (keySaved) {
         options?.onRefreshCredentials?.();
       }
@@ -299,14 +316,12 @@ export function useWebSearchSettings(
   }, [
     apiKeyDraft,
     baseURL,
+    baseline,
     count,
-    countDirty,
     keyRef,
     keyWritable,
     load,
-    loadedProviders,
     options,
-    providerDirty,
     providerType,
     settingsSnapshot,
     t,
@@ -315,11 +330,11 @@ export function useWebSearchSettings(
 
   return {
     providerType,
-    setProviderType: handleSetProviderType,
+    setProviderType,
     baseURL,
     setBaseURL,
     count,
-    setCount: handleSetCount,
+    setCount,
     hasKey,
     apiKeyDraft,
     setApiKeyDraft,

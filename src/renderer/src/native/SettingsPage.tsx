@@ -159,14 +159,15 @@ export function SettingsPage({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onBack]);
 
-  // 引擎重连成功且尚未加载配置时，自动重刷，避免重连后页面仍处于断连错误状态；若已加载则保留当前草稿
+  // 引擎重连成功且配置或凭据状态尚未就绪时，自动重刷，恢复界面可用状态；若已完全加载则保留当前草稿
   const refreshWebSearch = webSearch.refresh;
   const webSearchLoaded = webSearch.loaded;
+  const webSearchKeyKnown = webSearch.keyStatusKnown;
   useEffect(() => {
-    if (dshConnected && !webSearchLoaded) {
+    if (dshConnected && (!webSearchLoaded || !webSearchKeyKnown)) {
       void refreshWebSearch();
     }
-  }, [dshConnected, webSearchLoaded, refreshWebSearch]);
+  }, [dshConnected, webSearchLoaded, webSearchKeyKnown, refreshWebSearch]);
 
   const panelStyle = (key: TabKey) =>
     activeTab === key ? undefined : ({ display: "none" } as const);
