@@ -256,9 +256,25 @@ test("连续点击保存只发送一次配置写入", async () => {
 test("初次配置读取失败时禁止保存，恢复后可以重新读取", async () => {
   const h = setup(); h.failReads(); await h.mount();
   assert.equal(h.render().loaded, false);
+  assert.equal(h.render().error, "settings.webSearch.loadFailed");
   await h.render().save(); assert.equal(writes(h).length, 0);
+  assert.equal(h.render().error, "settings.webSearch.loadFailed");
   h.failReads(false); await h.render().refresh();
   assert.equal(h.render().loaded, true);
+  assert.equal(h.render().error, null);
+});
+
+test("配置回读恢复只清除加载错误，仍保留未解决的保存失败提示及草稿", async () => {
+  const h = setup(); await h.mount();
+  edit(h, "limit", "17"); h.failNamespace("web-deepseek-api");
+  await h.render().save();
+  assert.equal(h.render().error, "settings.webSearch.saveFailed");
+  h.failReads(); await h.render().refresh();
+  assert.equal(h.render().loaded, false);
+  h.failReads(false); await h.render().refresh();
+  assert.equal(h.render().loaded, true);
+  assert.equal(h.render().error, "settings.webSearch.saveFailed");
+  assert.equal(h.render().limit, "17");
 });
 
 test("凭据回读未配置时保存失败，不启用服务，也不清除待重试的输入", async () => {

@@ -33,6 +33,7 @@ export function useWebSearchSettings(options?: WebSearchSettingsOptions) {
   const [credentials, setCredentials] = useState<Record<string, CredentialState>>({});
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const publishDrafts = useCallback((next: typeof draftsRef.current) => {
     draftsRef.current = next;
@@ -75,12 +76,13 @@ export function useWebSearchSettings(options?: WebSearchSettingsOptions) {
       publishDrafts(next);
       setWritable(result.writable === true);
       setLoaded(true);
+      setLoadError(null);
       await refreshCredentials();
       return true;
     } catch {
       if (!alive.current || sequence !== loadSequence.current) return false;
       setLoaded(false);
-      setError(translation.current("settings.webSearch.loadFailed"));
+      setLoadError(translation.current("settings.webSearch.loadFailed"));
       return false;
     }
   }, [publishDrafts, refreshCredentials]);
@@ -178,7 +180,7 @@ export function useWebSearchSettings(options?: WebSearchSettingsOptions) {
     hasKey: Boolean(literalRetained || credential?.configured),
     keyStatusKnown: Boolean(literalRetained || credential?.known),
     keyWritable: Boolean(credential?.known && credential.writable && (writable || !needsBinding)),
-    message, error, save, refresh: load, refreshCredentials,
+    message, error: error ?? loadError, save, refresh: load, refreshCredentials,
   };
 }
 export type WebSearchSettingsController = ReturnType<typeof useWebSearchSettings>;
