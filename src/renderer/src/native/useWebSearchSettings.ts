@@ -48,6 +48,7 @@ export function useWebSearchSettings(): WebSearchSettingsController {
   const [writable, setWritable] = useState<boolean>(true);
   const [keyWritable, setKeyWritable] = useState<boolean>(true);
   const [keyStatusKnown, setKeyStatusKnown] = useState<boolean>(true);
+  const [keyRef, setKeyRef] = useState<string>("DEEPSEEK_API_KEY");
   const [providerType, setProviderType] = useState<"deepseek" | "custom">("deepseek");
   const [loadedProviders, setLoadedProviders] = useState<{
     searchProvider: string;
@@ -66,18 +67,15 @@ export function useWebSearchSettings(): WebSearchSettingsController {
 
   const load = useCallback(async () => {
     try {
-      const [settingsRes, credsRes] = await Promise.all([
-        rpc<SettingsDescribeValue>(Endpoints.settingsDescribe, {}).catch((e) => {
-          console.warn("[WebSearchSettings] 读取 settingsDescribe 失败:", e);
-          return null;
-        }),
-        rpc<Record<string, CredentialInfo>>(Endpoints.credentialsDescribe, {
-          refs: ["DEEPSEEK_API_KEY"],
-        }).catch((e) => {
-          console.warn("[WebSearchSettings] 读取 credentialsDescribe 失败:", e);
-          return null;
-        }),
-      ]);
+      const settingsRes = await rpc<SettingsDescribeValue>(
+        Endpoints.settingsDescribe,
+        {},
+      ).catch((e) => {
+        console.warn("[WebSearchSettings] 读取 settingsDescribe 失败:", e);
+        return null;
+      });
+
+      let activeKeyRef = "DEEPSEEK_API_KEY";
 
       if (settingsRes && Array.isArray(settingsRes.namespaces)) {
         setSettingsSnapshot(settingsRes);
@@ -92,7 +90,16 @@ export function useWebSearchSettings(): WebSearchSettingsController {
         setLoadedProviders({ searchProvider, fetchProvider });
 
         const apiNs = settingsRes.namespaces.find((ns) => ns.ns === "web-deepseek-api");
-        const apiVal = apiNs?.value as { baseURL?: string; count?: number } | undefined;
+        const apiVal = apiNs?.value as {
+          baseURL?: string;
+          count?: number;
+          apiKeyEnv?: string;
+        } | undefined;
+
+        if (typeof apiVal?.apiKeyEnv === "string" && apiVal.apiKeyEnv.trim() !== "") {
+          activeKeyRef = apiVal.apiKeyEnv.trim();
+        }
+        setKeyRef(activeKeyRef);
 
         const currentBaseURL = typeof apiVal?.baseURL === "string" ? apiVal.baseURL : "";
         setBaseURL(currentBaseURL);
@@ -114,10 +121,19 @@ export function useWebSearchSettings(): WebSearchSettingsController {
         setError(t("settings.webSearch.loadFailed"));
       }
 
+      // 按照当前插件生效的凭据引用查询密钥状态
+      const credsRes = await rpc<Record<string, CredentialInfo>>(
+        Endpoints.credentialsDescribe,
+        { refs: [activeKeyRef] },
+      ).catch((e) => {
+        console.warn("[WebSearchSettings] 读取 credentialsDescribe 失败:", e);
+        return null;
+      });
+
       if (credsRes && typeof credsRes === "object") {
-        const deepseekCred = credsRes["DEEPSEEK_API_KEY"];
-        setHasKey(Boolean(deepseekCred?.configured));
-        setKeyWritable(deepseekCred?.writable !== false);
+        const targetCred = credsRes[activeKeyRef];
+        setHasKey(Boolean(targetCred?.configured));
+        setKeyWritable(targetCred?.writable !== false);
         setKeyStatusKnown(true);
       } else {
         setHasKey(false);
@@ -153,7 +169,7 @@ export function useWebSearchSettings(): WebSearchSettingsController {
       // 1. 保存凭据（仅当密钥可写且用户输入了新 Key 时执行，环境变量只读时不破坏其余设置保存）
       if (keyWritable && apiKeyDraft.trim()) {
         await rpc(Endpoints.credentialsSet, {
-          ref: "DEEPSEEK_API_KEY",
+          ref: keyRef,
           value: apiKeyDraft.trim(),
         });
         setApiKeyDraft("");
@@ -206,10 +222,13 @@ export function useWebSearchSettings(): WebSearchSettingsController {
       await load();
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
-      setError(t("settings.webSearch.savedFailed", { message: errMsg }));
+      const formattedError = t("settings.webSearch.savedFailed", { message: errMsg });
+      setError(formattedError);
       console.error("[WebSearchSettings] 保存配置失败:", err);
       // 局部失败后重新同步远端快照，防范 revision 错位阻塞重试
       await load().catch(() => {});
+      // 恢复被 load() 重置的保存失败提示，保留失败原因供用户查看
+      setError(formattedError);
     } finally {
       setSaving(false);
     }

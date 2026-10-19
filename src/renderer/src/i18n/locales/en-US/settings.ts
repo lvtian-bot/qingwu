@@ -76,7 +76,7 @@ export const settings: typeof zhSettings = {
     apiKey: {
       label: "API Key",
       configuredDesc: "A valid key is configured. The system inherits from model settings or dedicated credentials.",
-      unconfiguredDesc: "No key configured. The agent cannot search the web until a valid DeepSeek API Key is provided.",
+      unconfiguredDesc: "No dedicated API key configured. Sessions signed in with a DeepSeek account can search directly; for other sessions, please enter a key.",
       placeholderConfigured: "Leave empty to keep current key",
       placeholderUnconfigured: "Enter DeepSeek API Key",
       readOnlyDesc: "Supplied by environment variable, read-only",

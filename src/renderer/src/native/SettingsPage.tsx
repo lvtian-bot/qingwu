@@ -157,6 +157,14 @@ export function SettingsPage({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onBack]);
 
+  // 引擎重连成功后，自动重刷联网搜索配置，避免重连后页面仍处于断连错误状态
+  const refreshWebSearch = webSearch.refresh;
+  useEffect(() => {
+    if (dshConnected) {
+      void refreshWebSearch();
+    }
+  }, [dshConnected, refreshWebSearch]);
+
   const panelStyle = (key: TabKey) =>
     activeTab === key ? undefined : ({ display: "none" } as const);
 

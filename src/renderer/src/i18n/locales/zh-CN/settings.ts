@@ -75,7 +75,7 @@ export const settings = {
     apiKey: {
       label: "API 密钥",
       configuredDesc: "已配置有效密钥。系统将自动沿用 DeepSeek 模型配置或专属凭据。",
-      unconfiguredDesc: "未配置密钥。当前 Agent 无法联网，请填入有效的 DeepSeek API Key。",
+      unconfiguredDesc: "未配置独立 API Key。使用 DeepSeek 官方账号登录的会话可直接联网，其他会话请填入密钥。",
       placeholderConfigured: "留空则保持当前密钥",
       placeholderUnconfigured: "输入 DeepSeek API Key",
       readOnlyDesc: "由系统环境变量提供，保持只读",
