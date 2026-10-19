@@ -70,9 +70,9 @@ export const settings: typeof zhSettings = {
     invalidBaseURL: "Please enter a valid endpoint URL starting with http:// or https://",
     provider: {
       label: "Search Provider",
-      desc: "Choose the service provider for agent search and page fetch. DeepSeek Fast API is recommended by default.",
+      desc: "Choose the service provider for agent search and page fetch. DeepSeek Official Fast API is recommended; third-party proxy endpoints are also supported.",
       deepseek: "DeepSeek Official Fast API (Recommended)",
-      custom: "Custom Provider",
+      custom: "Custom / Proxy Endpoint",
     },
     apiKey: {
       label: "API Key",

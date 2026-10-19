@@ -118,11 +118,14 @@ export function useWebSearchSettings(
         setCountDirty(false);
         setProviderDirty(false);
 
-        // 如果配置了非默认的 searchProvider 或者自定义了端点，则识别为自定义模式
-        if (
-          searchProvider !== "deepseek-search-api" ||
-          (currentBaseURL && currentBaseURL !== DEFAULT_SEARCH_API_BASE_URL)
-        ) {
+        // 同时核对 searchProvider、fetchProvider 与 baseURL，任一偏离官方默认即标为自定义代理模式
+        const isOfficialProviders =
+          searchProvider === "deepseek-search-api" &&
+          fetchProvider === "deepseek-fetch-api";
+        const isOfficialBaseURL =
+          !currentBaseURL || currentBaseURL === DEFAULT_SEARCH_API_BASE_URL;
+
+        if (!isOfficialProviders || !isOfficialBaseURL) {
           setProviderType("custom");
         } else {
           setProviderType("deepseek");
@@ -240,7 +243,6 @@ export function useWebSearchSettings(
       const apiVal = apiNs?.value as { baseURL?: string } | undefined;
       const effectiveBaseURL = typeof apiVal?.baseURL === "string" ? apiVal.baseURL : "";
       const userSection = apiNs?.user as Record<string, unknown> | undefined;
-      const hasBaseURLInUserLayer = Boolean(userSection && "baseURL" in userSection);
 
       const ops: Array<{ op: "set" | "unset"; path: string[]; value?: unknown }> = [];
 
@@ -252,22 +254,19 @@ export function useWebSearchSettings(
 
       // 端点处理：
       // - 自定义模式且填入地址：写入用户层覆盖
-      // - 官方模式：若用户层有覆盖则 unset；若上层继承值仍为非官方自定义地址，显式写入官方默认地址覆盖
+      // - 官方模式：若有效端点偏离官方默认值，显式写入官方默认端点覆盖，避免 unset 导致可能存在的上层继承值反复回弹
       if (providerType === "custom" && normalizedBaseURL) {
-        ops.push({ op: "set", path: ["baseURL"], value: normalizedBaseURL });
-      } else if (providerType === "deepseek") {
-        if (hasBaseURLInUserLayer) {
-          ops.push({ op: "unset", path: ["baseURL"] });
+        if (userSection?.baseURL !== normalizedBaseURL) {
+          ops.push({ op: "set", path: ["baseURL"], value: normalizedBaseURL });
         }
-        if (effectiveBaseURL && effectiveBaseURL !== DEFAULT_SEARCH_API_BASE_URL) {
+      } else if (providerType === "deepseek") {
+        if (effectiveBaseURL !== DEFAULT_SEARCH_API_BASE_URL) {
           ops.push({
             op: "set",
             path: ["baseURL"],
             value: DEFAULT_SEARCH_API_BASE_URL,
           });
         }
-      } else if (hasBaseURLInUserLayer) {
-        ops.push({ op: "unset", path: ["baseURL"] });
       }
 
       if (ops.length > 0) {

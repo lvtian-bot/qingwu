@@ -69,9 +69,9 @@ export const settings = {
     invalidBaseURL: "请输入以 http:// 或 https:// 开头的合法接口地址",
     provider: {
       label: "搜索服务商",
-      desc: "选择 Agent 联网检索和网页抓取所使用的接口服务；默认优先推荐 DeepSeek 专用检索接口。",
+      desc: "选择 Agent 联网检索和网页抓取的服务提供方；默认推荐 DeepSeek 官方专用 API，亦支持自建或第三方代理端点。",
       deepseek: "DeepSeek 官方专用 API（推荐）",
-      custom: "自定义服务",
+      custom: "自定义 / 第三方代理端点",
     },
     apiKey: {
       label: "API 密钥",
