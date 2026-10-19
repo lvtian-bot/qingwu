@@ -263,17 +263,8 @@ export function useWebSearchSettings(
             ops.push({ op: "set", path: ["baseURL"], value: normalizedBaseURL });
           }
         } else if (hasBaseURLInUserLayer || (baseline.baseURL && baseline.baseURL !== "")) {
-          // 用户清空自定义端点：彻底清除旧覆盖，并确保回退至官方端点
-          if (hasBaseURLInUserLayer) {
-            ops.push({ op: "unset", path: ["baseURL"] });
-          }
-          if (effectiveBaseURL !== DEFAULT_SEARCH_API_BASE_URL) {
-            ops.push({
-              op: "set",
-              path: ["baseURL"],
-              value: DEFAULT_SEARCH_API_BASE_URL,
-            });
-          }
+          // 用户清空自定义端点：移除用户层覆盖以恢复底层默认继承，避免显式 set 固化官方端点
+          ops.push({ op: "unset", path: ["baseURL"] });
         }
       } else if (providerType === "deepseek") {
         // 官方模式：必须确保当前有效端点为官方默认端点
