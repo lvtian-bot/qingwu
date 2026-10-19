@@ -22,10 +22,12 @@ import { basename, fileInfoOf, isSameWorkspacePath } from "./panel/workspace-fil
 import {
   defaultPanelLayout,
   loadPanelLayout,
+  loadPanelWidth,
   PANEL_DEFAULT_WIDTH,
   PANEL_MAX_WIDTH,
   PANEL_MIN_WIDTH,
   savePanelLayout,
+  savePanelWidth,
   type PanelLayout,
   type PanelTab,
 } from "./panel/layout";
@@ -84,7 +86,7 @@ export const RightPanel = forwardRef<RightPanelHandle, RightPanelProps>(
     /** 载入后吞掉一次持久化：setLayout 应用前的过渡帧会带着旧会话的布局。 */
     const skipPersistRef = useRef(false);
 
-    // 每会话载入布局（展开态由父层持有并注入）
+    // 每会话载入布局（展开态由父层持有并注入；宽度对齐官方 DSH，跨会话全局稳定）
     useEffect(() => {
       loadedForRef.current = null;
       if (!sessionId) {
@@ -94,7 +96,7 @@ export const RightPanel = forwardRef<RightPanelHandle, RightPanelProps>(
       }
       const saved = loadPanelLayout(sessionId);
       skipPersistRef.current = true;
-      setLayout(saved);
+      setLayout({ ...saved, width: loadPanelWidth() });
       loadedForRef.current = sessionId;
       if (saved.expanded !== open) onOpenChange(saved.expanded);
       // open 变化不触发重载：载入只跟随会话切换
@@ -227,10 +229,23 @@ export const RightPanel = forwardRef<RightPanelHandle, RightPanelProps>(
     }, [narrow, onOpenChange]);
 
     // 宽度拖拽（仅普通展开态显示）
-    const dragRef = useRef<{ startX: number; startWidth: number } | null>(null);
+    const dragRef = useRef<{
+      startX: number;
+      startWidth: number;
+      currentWidth: number;
+    } | null>(null);
     const onResizerDown = (event: React.PointerEvent<HTMLDivElement>) => {
       event.preventDefault();
-      dragRef.current = { startX: event.clientX, startWidth: layout.width };
+      // 以当前受窗口半宽约束的实际渲染宽度为拖拽基线，消除窄窗口下的拖拽死区
+      const startWidth = Math.min(
+        layout.width,
+        Math.max(PANEL_MIN_WIDTH, Math.floor(window.innerWidth * 0.5)),
+      );
+      dragRef.current = {
+        startX: event.clientX,
+        startWidth,
+        currentWidth: startWidth,
+      };
       event.currentTarget.setPointerCapture(event.pointerId);
       setDragging(true);
     };
@@ -242,12 +257,23 @@ export const RightPanel = forwardRef<RightPanelHandle, RightPanelProps>(
         max,
         Math.max(PANEL_MIN_WIDTH, drag.startWidth + (drag.startX - event.clientX)),
       );
+      drag.currentWidth = width;
       setLayout((prev) => ({ ...prev, width }));
     };
     const onResizerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+      const drag = dragRef.current;
+      // 仅在最终宽度确实与起始渲染宽度不同时持久化，
+      // 避免单纯点击或拖回起点的无位移操作错误覆盖宽屏下的更大设定
+      if (drag && drag.currentWidth !== drag.startWidth) {
+        savePanelWidth(drag.currentWidth);
+      }
       dragRef.current = null;
       setDragging(false);
-      event.currentTarget.releasePointerCapture(event.pointerId);
+      try {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      } catch {
+        // pointercancel 等中断时 pointerCapture 可能已被系统释放，安全容错
+      }
     };
 
     if (!open) return null;
@@ -289,9 +315,11 @@ export const RightPanel = forwardRef<RightPanelHandle, RightPanelProps>(
             onPointerDown={onResizerDown}
             onPointerMove={onResizerMove}
             onPointerUp={onResizerUp}
-            onDoubleClick={() =>
-              setLayout((prev) => ({ ...prev, width: PANEL_DEFAULT_WIDTH }))
-            }
+            onPointerCancel={onResizerUp}
+            onDoubleClick={() => {
+              setLayout((prev) => ({ ...prev, width: PANEL_DEFAULT_WIDTH }));
+              savePanelWidth(PANEL_DEFAULT_WIDTH);
+            }}
           />
         )}
         <div

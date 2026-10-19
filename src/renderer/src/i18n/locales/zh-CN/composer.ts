@@ -2,10 +2,17 @@
 export const composer = {
   /** 输入框占位与发送/停止按钮。 */
   placeholder: "询问任何问题",
+  placeholderPlan: "描述您的任务以生成计划...",
   send: "发送",
   stopTitle: "停止 (连按两次 Esc)",
   queueSendTitle: "排队发送（{key}+Enter 插话发送）",
   steerQueueHint: "{key}+Enter 插话发送全部排队消息",
+
+  /** 计划模式胶囊。 */
+  planChip: {
+    label: "计划",
+    title: "计划模式已开启，点击退出",
+  },
 
   /** 草稿附件与校验提示。 */
   attachFile: "添加附件",
