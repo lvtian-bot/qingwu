@@ -233,7 +233,6 @@ export const RightPanel = forwardRef<RightPanelHandle, RightPanelProps>(
       startX: number;
       startWidth: number;
       currentWidth: number;
-      moved: boolean;
     } | null>(null);
     const onResizerDown = (event: React.PointerEvent<HTMLDivElement>) => {
       event.preventDefault();
@@ -246,7 +245,6 @@ export const RightPanel = forwardRef<RightPanelHandle, RightPanelProps>(
         startX: event.clientX,
         startWidth,
         currentWidth: startWidth,
-        moved: false,
       };
       event.currentTarget.setPointerCapture(event.pointerId);
       setDragging(true);
@@ -259,16 +257,14 @@ export const RightPanel = forwardRef<RightPanelHandle, RightPanelProps>(
         max,
         Math.max(PANEL_MIN_WIDTH, drag.startWidth + (drag.startX - event.clientX)),
       );
-      if (width !== drag.startWidth) {
-        drag.moved = true;
-      }
       drag.currentWidth = width;
       setLayout((prev) => ({ ...prev, width }));
     };
     const onResizerUp = (event: React.PointerEvent<HTMLDivElement>) => {
       const drag = dragRef.current;
-      // 仅在实际发生拖拽位移后持久化，避免未移动的单纯点击覆盖原有的全局宽屏设定
-      if (drag?.moved) {
+      // 仅在最终宽度确实与起始渲染宽度不同时持久化，
+      // 避免单纯点击或拖回起点的无位移操作错误覆盖宽屏下的更大设定
+      if (drag && drag.currentWidth !== drag.startWidth) {
         savePanelWidth(drag.currentWidth);
       }
       dragRef.current = null;
