@@ -2,6 +2,23 @@
 
 所有显著变更都记录在本文件中，格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## 0.3.0（2026-10-20）
+### ⚙️ 工程维护
+- Markdown 文件移出格式检查
+- 升级内置引擎 dsh 至 0.2.1-rc.2
+### ⚡ 性能
+- 裁剪安装包遥测依赖并禁用引擎遥测上报 (#6)
+### ✨ 新增
+- 质量门禁前置依赖一致性核对 (#7)
+- 升级右侧面板Markdown排版并对齐计划模式交互 (#9)
+- 对齐官方标杆实现全局面板宽度与会话独立页签 (#11)
+- 支持 DeepSeek 新旧搜索与独立密钥
+### 🐛 修复
+- 统一青梧配置目录入口并对齐 Profile 规范 (#8)
+### 📝 文档
+- 完善 PR 流程指引
+
+**完整对比**: [v0.2.9...v0.3.0](https://github.com/lvtian-bot/qingwu/compare/v0.2.9...v0.3.0)
 ## 0.2.9（2026-10-13）
 ### ⚙️ 工程维护
 - Merge pull request #3 from lvtian-bot/fix/remove-streaming-cursor
