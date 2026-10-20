@@ -106,8 +106,9 @@ export function useAvailableProtocols(
 
 export function useProviderDirectory(options: {
   onRefreshCatalog?: () => void;
+  externalRefreshTrigger?: number;
 }): ProviderDirectory {
-  const { onRefreshCatalog } = options;
+  const { onRefreshCatalog, externalRefreshTrigger } = options;
   const t = useT();
 
   const [providerRows, setProviderRows] = useState<ProviderRow[]>([]);
@@ -202,6 +203,12 @@ export function useProviderDirectory(options: {
   useEffect(() => {
     void loadProviders();
   }, [loadProviders]);
+
+  useEffect(() => {
+    if (externalRefreshTrigger) {
+      void loadProviders();
+    }
+  }, [externalRefreshTrigger, loadProviders]);
 
   // 清除 / 删除 API Key
   const handleUnsetCredential = useCallback(

@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useT } from "../i18n";
 import {
   type ModelCatalog,
@@ -11,6 +11,8 @@ import { ModelsTab } from "./ModelsTab";
 import { GeneralTab } from "./GeneralTab";
 import { ArchivedSessionsTab } from "./ArchivedSessionsTab";
 import { PermissionsTab } from "./PermissionsTab";
+import { WebSearchTab } from "./WebSearchTab";
+import { useWebSearchSettings } from "./useWebSearchSettings";
 
 export interface SettingsPageProps {
   onBack: () => void;
@@ -34,7 +36,7 @@ export interface SettingsPageProps {
   onOpenSession?: (sessionId: string) => void | Promise<void>;
 }
 
-type TabKey = "models" | "general" | "archivedSessions" | "permissions";
+type TabKey = "models" | "general" | "webSearch" | "archivedSessions" | "permissions";
 
 // 导航文案存词条 key，渲染处经 t() 取词
 const NAV_GROUPS: {
@@ -60,6 +62,15 @@ const NAV_GROUPS: {
         icon: (
           <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
             <path d="M6.5 1A1.5 1.5 0 0 0 5 2.5V3H2.5A1.5 1.5 0 0 0 1 4.5v9A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-9A1.5 1.5 0 0 0 13.5 3H11v-.5A1.5 1.5 0 0 0 9.5 1h-3zm0 1h3a.5.5 0 0 1 .5.5V3H6v-.5a.5.5 0 0 1 .5-.5zM2 4.5a.5.5 0 0 1 .5-.5h11a.5.5 0 0 1 .5.5V6H2V4.5zM2 7h12v6.5a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5V7z" />
+          </svg>
+        ),
+      },
+      {
+        key: "webSearch",
+        labelKey: "settings.nav.webSearch",
+        icon: (
+          <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
+            <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z" />
           </svg>
         ),
       },
@@ -132,6 +143,25 @@ export function SettingsPage({
 }: SettingsPageProps) {
   const [activeTab, setActiveTab] = useState<TabKey>("general");
   const dsh = useDshSettings();
+  const [credentialVersion, setCredentialVersion] = useState(0);
+
+  // 搜索页更新凭据时触发：推进版本号以通知已挂载的模型设置页重新读取凭据，并同步刷新模型目录
+  const handleWebSearchCredentialChange = useCallback(() => {
+    setCredentialVersion((v) => v + 1);
+    onRefreshCatalog?.();
+  }, [onRefreshCatalog]);
+
+  const webSearch = useWebSearchSettings({
+    onRefreshCredentials: handleWebSearchCredentialChange,
+  });
+
+  // 模型页等其他分区修改凭据时触发：推进版本号，通知模型目录，并仅刷新搜索页凭据状态（绝不冲刷未保存的设置草稿）
+  const refreshSearchCredentials = webSearch.refreshCredentials;
+  const handleModelCredentialChange = useCallback(() => {
+    setCredentialVersion((v) => v + 1);
+    onRefreshCatalog?.();
+    void refreshSearchCredentials();
+  }, [onRefreshCatalog, refreshSearchCredentials]);
   const t = useT();
 
   // 按 Esc 键返回应用
@@ -144,6 +174,18 @@ export function SettingsPage({
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onBack]);
+
+  // 严格监听连接状态的边沿跳变（从断开变更为已连接）：
+  // 每次真实重连均回读配置和凭据；初次挂载由 hook 加载，刷新由其保留未保存草稿
+  const prevConnectedRef = useRef<boolean | undefined>(dshConnected);
+  const refreshWebSearch = webSearch.refresh;
+  useEffect(() => {
+    const wasDisconnected = prevConnectedRef.current === false;
+    prevConnectedRef.current = dshConnected;
+    if (wasDisconnected && dshConnected) {
+      void refreshWebSearch();
+    }
+  }, [dshConnected, refreshWebSearch]);
 
   const panelStyle = (key: TabKey) =>
     activeTab === key ? undefined : ({ display: "none" } as const);
@@ -252,9 +294,15 @@ export function SettingsPage({
         <div className="native-settings-panel" style={panelStyle("models")}>
           <ModelsTab
             modelCatalog={modelCatalog}
-            onRefreshCatalog={onRefreshCatalog}
+            onRefreshCatalog={handleModelCredentialChange}
+            credentialVersion={credentialVersion}
             dsh={dsh}
           />
+        </div>
+
+        {/* 联网搜索 */}
+        <div className="native-settings-panel" style={panelStyle("webSearch")}>
+          <WebSearchTab controller={webSearch} />
         </div>
 
         {/* 常规 */}

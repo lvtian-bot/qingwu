@@ -16,14 +16,20 @@ import {
 export function ModelsTab({
   modelCatalog,
   onRefreshCatalog,
+  credentialVersion,
   dsh,
 }: {
   modelCatalog?: ModelCatalog | null;
   /** 凭据变化后刷新引擎模型目录（供应商注册与模型清单随之更新）。 */
   onRefreshCatalog?: () => void;
+  /** 外部凭据刷新触发令牌（如在搜索设置中配置或更新共享凭据时联动）。 */
+  credentialVersion?: number;
   dsh: DshSettingsController;
 }) {
-  const dir = useProviderDirectory({ onRefreshCatalog });
+  const dir = useProviderDirectory({
+    onRefreshCatalog,
+    externalRefreshTrigger: credentialVersion,
+  });
   const availableProtocols = useAvailableProtocols(dir.llmViews);
   const t = useT();
   const {

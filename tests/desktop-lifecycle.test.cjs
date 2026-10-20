@@ -180,8 +180,11 @@ function harnessFixture(t, { respond = true } = {}) {
       },
     },
   });
+  const manager = new HarnessManager({ hasConsole: true });
+  // Profile 的真实文件初始化由专属集成测试覆盖；生命周期测试隔离用户目录。
+  manager.ensureQingwuProfile = async () => {};
   return {
-    manager: new HarnessManager({ hasConsole: true }),
+    manager,
     child,
     logs,
     requests,
@@ -209,6 +212,19 @@ test("引擎保留跨 chunk 鉴权地址，普通服务地址与日志不带凭�
   );
 });
 
+test("Profile 初始化期间退出不会再创建子进程", async (t) => {
+  const fixture = harnessFixture(t);
+  let finishInit;
+  fixture.manager.ensureQingwuProfile = () => new Promise((resolve) => { finishInit = resolve; });
+  const started = fixture.manager.start();
+  const rejected = assert.rejects(started, /启动已取消/);
+  await fixture.manager.stop();
+  finishInit();
+  await rejected;
+  assert.equal(fixture.requests.length, 0);
+  assert.equal(fixture.killCalls(), 0);
+});
+
 test(
   "启动期间退出取消就绪探测，多次 stop 共用真实清理结果",
   { skip: process.platform !== "win32" },
@@ -216,6 +232,7 @@ test(
     const fixture = harnessFixture(t, { respond: false });
     const started = fixture.manager.start();
     const rejected = assert.rejects(started, /启动已取消/);
+    await Promise.resolve(); // 初始化完成，进入待就绪的子进程阶段。
     const first = fixture.manager.stop();
     const second = fixture.manager.stop();
     assert.equal(first, second);
@@ -256,6 +273,7 @@ test(
     const fixture = harnessFixture(t);
     const started = fixture.manager.start();
     const rejected = assert.rejects(started, /启动已取消/);
+    await Promise.resolve();
     const stop = fixture.manager.stop();
     fixture.finishKill(null);
     await Promise.all([stop, rejected]);

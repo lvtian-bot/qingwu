@@ -3,6 +3,7 @@ import type { ChildProcess } from "node:child_process";
 import http from "node:http";
 import path from "node:path";
 import fs from "node:fs";
+import { withFileLock, writeFileAtomic } from "@deepseek-ai/dsh-atomic-write";
 import { app } from "electron";
 import { CONFIG } from "./config";
 import { resolveQingwuProfileDir } from "./dsh-paths";
@@ -168,49 +169,57 @@ export class HarnessManager {
    * 为什么需要专属 profile：
    * 1. 避免与终端下运行的官方 Web 版（~/.dsh/profiles/web）共享配置、插件与持久化；
    * 2. 对齐官方桌面端独立 profile 规范（官方桌面端使用 ~/.dsh/profiles/desktop）；
-   * 3. 首次使用自动初始化 manifest 与空补丁层，后续用户或青梧的定制不污染其他环境。
+   * 3. 应用默认值作为原生 bundle 加载，用户补丁始终由 dsh 解析并覆盖默认值。
    */
-  private ensureQingwuProfile(): void {
+  private async ensureQingwuProfile(): Promise<void> {
     try {
       const profileDir = resolveQingwuProfileDir();
       const manifestPath = path.join(profileDir, "package.json");
+      const patchPath = path.join(profileDir, "cordis.patch.yml");
+      const workspacePath = path.join(profileDir, "pnpm-workspace.yaml");
 
-      if (fs.existsSync(manifestPath)) return;
-
-      if (typeof fs.mkdirSync === "function") {
-        fs.mkdirSync(profileDir, { recursive: true });
-      }
-
-      const manifest = {
-        name: "dsh-profile-qingwu",
-        private: true,
-        dependencies: {},
-        dsh: {
-          profile: {
-            bundles: [
-              "@deepseek-ai/dsh-base",
-              "@deepseek-ai/dsh-web-app",
-            ],
+      fs.mkdirSync(profileDir, { recursive: true });
+      await withFileLock(manifestPath, async () => {
+        const manifest = fs.existsSync(manifestPath)
+          ? JSON.parse(fs.readFileSync(manifestPath, "utf-8"))
+          : {
+          name: "dsh-profile-qingwu",
+          private: true,
+          dependencies: {},
+          dsh: {
+            profile: {
+              bundles: [
+                "@deepseek-ai/dsh-base",
+                "@deepseek-ai/dsh-web-app",
+              ],
+            },
           },
-        },
-      };
+        };
+        const bundles: unknown = manifest.dsh?.profile?.bundles;
+        if (!Array.isArray(bundles) || !bundles.every((name) => typeof name === "string")) {
+          throw new Error("无效的引擎配置包清单");
+        }
+        const baseIndex = bundles.indexOf("@deepseek-ai/dsh-base");
+        if (baseIndex >= 0 && !bundles.includes("@qingwu/dsh-profile")) {
+          bundles.splice(baseIndex + 1, 0, "@qingwu/dsh-profile");
+          await writeFileAtomic(manifestPath, JSON.stringify(manifest, null, 2) + "\n", { mode: 0o600 });
+        } else if (!fs.existsSync(manifestPath)) {
+          await writeFileAtomic(manifestPath, JSON.stringify(manifest, null, 2) + "\n", { mode: 0o600 });
+        }
 
-      if (typeof fs.writeFileSync === "function") {
-        fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
-        const patchPath = path.join(profileDir, "cordis.patch.yml");
-        if (!fs.existsSync(patchPath)) {
-          fs.writeFileSync(patchPath, "# 青梧专属 profile 补丁层\n[]\n");
-        }
-        const workspacePath = path.join(profileDir, "pnpm-workspace.yaml");
-        if (!fs.existsSync(workspacePath)) {
-          fs.writeFileSync(
-            workspacePath,
-            "packages:\n  - .\n\nnodeLinker: hoisted\nautoInstallPeers: false\n",
-          );
-        }
-      }
-    } catch (err) {
-      console.warn("[Harness] 初始化青梧专属 profile 失败，将尝试直接启动:", err);
+        if (!fs.existsSync(workspacePath)) await writeFileAtomic(
+          workspacePath,
+          "packages:\n  - .\n\nnodeLinker: hoisted\nautoInstallPeers: false\n",
+          { mode: 0o600 },
+        );
+        if (!fs.existsSync(patchPath)) await writeFileAtomic(
+          patchPath, "# 青梧专属 profile 补丁层\n[]\n", { mode: 0o600 },
+        );
+      });
+    } catch {
+      // 不打印用户配置内容；失败时不启动可能缺少默认层的引擎。
+      console.warn("[Harness] 初始化青梧专属 profile 失败");
+      throw new Error("初始化青梧引擎配置失败，请检查配置文件与目录权限");
     }
   }
 
@@ -225,7 +234,8 @@ export class HarnessManager {
       throw new Error(`未找到 DeepSeek Harness 引擎入口文件: ${binPath}`);
     }
 
-    this.ensureQingwuProfile();
+    await this.ensureQingwuProfile();
+    if (this.stopRequested) throw new Error("引擎启动已取消");
 
     console.log(
       `[Harness] 启动引擎: ${binPath} (Host: ${this.host}, Port: ${this.port})`,

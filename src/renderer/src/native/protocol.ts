@@ -302,8 +302,12 @@ export interface SettingsNamespaceView {
   schema: unknown;
   /** 解析后的值（schema 默认 → 组合 base → 用户层）。 */
   value: unknown;
+  /** 脱敏后的组合 base 层（已解析默认值）；字段未被用户覆盖时的继承值。 */
+  base?: unknown;
   /** 原始用户段（存在字段即用户覆盖）；编辑草稿须取自这里而非解析值。 */
   user?: unknown;
+  /** dsh 对密文字段仅返回是否已配置，不返回明文。 */
+  secrets?: Array<{ path: string[]; set: boolean }>;
   applies?: 'live' | 'restart';
   /** 读取时的用户段修订号，写入须回传以免覆盖并发修改。 */
   revision: number;
