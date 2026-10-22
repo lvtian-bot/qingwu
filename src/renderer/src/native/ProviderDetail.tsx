@@ -181,7 +181,8 @@ export function ProviderDetail(props: {
         </div>
       </div>
 
-      {family !== "unknown" && (
+      {/* 连接参数只属于用户自声明路由：内置服务商地址由适配器固定，不向用户暴露。 */}
+      {row.declared === true && (
         <div className="native-provider-field">
           <div className="native-provider-field-label">
             <span>{t("settings.shared.apiUrl")}</span>
