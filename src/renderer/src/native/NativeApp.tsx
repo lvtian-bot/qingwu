@@ -340,7 +340,12 @@ export function NativeApp({
     }
   }, [currentId, archivedSet, setCurrentId]);
 
-  const sidebar = useSessionSidebar(sessions, workspaces, archivedSet);
+  const sidebar = useSessionSidebar(
+    sessions,
+    workspaces,
+    archivedSet,
+    currentId,
+  );
 
   /** 会话 id → 摘要（待处理项归位要沿 parentSessionId 找归属会话）。 */
   const sessionById = useMemo(

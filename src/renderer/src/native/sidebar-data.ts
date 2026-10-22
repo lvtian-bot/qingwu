@@ -4,12 +4,54 @@ import type { SessionSummary, WorkspaceView } from "./protocol";
 const PINNED_STORAGE_KEY = "qingwu.native.pinned";
 /** 侧栏大分区折叠状态持久化 Key。 */
 const COLLAPSED_SECTIONS_STORAGE_KEY = "qingwu.native.collapsed-sections";
+/** 侧栏项目分组折叠状态持久化 Key。 */
+const COLLAPSED_WORKSPACES_STORAGE_KEY = "qingwu.native.collapsed-workspaces";
+
+/** 项目内会话默认展示条数（对齐官方 dsh 的 SESSION_WATERMARK_BASE）。 */
+export const WORKSPACE_SESSION_PREVIEW_LIMIT = 5;
+
+/**
+ * 需要自动展示的会话上限：运行中、等待用户回应、后台完成未读或当前会话的条目
+ * 排得再靠后也应露出（对齐官方 dsh 的 SESSION_WATERMARK_AUTO_MAX）。
+ */
+export const WORKSPACE_SESSION_AUTO_MAX = 50;
 
 /** 侧栏支持折叠的三大分区。 */
 export type SidebarSectionKey = "pinned" | "projects" | "sessions";
 
-/** 项目内会话默认展示上限；「展开显示」每次多展示一批（同数），全部展示后变「收起」。官方 dsh 上限为 5。 */
-export const WORKSPACE_SESSION_PREVIEW_LIMIT = 6;
+/** 该会话是否需要无条件露出（不因排在默认条数之外而被藏住）。 */
+export interface SessionAttention {
+  running?: boolean;
+  pending?: boolean;
+  unread?: boolean;
+  current?: boolean;
+}
+
+/**
+ * 项目内会话至少要露出多少条：默认 WORKSPACE_SESSION_PREVIEW_LIMIT；
+ * 需要关注的会话落在更靠后的位置时，抬到能覆盖它的条数，最高 WORKSPACE_SESSION_AUTO_MAX。
+ * 口径对齐官方 dsh 的 requiredWatermark。
+ */
+export function requiredSessionCount(
+  sessions: SessionSummary[],
+  attentionOf: (session: SessionSummary) => SessionAttention,
+): number {
+  let required = 0;
+  sessions.forEach((session, index) => {
+    const count = index + 1;
+    if (count > WORKSPACE_SESSION_AUTO_MAX) return;
+    const attention = attentionOf(session);
+    if (
+      attention.running ||
+      attention.pending ||
+      attention.unread ||
+      attention.current
+    ) {
+      required = count;
+    }
+  });
+  return required;
+}
 
 export interface PinnedData {
   workspaces: string[];
@@ -61,6 +103,42 @@ export function saveCollapsedSections(sections: Set<SidebarSectionKey>) {
       JSON.stringify(Array.from(sections)),
     );
   } catch {}
+}
+
+/**
+ * 载入项目分组的折叠名单。只记录「已折叠」的项目：未登记的项目生成即展开，
+ * 不会因为用户某次折叠过就永远藏起来；项目删除后由调用方清理对应条目。
+ */
+export function loadCollapsedWorkspaces(): Set<string> {
+  try {
+    const raw = localStorage.getItem(COLLAPSED_WORKSPACES_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return new Set(parsed.filter((id): id is string => typeof id === "string"));
+      }
+    }
+  } catch {}
+  return new Set();
+}
+
+export function saveCollapsedWorkspaces(workspaceIds: Set<string>) {
+  try {
+    localStorage.setItem(
+      COLLAPSED_WORKSPACES_STORAGE_KEY,
+      JSON.stringify(Array.from(workspaceIds)),
+    );
+  } catch {}
+}
+
+/** 从折叠名单中剔除已不存在或已删除的项目，返回名单本身（无变化时引用不变）。 */
+export function retainCollapsedWorkspaces(
+  collapsed: Set<string>,
+  workspaceIds: string[],
+): Set<string> {
+  const alive = new Set(workspaceIds);
+  const next = new Set([...collapsed].filter((id) => alive.has(id)));
+  return next.size === collapsed.size ? collapsed : next;
 }
 
 /**

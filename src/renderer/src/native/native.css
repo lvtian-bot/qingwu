@@ -735,6 +735,8 @@ textarea {
 }
 
 .native-ws-title {
+  display: inline-flex;
+  align-items: center;
   flex: 1;
   min-width: 0;
   white-space: nowrap;
@@ -769,6 +771,21 @@ textarea {
   /* 行内小按钮：叠在行悬浮底之上需深一档，沿用选中档保证色相一致 */
   background: var(--native-sidebar-active);
   color: var(--native-fg);
+}
+
+/* 分组开启折叠记忆后，收起的项目下方不再有会话行，单看文件夹图标容易被误认成「没有会话」，
+ * 故在收起状态额外显示一个朝右的小箭头，明确这是被收起的组而不是空项目 */
+.native-ws-row.collapsed .native-ws-title::after {
+  content: "";
+  display: inline-block;
+  flex-shrink: 0;
+  width: 5px;
+  height: 5px;
+  margin-left: 6px;
+  border-top: 1.5px solid currentColor;
+  border-right: 1.5px solid currentColor;
+  transform: rotate(45deg);
+  opacity: 0.55;
 }
 
 .native-ws-rename {

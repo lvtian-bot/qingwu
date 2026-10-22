@@ -7,9 +7,13 @@ import type { SessionSummary, WorkspaceView } from "./protocol";
 import {
   calculateMoveAnchor,
   loadCollapsedSections,
+  loadCollapsedWorkspaces,
   loadPinnedData,
+  requiredSessionCount,
+  retainCollapsedWorkspaces,
   reorderIds,
   saveCollapsedSections,
+  saveCollapsedWorkspaces,
   savePinnedData,
   sessionTitle,
   sortSessionsByRecency,
@@ -19,15 +23,20 @@ import {
 } from "./sidebar-data";
 import type { PanelWidth } from "./usePanelWidth";
 
-/** 搜索、置顶、分组展开与宽度由主组件持有生命周期，隐藏侧栏或切换界面时不丢失。 */
+/** 侧栏展示状态由主组件持有生命周期，隐藏侧栏或切换界面时不丢失。 */
 export function useSessionSidebar(
   sessions: SessionSummary[],
   workspaces: WorkspaceView[],
   archivedSet: Set<string>,
+  currentId: string | null,
 ) {
   const t = useT();
   /** 侧栏置顶数据（本地持久化）。 */
   const [pinnedData, setPinnedData] = useState<PinnedData>(loadPinnedData);
+  /** 已折叠的项目分组（本地持久化，未登记的默认展开）。 */
+  const [collapsedWorkspaces, setCollapsedWorkspaces] = useState<Set<string>>(
+    loadCollapsedWorkspaces,
+  );
   const toggleWorkspacePin = useCallback((workspaceId: string) => {
     setPinnedData((prev) => {
       const exists = prev.workspaces.includes(workspaceId);
@@ -70,10 +79,6 @@ export function useSessionSidebar(
   /** 会话搜索（纯前端标题过滤）。 */
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchText, setSearchText] = useState("");
-  /** 侧栏折叠的分组标题集合。 */
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
-    new Set(),
-  );
   /** 侧栏三大分区折叠状态（本地持久化）。 */
   const [collapsedSections, setCollapsedSections] = useState<
     Set<SidebarSectionKey>
@@ -93,10 +98,85 @@ export function useSessionSidebar(
     },
     [],
   );
-  /** 项目会话组当前展示条数（缺省=默认上限；折叠项目或点「收起」即复位）。 */
+  /** 项目会话组当前展示条数（缺省=默认条数；折叠项目或点「收起」即复位）。 */
   const [sessionVisibleByGroup, setSessionVisibleByGroup] = useState<
     Map<string, number>
   >(new Map());
+
+  /**
+   * 已折叠项目 + 必须保持可见的项目（当前会话所在项目），统一暴露为折叠状态。
+   * 与官方一致：用户上次把某项目收起来了，但当前正在浏览它里面的会话时仍保持展开。
+   */
+  const collapsedWorkspaceIds = useMemo(() => {
+    if (!currentId) return collapsedWorkspaces;
+    const owner = workspaces.find((ws) => ws.sessionIds.includes(currentId));
+    if (!owner || !collapsedWorkspaces.has(owner.workspaceId)) {
+      return collapsedWorkspaces;
+    }
+    const next = new Set(collapsedWorkspaces);
+    next.delete(owner.workspaceId);
+    return next;
+  }, [collapsedWorkspaces, workspaces, currentId]);
+
+  /** 折叠/展开项目分组（持久化）；折叠时同步复位该组会话展示条数，再点开回到默认条数。 */
+  const toggleWorkspaceGroup = useCallback((workspaceId: string) => {
+    setCollapsedWorkspaces((prev) => {
+      const next = new Set(prev);
+      const collapsing = !next.has(workspaceId);
+      if (collapsing) {
+        next.add(workspaceId);
+      } else {
+        next.delete(workspaceId);
+      }
+      saveCollapsedWorkspaces(next);
+      if (collapsing) {
+        setSessionVisibleByGroup((visible) => {
+          if (!visible.has(workspaceId)) return visible;
+          const reset = new Map(visible);
+          reset.delete(workspaceId);
+          return reset;
+        });
+      }
+      return next;
+    });
+  }, []);
+
+  /** 展开指定项目（新建会话、跳转会话时使用）：只清折叠标记，未折叠时是空操作。 */
+  const expandWorkspace = useCallback((workspaceId: string) => {
+    setCollapsedWorkspaces((prev) => {
+      if (!prev.has(workspaceId)) return prev;
+      const next = new Set(prev);
+      next.delete(workspaceId);
+      saveCollapsedWorkspaces(next);
+      return next;
+    });
+  }, []);
+
+  /** 切换项目内「展开显示」水位：展开一次多一批，点「收起」复位回默认条数（不持久化）。 */
+  const setSessionVisibleCount = useCallback(
+    (workspaceId: string, count: number | null) => {
+      setSessionVisibleByGroup((prev) => {
+        const next = new Map(prev);
+        if (count === null) next.delete(workspaceId);
+        else next.set(workspaceId, count);
+        return next;
+      });
+    },
+    [],
+  );
+
+  // 项目删除后清理它的折叠记录，避免名单无限增长。用渲染期同步 setState：
+  // 写入后本帧内重新渲染，状态与本地存储始终一致，不会出现旧名单被再次落盘。
+  const workspaceIdsKey = workspaces.map((ws) => ws.workspaceId).join("\n");
+  const retainedCollapsedWorkspaces = retainCollapsedWorkspaces(
+    collapsedWorkspaces,
+    workspaceIdsKey ? workspaceIdsKey.split("\n") : [],
+  );
+  if (retainedCollapsedWorkspaces !== collapsedWorkspaces) {
+    saveCollapsedWorkspaces(retainedCollapsedWorkspaces);
+    setCollapsedWorkspaces(retainedCollapsedWorkspaces);
+  }
+
   /** 子代理会话（主对话派生的辅助会话）与已归档会话不在主列表展示。 */
   const visibleSessions = useMemo(
     () =>
@@ -191,10 +271,11 @@ export function useSessionSidebar(
     setSearchOpen,
     searchText,
     setSearchText,
-    collapsedGroups,
-    setCollapsedGroups,
+    collapsedGroups: collapsedWorkspaceIds,
     sessionVisibleByGroup,
-    setSessionVisibleByGroup,
+    setSessionVisibleCount,
+    toggleWorkspaceGroup,
+    expandWorkspace,
     toggleWorkspacePin,
     toggleSessionPin,
     reorderPinnedWorkspace,
@@ -256,9 +337,10 @@ export function SessionSidebar({
     searchText,
     setSearchText,
     collapsedGroups,
-    setCollapsedGroups,
     sessionVisibleByGroup,
-    setSessionVisibleByGroup,
+    setSessionVisibleCount,
+    toggleWorkspaceGroup,
+    expandWorkspace,
     toggleWorkspacePin,
     toggleSessionPin,
     reorderPinnedWorkspace,
@@ -422,25 +504,18 @@ export function SessionSidebar({
       void handleWorkspaceReorder(ws.workspaceId, beforeId);
     }
   };
-  /** 折叠/展开项目分组；折叠时同时复位该组会话展示条数，再点开回到默认上限。 */
-  const toggleWorkspaceGroup = (workspaceId: string) => {
-    const collapsing = !collapsedGroups.has(workspaceId);
-    setCollapsedGroups((prev) => {
-      const next = new Set(prev);
-      if (collapsing) next.add(workspaceId);
-      else next.delete(workspaceId);
-      return next;
-    });
-    if (!collapsing) return;
-    setSessionVisibleByGroup((prev) => {
-      const next = new Map(prev);
-      next.delete(workspaceId);
-      return next;
-    });
+
+  /**
+   * 打开项目内的会话：先展开该项目再选中，避免点到的会话藏在一个收起的组里。
+   */
+  const openWorkspaceSession = (workspaceId: string, sessionId: string) => {
+    expandWorkspace(workspaceId);
+    openSession(sessionId);
   };
 
   /**
-   * 项目内会话列表：默认最多展示 WORKSPACE_SESSION_PREVIEW_LIMIT 条，
+   * 项目内会话列表：默认露出 WORKSPACE_SESSION_PREVIEW_LIMIT 条；运行中、等待回应、
+   * 后台完成未读或当前会话的条目会自动抬升露出条数（最多 WORKSPACE_SESSION_AUTO_MAX）。
    * 每点一次「展开显示」多展示一批，全部展示后按钮变「收起」（复位回默认条数）。
    * 折叠项目再点开同样回到默认条数。搜索态不设上限——匹配结果被折叠会让用户以为没搜到。
    */
@@ -450,10 +525,19 @@ export function SessionSidebar({
   ) => {
     if (collapsedGroups.has(ws.workspaceId)) return null;
     const searching = searchText.trim() !== "";
-    const visibleCount = Math.max(
-      searching ? wsSessions.length : WORKSPACE_SESSION_PREVIEW_LIMIT,
-      sessionVisibleByGroup.get(ws.workspaceId) ?? 0,
+    const requiredCount = requiredSessionCount(wsSessions, (session) => ({
+      running: session.running,
+      pending: Boolean(pendingKindBySession.get(session.sessionId)),
+      unread: unreadFinishedSessionIds.has(session.sessionId),
+      current: session.sessionId === currentId,
+    }));
+    const baseCount = Math.max(
+      WORKSPACE_SESSION_PREVIEW_LIMIT,
+      requiredCount,
     );
+    const visibleCount = searching
+      ? wsSessions.length
+      : Math.max(baseCount, sessionVisibleByGroup.get(ws.workspaceId) ?? 0);
     const visible = wsSessions.slice(0, visibleCount);
     const hiddenCount = wsSessions.length - visible.length;
     return (
@@ -469,39 +553,31 @@ export function SessionSidebar({
             pending={pendingKindBySession.get(session.sessionId) ?? null}
             unread={unreadFinishedSessionIds.has(session.sessionId)}
             indented
-            onClick={() => openSession(session.sessionId)}
+            onClick={() => openWorkspaceSession(ws.workspaceId, session.sessionId)}
             onTogglePin={() => toggleSessionPin(session.sessionId)}
             onRename={(t) => void handleSessionRename(session.sessionId, t)}
             onArchive={() => void handleSessionArchive(session.sessionId)}
           />
         ))}
-        {!searching &&
-          (hiddenCount > 0 ||
-            visibleCount > WORKSPACE_SESSION_PREVIEW_LIMIT) && (
-            <button
-              type="button"
-              className="native-session-overflow"
-              aria-expanded={hiddenCount === 0}
-              onClick={() =>
-                setSessionVisibleByGroup((prev) => {
-                  const next = new Map(prev);
-                  if (hiddenCount > 0) {
-                    next.set(
-                      ws.workspaceId,
-                      visibleCount + WORKSPACE_SESSION_PREVIEW_LIMIT,
-                    );
-                  } else {
-                    next.delete(ws.workspaceId);
-                  }
-                  return next;
-                })
-              }
-            >
-              {hiddenCount > 0
-                ? t("sidebar.group.expand")
-                : t("sidebar.group.collapse")}
-            </button>
-          )}
+        {!searching && (hiddenCount > 0 || visibleCount > baseCount) && (
+          <button
+            type="button"
+            className="native-session-overflow"
+            aria-expanded={hiddenCount === 0}
+            onClick={() =>
+              setSessionVisibleCount(
+                ws.workspaceId,
+                hiddenCount > 0
+                  ? visibleCount + WORKSPACE_SESSION_PREVIEW_LIMIT
+                  : null,
+              )
+            }
+          >
+            {hiddenCount > 0
+              ? t("sidebar.group.expand")
+              : t("sidebar.group.collapse")}
+          </button>
+        )}
       </>
     );
   };
@@ -625,13 +701,15 @@ export function SessionSidebar({
                           isDragging={isDragging}
                           dropPosition={dropPosition}
                           onToggle={() => toggleWorkspaceGroup(ws.workspaceId)}
-                          onNewSession={() =>
+                          onNewSession={() => {
+                            // 在折叠的项目里新建会话：先展开，否则新会话落进收起的组里看不见
+                            expandWorkspace(ws.workspaceId);
                             void createSessionIn(ws.workspaceId).catch((err) =>
                               setError(
                                 err instanceof Error ? err.message : String(err),
                               ),
-                            )
-                          }
+                            );
+                          }}
                           onRename={(title) =>
                             handleWorkspaceRename(ws.workspaceId, title)
                           }
@@ -754,13 +832,15 @@ export function SessionSidebar({
                         isDragging={isDragging}
                         dropPosition={dropPosition}
                         onToggle={() => toggleWorkspaceGroup(ws.workspaceId)}
-                        onNewSession={() =>
+                        onNewSession={() => {
+                          // 在折叠的项目里新建会话：先展开，否则新会话落进收起的组里看不见
+                          expandWorkspace(ws.workspaceId);
                           void createSessionIn(ws.workspaceId).catch((err) =>
                             setError(
                               err instanceof Error ? err.message : String(err),
                             ),
-                          )
-                        }
+                          );
+                        }}
                         onRename={(title) =>
                           handleWorkspaceRename(ws.workspaceId, title)
                         }
