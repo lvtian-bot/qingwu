@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useT } from "../i18n";
 import type { PendingKind } from "./PendingInteraction";
 import { SessionRow, WorkspaceRow } from "./SidebarRows";
@@ -186,6 +186,32 @@ export function useSessionSidebar(
     });
   }, []);
 
+  /**
+   * 项目删除的兜底清理：删除请求成功与「项目已移除」推送谁先谁后不确定，
+   * 只靠请求成功回调会漏掉后者先到的情况，留下已不存在项目的折叠记录。
+   * 等基线到达后才启用（启动时项目列表为空，此时比对会把整份记录清空）。
+   */
+  const workspaceBaselineReadyRef = useRef(false);
+  const workspaceIdSet = useMemo(
+    () => new Set(workspaces.map((ws) => ws.workspaceId)),
+    [workspaces],
+  );
+  useEffect(() => {
+    if (workspaceIdSet.size === 0) return;
+    if (!workspaceBaselineReadyRef.current) {
+      workspaceBaselineReadyRef.current = true;
+      return;
+    }
+    setCollapsedWorkspaces((prev) => {
+      const next = new Set(
+        Array.from(prev).filter((id) => workspaceIdSet.has(id)),
+      );
+      if (next.size === prev.size) return prev;
+      saveCollapsedWorkspaces(next);
+      return next;
+    });
+  }, [workspaceIdSet]);
+
   /** 子代理会话（主对话派生的辅助会话）与已归档会话不在主列表展示。 */
   const visibleSessions = useMemo(
     () =>
@@ -234,8 +260,11 @@ export function useSessionSidebar(
     [filteredSessionById],
   );
 
-  /** 判断工作区在搜索态下是否应呈现（名称匹配或内部有匹配会话） */
-  const isWorkspaceMatched = useCallback(
+  /**
+   * 项目在搜索态下是否应出现在侧栏：名称匹配，或内部有匹配会话。
+   * 非搜索态项目一律出现（是否收起由 isWorkspaceGroupCollapsed 决定）。
+   */
+  const isWorkspaceListed = useCallback(
     (ws: WorkspaceView, wsSessions: SessionSummary[]) => {
       const keyword = searchText.trim().toLowerCase();
       if (!keyword) return true;
@@ -302,7 +331,7 @@ export function useSessionSidebar(
     toggleSessionPin,
     reorderPinnedWorkspace,
     getWorkspaceSessions,
-    isWorkspaceMatched,
+    isWorkspaceListed,
     isWorkspaceGroupCollapsed,
     pinnedWorkspaces,
     pinnedSessionsList,
@@ -369,7 +398,7 @@ export function SessionSidebar({
     toggleSessionPin,
     reorderPinnedWorkspace,
     getWorkspaceSessions,
-    isWorkspaceMatched,
+    isWorkspaceListed,
     isWorkspaceGroupCollapsed,
     pinnedWorkspaces,
     pinnedSessionsList,
@@ -706,7 +735,7 @@ export function SessionSidebar({
                 <div className="native-sidebar-section-content">
                   {pinnedWorkspaces.map((ws, index) => {
                     const wsSessions = getWorkspaceSessions(ws);
-                    if (!isWorkspaceMatched(ws, wsSessions)) return null;
+                    if (!isWorkspaceListed(ws, wsSessions)) return null;
                     const isDragging = dragWsId === ws.workspaceId;
                     const dropPosition =
                       dragOverWs?.id === ws.workspaceId
@@ -850,7 +879,7 @@ export function SessionSidebar({
               <div className="native-sidebar-section-content">
                 {normalWorkspaces.map((ws, index) => {
                   const wsSessions = getWorkspaceSessions(ws);
-                  if (!isWorkspaceMatched(ws, wsSessions)) return null;
+                  if (!isWorkspaceListed(ws, wsSessions)) return null;
                   const isDragging = dragWsId === ws.workspaceId;
                   const dropPosition =
                     dragOverWs?.id === ws.workspaceId
