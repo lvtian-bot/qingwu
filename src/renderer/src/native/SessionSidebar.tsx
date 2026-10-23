@@ -245,6 +245,18 @@ export function useSessionSidebar(
     [searchText],
   );
 
+  /**
+   * 项目标题此刻应按展开还是收起呈现：按界面上实际露出的会话列表判断，
+   * 而不是只看持久化的收起记录。当前会话所在项目被临时展开、搜索态忽略收起，
+   * 这些情况下标题都要显示为展开，否则会出现「标题是收起的、下面却列着会话」。
+   */
+  const isWorkspaceGroupCollapsed = useCallback(
+    (ws: WorkspaceView, wsSessions: SessionSummary[]) =>
+      collapsedWorkspaceIds.has(ws.workspaceId) &&
+      wsSessions.length === 0,
+    [collapsedWorkspaceIds],
+  );
+
   // 1. 置顶项目（保持置顶时间倒序）
   const pinnedWorkspaces = useMemo(() => {
     const wsMap = new Map(workspaces.map((w) => [w.workspaceId, w]));
@@ -291,6 +303,7 @@ export function useSessionSidebar(
     reorderPinnedWorkspace,
     getWorkspaceSessions,
     isWorkspaceMatched,
+    isWorkspaceGroupCollapsed,
     pinnedWorkspaces,
     pinnedSessionsList,
     normalWorkspaces,
@@ -357,6 +370,7 @@ export function SessionSidebar({
     reorderPinnedWorkspace,
     getWorkspaceSessions,
     isWorkspaceMatched,
+    isWorkspaceGroupCollapsed,
     pinnedWorkspaces,
     pinnedSessionsList,
     normalWorkspaces,
@@ -376,6 +390,7 @@ export function SessionSidebar({
 
   const searching = searchText.trim() !== "";
   const canReorder = !searching;
+  // 分区收起状态只在浏览态生效：搜索态一律视为展开，否则收起分区里的匹配结果会被整段藏掉
   const isPinnedCollapsed = !searching && collapsedSections.has("pinned");
   const isProjectsCollapsed = !searching && collapsedSections.has("projects");
   const isSessionsCollapsed = !searching && collapsedSections.has("sessions");
@@ -704,7 +719,7 @@ export function SessionSidebar({
                       >
                         <WorkspaceRow
                           workspace={ws}
-                          collapsed={collapsedGroups.has(ws.workspaceId)}
+                          collapsed={isWorkspaceGroupCollapsed(ws, wsSessions)}
                           pinned={true}
                           canMoveUp={canReorder && index > 0}
                           canMoveDown={
@@ -848,7 +863,7 @@ export function SessionSidebar({
                     >
                       <WorkspaceRow
                         workspace={ws}
-                        collapsed={collapsedGroups.has(ws.workspaceId)}
+                        collapsed={isWorkspaceGroupCollapsed(ws, wsSessions)}
                         pinned={false}
                         canMoveUp={canReorder && index > 0}
                         canMoveDown={
