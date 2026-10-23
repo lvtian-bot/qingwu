@@ -10,7 +10,6 @@ import {
   loadCollapsedWorkspaces,
   loadPinnedData,
   requiredSessionCount,
-  retainCollapsedWorkspaces,
   reorderIds,
   saveCollapsedSections,
   saveCollapsedWorkspaces,
@@ -165,17 +164,20 @@ export function useSessionSidebar(
     [],
   );
 
-  // 项目删除后清理它的折叠记录，避免名单无限增长。用渲染期同步 setState：
-  // 写入后本帧内重新渲染，状态与本地存储始终一致，不会出现旧名单被再次落盘。
-  const workspaceIdsKey = workspaces.map((ws) => ws.workspaceId).join("\n");
-  const retainedCollapsedWorkspaces = retainCollapsedWorkspaces(
-    collapsedWorkspaces,
-    workspaceIdsKey ? workspaceIdsKey.split("\n") : [],
-  );
-  if (retainedCollapsedWorkspaces !== collapsedWorkspaces) {
-    saveCollapsedWorkspaces(retainedCollapsedWorkspaces);
-    setCollapsedWorkspaces(retainedCollapsedWorkspaces);
-  }
+  /**
+   * 清理某个项目的折叠记录，在它被删除时调用。
+   * 不在渲染期按「当前项目列表」批量清理：启动时项目列表先为空、基线到达后才填充，
+   * 那样会把整份记录误判成已删除项目的残留而清空，重启后收起状态就会丢失。
+   */
+  const forgetCollapsedWorkspace = useCallback((workspaceId: string) => {
+    setCollapsedWorkspaces((prev) => {
+      if (!prev.has(workspaceId)) return prev;
+      const next = new Set(prev);
+      next.delete(workspaceId);
+      saveCollapsedWorkspaces(next);
+      return next;
+    });
+  }, []);
 
   /** 子代理会话（主对话派生的辅助会话）与已归档会话不在主列表展示。 */
   const visibleSessions = useMemo(
@@ -276,6 +278,7 @@ export function useSessionSidebar(
     setSessionVisibleCount,
     toggleWorkspaceGroup,
     expandWorkspace,
+    forgetCollapsedWorkspace,
     toggleWorkspacePin,
     toggleSessionPin,
     reorderPinnedWorkspace,
@@ -341,6 +344,7 @@ export function SessionSidebar({
     setSessionVisibleCount,
     toggleWorkspaceGroup,
     expandWorkspace,
+    forgetCollapsedWorkspace,
     toggleWorkspacePin,
     toggleSessionPin,
     reorderPinnedWorkspace,
@@ -506,10 +510,10 @@ export function SessionSidebar({
   };
 
   /**
-   * 打开项目内的会话：先展开该项目再选中，避免点到的会话藏在一个收起的组里。
+   * 打开项目内的会话。会话行能点到就意味着它已经展示出来，这里不改变折叠记录：
+   * 当前会话所在项目可能只是临时展开，用户离开后仍应按之前收起的偏好收回。
    */
-  const openWorkspaceSession = (workspaceId: string, sessionId: string) => {
-    expandWorkspace(workspaceId);
+  const openWorkspaceSession = (_workspaceId: string, sessionId: string) => {
     openSession(sessionId);
   };
 
@@ -713,7 +717,10 @@ export function SessionSidebar({
                           onRename={(title) =>
                             handleWorkspaceRename(ws.workspaceId, title)
                           }
-                          onDelete={() => handleWorkspaceDelete(ws.workspaceId)}
+                          onDelete={() => {
+                            forgetCollapsedWorkspace(ws.workspaceId);
+                            handleWorkspaceDelete(ws.workspaceId);
+                          }}
                           onTogglePin={() => toggleWorkspacePin(ws.workspaceId)}
                           onMoveUp={() => handlePinnedMoveUp(index)}
                           onMoveDown={() => handlePinnedMoveDown(index)}
@@ -844,7 +851,10 @@ export function SessionSidebar({
                         onRename={(title) =>
                           handleWorkspaceRename(ws.workspaceId, title)
                         }
-                        onDelete={() => handleWorkspaceDelete(ws.workspaceId)}
+                        onDelete={() => {
+                          forgetCollapsedWorkspace(ws.workspaceId);
+                          handleWorkspaceDelete(ws.workspaceId);
+                        }}
                         onTogglePin={() => toggleWorkspacePin(ws.workspaceId)}
                         onMoveUp={() => handleNormalMoveUp(index)}
                         onMoveDown={() => handleNormalMoveDown(index)}

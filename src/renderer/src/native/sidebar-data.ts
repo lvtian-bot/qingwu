@@ -131,16 +131,6 @@ export function saveCollapsedWorkspaces(workspaceIds: Set<string>) {
   } catch {}
 }
 
-/** 从折叠名单中剔除已不存在或已删除的项目，返回名单本身（无变化时引用不变）。 */
-export function retainCollapsedWorkspaces(
-  collapsed: Set<string>,
-  workspaceIds: string[],
-): Set<string> {
-  const alive = new Set(workspaceIds);
-  const next = new Set([...collapsed].filter((id) => alive.has(id)));
-  return next.size === collapsed.size ? collapsed : next;
-}
-
 /**
  * 合并一条工作区 upsert，顺序保持不动：已在列表里的就地替换（会话归属、标题变化
  * 不改变它在侧栏的位置），新工作区插到最前——与宿主「新建工作区前插」的落点一致。
