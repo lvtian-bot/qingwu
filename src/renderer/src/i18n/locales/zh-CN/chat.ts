@@ -78,6 +78,7 @@ export const chat = {
   },
   commands: {
     exportNoArgs: "导出不需要参数",
+    exportNoSession: "请先打开一个会话再导出",
     exported: "已导出到 {path}",
   },
   compaction: {

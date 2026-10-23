@@ -460,23 +460,63 @@ export interface LocalCommandEntry {
  *
  * 引擎只为宿主指令写 command/run、command/done 日志事件；`/export` 这类
  * 由客户端执行的指令没有日志，却需要同样的「执行中 → 结果」可见性。
- * 它们同属对话流末尾，所以并进同一次渲染，而不是另起一路。
+ *
+ * 它们必须按执行时间插进对话流，不能一律追加到末尾：否则用户导完日志
+ * 继续聊天，后发的消息会画在旧的导出卡片上方，卡片永远沉在最底下，
+ * 对话的时间顺序也乱了。
  */
 export function foldChatItemsWithLocal(
   events: SessionEvent[],
   localCommands: LocalCommandEntry[],
 ): TurnView[] {
-  const views = foldEventTurns(events);
-  if (localCommands.length === 0) return views;
-  const localItems: MarkedChatItem[] = localCommands.map((entry) => ({
-    kind: "command",
-    key: `lc-${entry.commandId}`,
-    name: entry.name,
-    outcome: entry.outcome,
-    time: entry.time,
-    turn: Number.MAX_SAFE_INTEGER,
+  if (localCommands.length === 0) return foldEventTurns(events);
+
+  // 本地条目没有引擎轮次，给每个条目一个只有它自己用的伪轮次，
+  // 让它在 groupTurns 里自成一"轮"，再按时间与事件轮次交错排序。
+  const localViews: Array<{ time: number; view: TurnView }> = localCommands
+    .map((entry, index) => ({
+      time: entry.time,
+      view: groupTurns(
+        [
+          {
+            kind: "command" as const,
+            key: `lc-${entry.commandId}`,
+            name: entry.name,
+            outcome: entry.outcome,
+            time: entry.time,
+            turn: -1 - index,
+          },
+        ],
+        new Set<number>(),
+      )[0],
+    }))
+    .filter((entry): entry is { time: number; view: TurnView } =>
+      Boolean(entry.view),
+    );
+
+  const eventViews = foldEventTurns(events).map((view) => ({
+    time: turnEndTime(events, view.turn),
+    view,
   }));
-  return [...views, ...groupTurns(localItems, new Set<number>())];
+
+  // 稳定交错的依据是「这一轮最后一个事件的时间」；同刻时事件轮次在前，
+  // 因为用户消息往往与随后的本地指令落在同一毫秒里。
+  return [...eventViews, ...localViews]
+    .map((entry, order) => ({ ...entry, order }))
+    .sort((a, b) => a.time - b.time || a.order - b.order)
+    .map((entry) => entry.view);
+}
+
+/** 一轮的结束时间（该轮最后一个事件的时间），取不到时用最后事件兜底。 */
+function turnEndTime(events: SessionEvent[], turn: number): number {
+  for (let i = events.length - 1; i >= 0; i -= 1) {
+    const event = events[i];
+    const data = event.data as { turn?: unknown } | null;
+    const eventTurn =
+      typeof data?.turn === "number" ? data.turn : undefined;
+    if (eventTurn === turn) return event.time;
+  }
+  return events.length > 0 ? events[events.length - 1].time : 0;
 }
 
 function foldEventTurns(events: SessionEvent[]): TurnView[] {
@@ -497,6 +537,8 @@ function foldEventTurns(events: SessionEvent[]): TurnView[] {
   >();
   /** 压缩检查点（user/message 的 replace 表面）：它标记压缩完成的时间点。 */
   const checkpoints = new Map<string, SessionEvent>();
+  /** 已被压缩生命周期接管的手动 `/compact` 指令：不重复画通用指令卡。 */
+  const compactCommandIds = new Set<string>();
   let slice: SessionEvent[] | null = null;
   let lastUserTime: number | null = null;
   /** 当前事件所属轮次：优先 turn/start 声明，其次沿用上一条已知轮次。 */
@@ -656,6 +698,12 @@ function foldEventTurns(events: SessionEvent[]): TurnView[] {
       };
       compactions.set(data.compactionId, item);
       items.push(item);
+      // 手动 `/compact` 会同时写指令生命周期与压缩生命周期。官方用
+      // sourceCommandId / sourceEventSeq 把两者折成一张压缩卡；这里把对应
+      // 的通用指令卡移除，避免同时出现「/compact 已完成」和压缩摘要两条。
+      if (typeof data.sourceCommandId === "string") {
+        compactCommandIds.add(data.sourceCommandId);
+      }
     } else if (event.type === "compaction/summary") {
       const data = event.data as CompactionSummaryEventData | null;
       if (!data || typeof data.compactionId !== "string") continue;
@@ -677,6 +725,9 @@ function foldEventTurns(events: SessionEvent[]): TurnView[] {
             : undefined,
       };
       target.time = checkpoint?.time ?? target.time;
+      if (typeof data.sourceCommandId === "string") {
+        compactCommandIds.add(data.sourceCommandId);
+      }
     } else if (event.type === "compaction/end") {
       const data = event.data as CompactionLifecycleEventData | null;
       if (!data || typeof data.compactionId !== "string") continue;
@@ -743,10 +794,19 @@ function foldEventTurns(events: SessionEvent[]): TurnView[] {
     }
   }
 
+  // 被压缩生命周期接管的 `/compact` 指令卡在此统一移除：一张压缩卡就够说明
+  // 这次操作，多一张写着「/compact 已完成」的通用卡只是噪声。
+  const hidden = new Set<MarkedChatItem>();
+  for (const commandId of compactCommandIds) {
+    const command = commands.get(commandId);
+    if (command) hidden.add(command);
+  }
+  const visible = hidden.size === 0 ? items : items.filter((item) => !hidden.has(item));
+
   // 一轮里最后一条有正文的助手消息就是这一轮的答复；它之前的内部条目都是过程。
   // 只有已经收到 turn/end 的轮次才收：正在跑的轮次中途也可能已经有一条答复，
   // 那时收起来会把后面还在跑的过程挡在外面（且运行中用户正要看过程）。
-  const views = groupTurns(items, endedTurns);
+  const views = groupTurns(visible, endedTurns);
   for (const view of views) {
     const turnSlice = turnSlices.get(view.turn);
     if (turnSlice) view.metrics = deriveTurnMetrics(turnSlice, view.answerKey);

@@ -83,6 +83,7 @@ export const chat: typeof zhChat = {
   },
   commands: {
     exportNoArgs: "/export takes no arguments",
+    exportNoSession: "Open a session before exporting",
     exported: "Exported to {path}",
   },
   compaction: {

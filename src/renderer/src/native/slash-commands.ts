@@ -181,6 +181,15 @@ export const BASELINE_HOST_COMMANDS: SlashCommandItem[] = [
   },
 ];
 
+/**
+ * 青梧不提供的宿主指令。
+ *
+ * `/feedback` 只把反馈写进会话日志，再由遥测链上报；青梧已裁剪遥测、
+ * 也没有反馈面板，这条指令执行后无人消费。引擎仍会把它列在
+ * `commands/list` 里，所以必须在合并时过滤，否则它照样出现在菜单中。
+ */
+const HIDDEN_HOST_COMMANDS = new Set(['feedback']);
+
 /** 将上游 CommandDescriptor 规范化并补充内置命令的展示信息（label/hint 为词条 key）。 */
 export function normalizeCommand(descriptor: CommandDescriptor): SlashCommandItem {
   const name = descriptor.name.toLowerCase();
@@ -268,6 +277,8 @@ export function mergeCommands(
 
   for (const desc of sourceDescriptors) {
     const item = normalizeCommand(desc);
+    // 引擎仍会上报我们已停用的指令（如 /feedback），必须在入口就挡掉
+    if (HIDDEN_HOST_COMMANDS.has(item.name)) continue;
     items.push(item);
     seen.add(item.name);
   }

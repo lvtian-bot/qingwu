@@ -474,6 +474,40 @@ export function NativeApp({
     if (!parsed) return;
     const submittedDraft = captureForSubmit(currentId);
 
+    // /export 只读本地会话文件，不需要引擎连接，必须在断线检查之前分流，
+    // 否则引擎断线时会话明明能导也会被拦下。
+    if (parsed.name === "export") {
+      if (!options?.preserveInput) {
+        clearForSubmit(currentId, submittedDraft);
+      }
+      if (parsed.args) {
+        setError(t("chat.commands.exportNoArgs"));
+        return;
+      }
+      const sessionId = currentId;
+      if (!sessionId) {
+        setError(t("chat.commands.exportNoSession"));
+        return;
+      }
+      const commandId = crypto.randomUUID();
+      beginLocalCommand(commandId, "export");
+      try {
+        const result = await window.qingwu.exportSessionArchive(sessionId);
+        settleLocalCommand(
+          commandId,
+          result.ok
+            ? { kind: "success", text: t("chat.commands.exported", { path: result.filePath }) }
+            : { kind: "error", text: result.message },
+        );
+      } catch (err) {
+        settleLocalCommand(commandId, {
+          kind: "error",
+          text: toErrMsg(err),
+        });
+      }
+      return;
+    }
+
     if (!dshConnected) {
       setError(t("chat.errors.executeDisconnected"));
       return;
@@ -496,36 +530,6 @@ export function NativeApp({
       }
     }
 
-    // /export 由青梧自己执行：引擎的 web 层未加载导出插件，宿主里没有这条指令。
-    // 结果以一张指令卡落进对话流，和引擎指令走同一条可见性通道。
-    if (parsed.name === "export") {
-      if (!options?.preserveInput) {
-        clearForSubmit(currentId, submittedDraft);
-      }
-      if (parsed.args) {
-        setError(t("chat.commands.exportNoArgs"));
-        return;
-      }
-      const commandId = crypto.randomUUID();
-      beginLocalCommand(commandId, "export");
-      try {
-        const result = await window.qingwu.exportSessionArchive(
-          targetSessionId,
-        );
-        settleLocalCommand(
-          commandId,
-          result.ok
-            ? { kind: "success", text: t("chat.commands.exported", { path: result.filePath }) }
-            : { kind: "error", text: result.message },
-        );
-      } catch (err) {
-        settleLocalCommand(commandId, {
-          kind: "error",
-          text: toErrMsg(err),
-        });
-      }
-      return;
-    }
 
     const cmdDesc = hostCommands.find(
       (c) => c.name.toLowerCase() === parsed.name,
@@ -561,17 +565,16 @@ export function NativeApp({
     const submittedDraft = captureForSubmit(currentId);
     if (!text && images.length === 0) return;
 
-    if (!dshConnected) {
-      setError(t("chat.errors.sendDisconnected"));
-      return;
-    }
-
     // 斜杠命令拦截：仅拦截真正的宿主系统命令与客户端自处理命令，交由宿主执行，绕过模型 Prompt 循环。
     // 技能（Skill）发出的文本以 /<skill-name> 形式作为普通 prompt 提交给模型，触发底层技能调用。
+    // 客户端命令（/model、/export）不走引擎，包含 /export 在内的判断必须放在连接检查之前。
     const parsedSlash = parseSlashLine(text);
+    const isClientCommand =
+      parsedSlash !== null &&
+      CLIENT_COMMANDS.some((c) => c.name === parsedSlash.name);
     const isHostOrClientCommand =
-      parsedSlash &&
-      (parsedSlash.name === "model" ||
+      parsedSlash !== null &&
+      (isClientCommand ||
         hostCommands.some((c) => c.name.toLowerCase() === parsedSlash.name) ||
         BASELINE_HOST_COMMANDS.some(
           (c) => c.name.toLowerCase() === parsedSlash.name,
@@ -579,6 +582,11 @@ export function NativeApp({
 
     if (isHostOrClientCommand) {
       void handleExecuteCommand(text);
+      return;
+    }
+
+    if (!dshConnected) {
+      setError(t("chat.errors.sendDisconnected"));
       return;
     }
 
@@ -995,6 +1003,9 @@ export function NativeApp({
                   onPreviewImage={handlePreviewImage}
                   commands={availableCommands}
                   onExecuteCommand={(line) => void handleExecuteCommand(line)}
+                  onClientCommand={(name) =>
+                    void handleExecuteCommand(`/${name}`)
+                  }
                   onQueryFileReferences={handleQueryFileReferences}
                   contextPressure={currentProjections?.contextPressure}
                   contextBreakdown={currentProjections?.contextBreakdown}
@@ -1205,6 +1216,9 @@ export function NativeApp({
                     onPreviewImage={handlePreviewImage}
                     commands={availableCommands}
                     onExecuteCommand={(line) => void handleExecuteCommand(line)}
+                    onClientCommand={(name) =>
+                      void handleExecuteCommand(`/${name}`)
+                    }
                     onQueryFileReferences={handleQueryFileReferences}
                     contextPressure={currentProjections?.contextPressure}
                     contextBreakdown={currentProjections?.contextBreakdown}

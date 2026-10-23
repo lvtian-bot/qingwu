@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { zstdDecompress } from 'node:zlib';
-import { zipSync } from 'fflate';
+import { zip } from 'fflate';
 
 const zstdDecompressAsync = promisify(zstdDecompress);
 
@@ -11,117 +11,269 @@ export type SessionExportResult =
   | { ok: true; filePath: string; sessionCount: number; mediaCount: number }
   | { ok: false; message: string };
 
-/** 会话日志文件名（引擎当前代次为 session.jsonl.zstd，旧代次带 vN 后缀）。 */
-const LOG_FILE_PATTERN = /^session(?:\.v\d+)?\.jsonl(?:\.zstd)?$/;
+/**
+ * 会话日志文件名：当前代次是 `session.jsonl.zstd`，历史代次带 `.vN` 后缀。
+ * 捕获组一是版本号（当前代次为 0）。
+ */
+const LOG_FILE_PATTERN = /^session(?:\.v(\d+))?\.jsonl(?:\.zstd)?$/;
 
-interface FoundSession {
+/** Zstandard 帧的起始魔数（小端 0xFD2FB528）。 */
+const ZSTD_MAGIC = 0xfd2fb528;
+
+/** 解压后的日志上限，防止异常文件把进程内存撑爆。 */
+const MAX_LOG_BYTES = 256 * 1024 * 1024;
+
+interface FoundLog {
   sessionId: string;
   logPath: string;
-  /** 压缩过的日志需要先解压再打包，让导出的 ZIP 在任何工具里都是纯文本 JSONL。 */
   compressed: boolean;
 }
 
+/** 一个会话的元数据：父子关系取自日志头部的第一条记录。 */
+interface SessionMeta {
+  sessionId: string;
+  parentSessionId: string | null;
+}
+
+interface LogFile {
+  /** 版本代次：`session.jsonl` 这类当前代次为 0。 */
+  version: number;
+  /** 同代次下压缩编码优先（与引擎当前的默认一致）。 */
+  compressed: boolean;
+  name: string;
+}
+
 /**
- * 在数据根里定位一个会话的日志文件。
+ * 按数值挑选最新代次的日志。
  *
- * 引擎的落盘布局是 <root>/<workspace>/<sessionId>/session.jsonl.zstd，
- * 工作区目录名来自会话 cwd 的转义，调用方给不出，所以按会话 id 目录名扫描。
- * 同一会话可能出现代次变体（session.v3.jsonl 等），取代次最高的一份。
+ * 文件名不能按字符串排序：`session.v3` 会排在 `session.jsonl.zstd` 前面，
+ * `v9` 也会排在 `v10` 前面，结果可能把过期历史当成当前日志导出。
+ * 比较顺序：版本号数值 → 同版本压缩编码优先 → 文件名。
  */
-function findSessionLogs(sessionsRoot: string, sessionId: string): FoundSession[] {
-  const found: FoundSession[] = [];
-  if (!fs.existsSync(sessionsRoot)) return found;
-
-  for (const workspaceDir of fs.readdirSync(sessionsRoot)) {
-    const candidate = path.join(sessionsRoot, workspaceDir, sessionId);
-    if (!fs.existsSync(candidate)) continue;
-    let entries: string[];
-    try {
-      entries = fs.readdirSync(candidate);
-    } catch {
-      continue;
-    }
-    const logs = entries
-      .filter((name) => LOG_FILE_PATTERN.test(name))
-      .sort()
-      .reverse();
-    if (logs.length === 0) continue;
-    found.push({
-      sessionId,
-      logPath: path.join(candidate, logs[0]),
-      compressed: logs[0].endsWith('.zstd'),
-    });
-    break;
-  }
-  return found;
-}
-
-/** 读一条日志的正文；压缩日志先解压，解压失败按原字节保留，避免整个导出失败。 */
-async function readLogBody(
-  session: FoundSession,
-): Promise<{ name: string; body: Uint8Array }> {
-  const raw = await fs.promises.readFile(session.logPath);
-  const base = path.basename(session.logPath).replace(/\.zstd$/, '');
-  if (!session.compressed) {
-    return { name: `sessions/${session.sessionId}/${base}`, body: raw };
-  }
-  try {
-    const expanded = await zstdDecompressAsync(raw);
-    return { name: `sessions/${session.sessionId}/${base}`, body: expanded };
-  } catch {
-    return {
-      name: `sessions/${session.sessionId}/${base}.zstd`,
-      body: raw,
+function pickLatestLog(names: string[]): LogFile | null {
+  let best: LogFile | null = null;
+  for (const name of names) {
+    const match = LOG_FILE_PATTERN.exec(name);
+    if (!match) continue;
+    const candidate: LogFile = {
+      version: match[1] === undefined ? 0 : Number(match[1]),
+      compressed: name.endsWith('.zstd'),
+      name,
     };
+    if (
+      best === null ||
+      candidate.version > best.version ||
+      (candidate.version === best.version &&
+        candidate.compressed &&
+        !best.compressed) ||
+      (candidate.version === best.version &&
+        candidate.compressed === best.compressed &&
+        candidate.name > best.name)
+    ) {
+      best = candidate;
+    }
+  }
+  return best;
+}
+
+function safeReaddir(dir: string): string[] {
+  try {
+    return fs.readdirSync(dir);
+  } catch {
+    return [];
   }
 }
 
-/** 从会话日志的首行读出根会话与它的全部后代（引擎把父会话 id 写在元数据里）。 */
-function collectDescendants(
-  sessionsRoot: string,
-  rootId: string,
-): string[] {
-  const ids = [rootId];
-  const seen = new Set(ids);
-  if (!fs.existsSync(sessionsRoot)) return ids;
-
-  for (const workspaceDir of fs.readdirSync(sessionsRoot)) {
-    const dir = path.join(sessionsRoot, workspaceDir);
+/**
+ * 遍历 `~/.dsh/sessions/<workspace>/<sessionId>/` 下的全部会话目录。
+ *
+ * 工作区目录名是会话 cwd 的转义结果，调用方给不出，只能整棵扫描。
+ */
+function listSessionDirs(sessionsRoot: string): Map<string, string> {
+  const dirs = new Map<string, string>();
+  let workspaces: string[];
+  try {
+    workspaces = fs.readdirSync(sessionsRoot);
+  } catch {
+    return dirs;
+  }
+  for (const workspace of workspaces) {
+    const workspaceDir = path.join(sessionsRoot, workspace);
     let entries: fs.Dirent[];
     try {
-      entries = fs.readdirSync(dir, { withFileTypes: true });
+      entries = fs.readdirSync(workspaceDir, { withFileTypes: true });
     } catch {
       continue;
     }
     for (const entry of entries) {
-      if (!entry.isDirectory() || seen.has(entry.name)) continue;
-      const logs = fs
-        .readdirSync(path.join(dir, entry.name))
-        .filter((name) => LOG_FILE_PATTERN.test(name));
-      if (logs.length === 0) continue;
-      // 只有根会话自己可能带后代：其他会话的父子关系在元数据里，成本高且非必需
-      const owner = entry.name;
-      try {
-        const raw = fs.readFileSync(path.join(dir, entry.name, logs[0]));
-        const text = raw.subarray(0, Math.min(raw.length, 65536)).toString('utf8');
-        if (text.includes(`"${rootId}"`)) {
-          ids.push(owner);
-          seen.add(owner);
-        }
-      } catch {
-        // 读不到就跳过，不阻断导出
+      if (entry.isDirectory()) {
+        dirs.set(entry.name, path.join(workspaceDir, entry.name));
       }
     }
   }
-  return ids;
+  return dirs;
+}
+
+/** 在缓冲区里向后找下一个 Zstandard 魔数；找不到返回 -1。 */
+function findMagic(raw: Buffer, from: number): number {
+  for (let i = from; i + 4 <= raw.length; i += 1) {
+    if (raw.readUInt32LE(i) === ZSTD_MAGIC) return i;
+  }
+  return -1;
+}
+
+/**
+ * 从帧起点计算一帧的结束偏移（含可选的 4 字节校验和）。
+ *
+ * 帧头布局见 RFC 8878：魔数 4 字节 → 描述符 1 字节 → 可选窗口描述符 →
+ * 可选字典 id → 帧内容尺寸 → 若干块。任一步越界或遇到保留位时返回 -1，
+ * 由调用方按损坏处理。
+ */
+function frameEndOffset(raw: Buffer, start: number): number {
+  let pos = start + 4;
+  if (pos >= raw.length) return -1;
+  const descriptor = raw[pos];
+  pos += 1;
+
+  const fcsFlag = descriptor >> 6;
+  const singleSegment = (descriptor >> 5) & 1;
+  const hasChecksum = (descriptor >> 2) & 1;
+  const dictFlag = descriptor & 3;
+  if ((descriptor & 0x08) !== 0) return -1; // 保留位必须为 0
+
+  if (!singleSegment) pos += 1; // Window_Descriptor
+  pos += dictFlag === 3 ? 4 : dictFlag;
+  pos += [singleSegment ? 1 : 0, 2, 4, 8][fcsFlag];
+  if (pos > raw.length) return -1;
+
+  // 逐块跳过：块头 3 字节，末块标志在最低位
+  for (;;) {
+    if (pos + 3 > raw.length) return -1;
+    const blockHeader = raw[pos] | (raw[pos + 1] << 8) | (raw[pos + 2] << 16);
+    pos += 3;
+    const lastBlock = blockHeader & 1;
+    const blockType = (blockHeader >> 1) & 3;
+    const blockSize = blockHeader >>> 3;
+    if (blockType === 3) return -1; // 保留块类型
+    pos += blockType === 1 ? 1 : blockSize; // RLE 块只占 1 字节
+    if (pos > raw.length) return -1;
+    if (lastBlock) break;
+  }
+
+  if (hasChecksum) pos += 4;
+  return pos > raw.length ? -1 : pos;
+}
+
+/**
+ * 把 Zstandard 多帧数据完整解压。
+ *
+ * 引擎按「头部一帧 + 每次追加一批一帧」写日志，一次性解压只还原第一帧
+ * （实测 380KB 的会话只剩 255 字节的头部，对话全部丢失），因此必须逐帧
+ * 推进：解出一帧后按帧结构算出结束位置，从那里继续下一帧。
+ * 尾部被截断（写入中断）时保留已解出的部分，不让整份导出失败。
+ */
+async function decompressAllFrames(raw: Buffer): Promise<Buffer> {
+  const parts: Buffer[] = [];
+  let offset = 0;
+  let produced = 0;
+
+  while (offset + 4 <= raw.length) {
+    if (raw.readUInt32LE(offset) !== ZSTD_MAGIC) {
+      const next = findMagic(raw, offset + 1);
+      if (next < 0) break;
+      offset = next;
+      continue;
+    }
+    const end = frameEndOffset(raw, offset);
+    if (end < 0) break;
+    let chunk: Buffer;
+    try {
+      chunk = await zstdDecompressAsync(raw.subarray(offset, end));
+    } catch {
+      break;
+    }
+    parts.push(chunk);
+    produced += chunk.length;
+    if (produced > MAX_LOG_BYTES) break;
+    offset = end;
+  }
+
+  return Buffer.concat(parts);
+}
+
+/** 读一份日志的正文；压缩日志逐帧解压，失败时退回原始字节，避免整个导出失败。 */
+async function readLogBody(
+  log: FoundLog,
+): Promise<{ name: string; body: Uint8Array }> {
+  const raw = await fs.promises.readFile(log.logPath);
+  const base = path.basename(log.logPath).replace(/\.zstd$/, '');
+  const target = `sessions/${log.sessionId}/${base}`;
+  if (!log.compressed) return { name: target, body: raw };
+  try {
+    return { name: target, body: await decompressAllFrames(raw) };
+  } catch {
+    return { name: `${target}.zstd`, body: raw };
+  }
+}
+
+/** 从解压后的日志读取会话元数据（首条记录的 id 与 parentSessionId）。 */
+async function readSessionMeta(log: FoundLog): Promise<SessionMeta | null> {
+  try {
+    const raw = await fs.promises.readFile(log.logPath);
+    // 头部单独一帧：解出第一帧就够读元数据，不必展开整份日志
+    const head = log.compressed ? await zstdDecompressAsync(raw) : raw;
+    const firstLine = head.toString('utf8').split('\n', 1)[0];
+    const record = JSON.parse(firstLine) as {
+      type?: string;
+      id?: unknown;
+      parentSessionId?: unknown;
+    };
+    if (record?.type !== 'session' || typeof record.id !== 'string') return null;
+    return {
+      sessionId: record.id,
+      parentSessionId:
+        typeof record.parentSessionId === 'string' && record.parentSessionId
+          ? record.parentSessionId
+          : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** 逐个会话读取元数据并建出父子索引（父 id → 子 id 列表）。 */
+async function buildSessionTree(sessionsRoot: string): Promise<{
+  logs: Map<string, FoundLog>;
+  children: Map<string, string[]>;
+}> {
+  const logs = new Map<string, FoundLog>();
+  const children = new Map<string, string[]>();
+
+  for (const [sessionId, dir] of listSessionDirs(sessionsRoot)) {
+    const picked = pickLatestLog(safeReaddir(dir));
+    if (!picked) continue;
+    const log: FoundLog = {
+      sessionId,
+      logPath: path.join(dir, picked.name),
+      compressed: picked.compressed,
+    };
+    logs.set(sessionId, log);
+    const meta = await readSessionMeta(log);
+    if (meta?.parentSessionId) {
+      const siblings = children.get(meta.parentSessionId) ?? [];
+      siblings.push(sessionId);
+      children.set(meta.parentSessionId, siblings);
+    }
+  }
+  return { logs, children };
 }
 
 /**
  * 把一棵会话树导出为 ZIP。
  *
- * 对齐官方 `/export` 的产物：根会话与子会话各一份 session JSONL，按
- * sessions/<id>/ 归档。官方还会打包引用到的图片附件；青梧这一版先只导出
- * 日志文本，附件目录的归属需要引擎侧的映射，留到后续单独补。
+ * 对齐官方 `/export` 的产物：根会话与全部后代各一份 session JSONL，按
+ * `sessions/<id>/` 归档。官方还会打包引用到的图片附件；青梧这一版只导出
+ * 日志文本，附件与会话的映射归引擎侧管理，留待后续单独补。
  */
 export async function exportSessionArchive(
   sessionsRoot: string,
@@ -129,38 +281,61 @@ export async function exportSessionArchive(
   downloadDir: string,
 ): Promise<SessionExportResult> {
   try {
-    const ids = collectDescendants(sessionsRoot, sessionId);
+    const { logs, children } = await buildSessionTree(sessionsRoot);
+    if (!logs.has(sessionId)) {
+      return { ok: false, message: '未找到当前会话的日志文件，可能尚未落盘' };
+    }
+
+    // 广度优先收集全部后代：按父 id 关系传递，多层子代理都不会漏
+    const ordered: FoundLog[] = [];
+    const seen = new Set<string>();
+    const queue = [sessionId];
+    while (queue.length > 0) {
+      const id = queue.shift()!;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const log = logs.get(id);
+      if (log) ordered.push(log);
+      for (const child of children.get(id) ?? []) queue.push(child);
+    }
+
     const files: Record<string, Uint8Array> = {};
-    let sessionCount = 0;
-
-    for (const id of ids) {
-      for (const session of findSessionLogs(sessionsRoot, id)) {
-        const { name, body } = await readLogBody(session);
-        files[name] = body;
-        sessionCount += 1;
-      }
+    for (const log of ordered) {
+      const { name, body } = await readLogBody(log);
+      files[name] = body;
     }
 
-    if (sessionCount === 0) {
-      return {
-        ok: false,
-        message: '未找到当前会话的日志文件，可能尚未落盘',
-      };
-    }
-
-    const archive = zipSync(files, { level: 6 });
+    const archive = await compressAsync(files);
     await fs.promises.mkdir(downloadDir, { recursive: true });
     const safeId = sessionId.replace(/[^A-Za-z0-9_-]/g, '_');
     const filePath = uniquePath(downloadDir, `dsh-session-${safeId}.zip`);
     await fs.promises.writeFile(filePath, archive);
 
-    return { ok: true, filePath, sessionCount, mediaCount: 0 };
+    return {
+      ok: true,
+      filePath,
+      sessionCount: ordered.length,
+      mediaCount: 0,
+    };
   } catch (err) {
     return {
       ok: false,
       message: err instanceof Error ? err.message : String(err),
     };
   }
+}
+
+/**
+ * 异步压缩：`zipSync` 会在主线程一次性跑完整份压缩，长会话会把窗口卡住；
+ * fflate 的异步版本把压缩交给它自己的 worker，界面保持响应。
+ */
+function compressAsync(files: Record<string, Uint8Array>): Promise<Uint8Array> {
+  return new Promise((resolve, reject) => {
+    zip(files, { level: 6 }, (err, data) => {
+      if (err) reject(err);
+      else resolve(data);
+    });
+  });
 }
 
 /** 目标文件已存在时追加 (n)，绝不静默覆盖用户已有的导出。 */

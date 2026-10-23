@@ -526,3 +526,54 @@ test('界面自执行指令与日志条目同属对话流末尾', () => {
   assert.equal(views[0].items[0].name, 'export');
   assert.equal(views[0].items[0].outcome, null);
 });
+
+test('手动压缩只显示一张压缩卡，不重复出现 /compact 指令卡', () => {
+  const events = [
+    commandRun('c1', 'compact', 1),
+    event('compaction/start', { compactionId: 'k1', sourceCommandId: 'c1' }, 2),
+    commandDone('c1', 'success', 'Compacted 3 history items.', 3),
+    event('compaction/summary', {
+      compactionId: 'k1',
+      sourceCommandId: 'c1',
+      summary: [{ type: 'text', text: '摘要正文' }],
+      shadowedSeqs: [1, 2, 3],
+      shadowedTokenCount: 900,
+    }, 4),
+    event('compaction/end', { compactionId: 'k1' }, 5),
+  ];
+  const [view] = foldChatItems(events);
+  assert.equal(view.items.length, 1);
+  assert.equal(view.items[0].kind, 'compaction');
+  assert.equal(view.items[0].outcome.itemCount, 3);
+});
+
+test('本地指令按执行时间插入，不会永远沉在对话末尾', () => {
+  const events = [
+    event('user/message', message('u1', '第一句'), 1),
+    event('assistant/message', {
+      turn: 1,
+      step: 1,
+      message: { content: [{ type: 'text', text: '第一条回复' }] },
+    }, 2),
+    event('turn/end', { turn: 1 }, 3),
+    event('user/message', message('u2', '导出之后再聊'), 10),
+    event('assistant/message', {
+      turn: 2,
+      step: 1,
+      message: { content: [{ type: 'text', text: '第二条回复' }] },
+    }, 11),
+    event('turn/end', { turn: 2 }, 12),
+  ];
+  // 本地导出的时间落在两轮之间
+  const views = foldChatItemsWithLocal(events, [
+    { commandId: 'local-1', name: 'export', outcome: null, time: 6000 },
+  ]);
+  const labels = views.map((view) => {
+    const first = view.items[0];
+    return first.kind === 'command' ? 'command' : view.turn;
+  });
+  // 导出卡必须在第二轮（时间 6000 之后的对话）之前，不能沉到最末尾
+  const commandIndex = labels.indexOf('command');
+  assert.ok(commandIndex >= 0);
+  assert.ok(commandIndex < labels.lastIndexOf(2));
+});

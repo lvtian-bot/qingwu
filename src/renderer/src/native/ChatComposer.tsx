@@ -41,6 +41,11 @@ interface ChatComposerProps {
   onPreviewImage: (url: string) => void;
   commands: SlashCommandItem[];
   onExecuteCommand: (line: string, options?: { preserveInput?: boolean }) => void;
+  /**
+   * 客户端自处理命令（`/model`、`/export`）的执行入口。
+   * 斜杠菜单点到这类条目时走这里；缺省时菜单只会清空输入而不执行任何动作。
+   */
+  onClientCommand?: (commandName: string) => void;
   onQueryFileReferences: (
     query: string,
     signal: AbortSignal,
@@ -80,6 +85,7 @@ export function ChatComposer({
   onPreviewImage,
   commands,
   onExecuteCommand,
+  onClientCommand,
   onQueryFileReferences,
   contextPressure,
   contextBreakdown,
@@ -113,6 +119,7 @@ export function ChatComposer({
       onPreviewImage={onPreviewImage}
       commands={commands}
       onExecuteCommand={onExecuteCommand}
+      onClientCommand={onClientCommand}
       onQueryFileReferences={onQueryFileReferences}
       meter={
         <ContextMeter pressure={contextPressure} breakdown={contextBreakdown} />
