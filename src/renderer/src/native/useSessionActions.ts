@@ -134,15 +134,22 @@ export function useSessionActions({
     }).catch((err) => setError(toErrMsg(err)));
   };
 
-  /** 删除工作区注册：会话归入「未分组」，活跃落点回退到剩余首个工作区。 */
-  const handleWorkspaceDelete = (workspaceId: string) => {
-    void (async () => {
+  /**
+   * 删除工作区注册：会话归入「未分组」，活跃落点回退到剩余首个工作区。
+   * 返回删除是否成功（失败已就地报错），调用方可据此做成功后的收尾清理。
+   */
+  const handleWorkspaceDelete = (workspaceId: string): Promise<boolean> => {
+    return (async () => {
       await rpc(Endpoints.workspaceDelete, { request: { workspaceId } });
       if (activeWorkspaceId === workspaceId) {
         const rest = workspaces.find((w) => w.workspaceId !== workspaceId);
         setActiveWorkspaceId(rest?.workspaceId ?? null);
       }
-    })().catch((err) => setError(toErrMsg(err)));
+      return true;
+    })().catch((err) => {
+      setError(toErrMsg(err));
+      return false;
+    });
   };
 
   /** 调整工作区顺序（workspace/insertBefore，follow 流推送 order 帧自动更新列表）。 */

@@ -117,17 +117,24 @@ export function useSessionSidebar(
     return next;
   }, [collapsedWorkspaces, workspaces, currentId]);
 
-  /** 折叠/展开项目分组（持久化）；折叠时同步复位该组会话展示条数，再点开回到默认条数。 */
-  const toggleWorkspaceGroup = useCallback((workspaceId: string) => {
-    setCollapsedWorkspaces((prev) => {
-      const next = new Set(prev);
-      const collapsing = !next.has(workspaceId);
-      if (collapsing) {
-        next.add(workspaceId);
-      } else {
-        next.delete(workspaceId);
-      }
-      saveCollapsedWorkspaces(next);
+  /**
+   * 折叠/展开项目分组（持久化）；折叠时同步复位该组会话展示条数，再点开回到默认条数。
+   * 以界面当前呈现的状态（collapsedWorkspaceIds）为切换依据，而不是持久化记录：
+   * 当前会话所在项目会被临时展开，此时点标题应真正收起（写入记录），而不是无效果。
+   */
+  const toggleWorkspaceGroup = useCallback(
+    (workspaceId: string) => {
+      const collapsing = !collapsedWorkspaceIds.has(workspaceId);
+      setCollapsedWorkspaces((prev) => {
+        const next = new Set(prev);
+        if (collapsing) {
+          next.add(workspaceId);
+        } else {
+          next.delete(workspaceId);
+        }
+        saveCollapsedWorkspaces(next);
+        return next;
+      });
       if (collapsing) {
         setSessionVisibleByGroup((visible) => {
           if (!visible.has(workspaceId)) return visible;
@@ -136,9 +143,9 @@ export function useSessionSidebar(
           return reset;
         });
       }
-      return next;
-    });
-  }, []);
+    },
+    [collapsedWorkspaceIds],
+  );
 
   /** 展开指定项目（新建会话、跳转会话时使用）：只清折叠标记，未折叠时是空操作。 */
   const expandWorkspace = useCallback((workspaceId: string) => {
@@ -306,7 +313,7 @@ interface SessionSidebarProps {
   handleNewSession: () => Promise<void>;
   handleAddWorkspace: () => Promise<string | null>;
   handleWorkspaceRename: (id: string, title: string) => void;
-  handleWorkspaceDelete: (id: string) => void;
+  handleWorkspaceDelete: (id: string) => Promise<boolean>;
   handleWorkspaceReorder: (id: string, beforeId?: string) => Promise<void>;
   handleSessionRename: (id: string, title: string) => Promise<void>;
   handleSessionArchive: (id: string) => Promise<void>;
@@ -521,14 +528,16 @@ export function SessionSidebar({
    * 项目内会话列表：默认露出 WORKSPACE_SESSION_PREVIEW_LIMIT 条；运行中、等待回应、
    * 后台完成未读或当前会话的条目会自动抬升露出条数（最多 WORKSPACE_SESSION_AUTO_MAX）。
    * 每点一次「展开显示」多展示一批，全部展示后按钮变「收起」（复位回默认条数）。
-   * 折叠项目再点开同样回到默认条数。搜索态不设上限——匹配结果被折叠会让用户以为没搜到。
+   * 折叠项目再点开同样回到默认条数。
+   * 搜索态不设上限且忽略持久化的收起状态：项目标题出现在结果里、匹配会话却被藏着，
+   * 看起来就像搜索失灵。大分区（置顶/项目/会话）在搜索态同样自动穿透展开。
    */
   const renderWorkspaceSessions = (
     ws: WorkspaceView,
     wsSessions: SessionSummary[],
   ) => {
-    if (collapsedGroups.has(ws.workspaceId)) return null;
     const searching = searchText.trim() !== "";
+    if (!searching && collapsedGroups.has(ws.workspaceId)) return null;
     const requiredCount = requiredSessionCount(wsSessions, (session) => ({
       running: session.running,
       pending: Boolean(pendingKindBySession.get(session.sessionId)),
@@ -718,8 +727,14 @@ export function SessionSidebar({
                             handleWorkspaceRename(ws.workspaceId, title)
                           }
                           onDelete={() => {
-                            forgetCollapsedWorkspace(ws.workspaceId);
-                            handleWorkspaceDelete(ws.workspaceId);
+                            void handleWorkspaceDelete(ws.workspaceId).then(
+                              (deleted) => {
+                                // 删除成功才清理折叠记录，失败时保持用户的收起偏好
+                                if (deleted) {
+                                  forgetCollapsedWorkspace(ws.workspaceId);
+                                }
+                              },
+                            );
                           }}
                           onTogglePin={() => toggleWorkspacePin(ws.workspaceId)}
                           onMoveUp={() => handlePinnedMoveUp(index)}
@@ -852,8 +867,14 @@ export function SessionSidebar({
                           handleWorkspaceRename(ws.workspaceId, title)
                         }
                         onDelete={() => {
-                          forgetCollapsedWorkspace(ws.workspaceId);
-                          handleWorkspaceDelete(ws.workspaceId);
+                          void handleWorkspaceDelete(ws.workspaceId).then(
+                            (deleted) => {
+                              // 删除成功才清理折叠记录，失败时保持用户的收起偏好
+                              if (deleted) {
+                                forgetCollapsedWorkspace(ws.workspaceId);
+                              }
+                            },
+                          );
                         }}
                         onTogglePin={() => toggleWorkspacePin(ws.workspaceId)}
                         onMoveUp={() => handleNormalMoveUp(index)}
