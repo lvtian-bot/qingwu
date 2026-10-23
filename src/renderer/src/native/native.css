@@ -5612,6 +5612,9 @@ body.native-resizing {
 .native-provider-card-custom {
   border-style: dashed;
   border-color: var(--native-accent, #3b82f6);
+  /* 排在网格末尾，只占一格，不拉伸填满整行 */
+  grid-column: auto;
+  align-self: start;
 }
 
 .native-provider-card-custom:hover {

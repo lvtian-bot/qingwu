@@ -265,24 +265,6 @@ export function ModelsTab({
             />
           ) : (
             <div className="native-provider-picker">
-              <button
-                type="button"
-                className="native-provider-card native-provider-card-custom"
-                onClick={() => {
-                  setIsAddingCustom(true);
-                  setSelectedProvider(null);
-                }}
-                title={t("settings.models.addCustom")}
-              >
-                <span className="native-provider-card-body">
-                  <span className="native-provider-card-name">
-                    + {t("settings.models.addCustom")}
-                  </span>
-                  <span className="native-provider-picker-hint">
-                    {t("settings.models.addCustomHint")}
-                  </span>
-                </span>
-              </button>
               {availableRows.length === 0 ? (
                 <div className="native-model-empty">
                   {t("settings.models.allBuiltInAdded")}
@@ -315,6 +297,25 @@ export function ModelsTab({
                   );
                 })
               )}
+              {/* 自定义入口是少数派选项，排在内置服务商之后 */}
+              <button
+                type="button"
+                className="native-provider-card native-provider-card-custom"
+                onClick={() => {
+                  setIsAddingCustom(true);
+                  setSelectedProvider(null);
+                }}
+                title={t("settings.models.addCustom")}
+              >
+                <span className="native-provider-card-body">
+                  <span className="native-provider-card-name">
+                    + {t("settings.models.addCustom")}
+                  </span>
+                  <span className="native-provider-picker-hint">
+                    {t("settings.models.addCustomHint")}
+                  </span>
+                </span>
+              </button>
             </div>
           )}
         </div>
