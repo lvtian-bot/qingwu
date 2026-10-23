@@ -11,10 +11,11 @@ import { useT } from "../i18n";
 import { movesContextMeter } from "./ContextMeter";
 import {
   expandStreamRecords,
-  foldChatItems,
+  foldChatItemsWithLocal,
   foldQueue,
   foldUserRpcIds,
   lastTurnStartTime,
+  type LocalCommandEntry,
   type QueuedItem,
   type TurnView,
 } from "./events";
@@ -97,6 +98,16 @@ export function useEngineStreams({
   const [queue, setQueue] = useState<QueuedItem[]>([]);
   /** 本地乐观回显：提交当帧即显示，宿主落库或入队后退休。 */
   const [echoes, setEchoes] = useState<QueuedItem[]>([]);
+  /**
+   * 界面自执行指令（`/export` 与 `/model`）的对话流条目。
+   *
+   * 这些指令不写引擎日志，切会话时随会话一起清空——它们不属于可以回放的
+   * 会话历史，重建会话视图时不应把上次的导出结果再画一遍。
+   */
+  const [localCommands, setLocalCommands] = useState<LocalCommandEntry[]>([]);
+  /** 本地指令条目的最新值：refreshFromEvents 是被 memo 住的回调，需要它读最新。 */
+  const localCommandsRef = useRef<LocalCommandEntry[]>(localCommands);
+  localCommandsRef.current = localCommands;
   /** 当前轮开始时间（最近一次 turn/start），驱动底部「工作中 X 秒」状态条。 */
   const [turnStartedAt, setTurnStartedAt] = useState<number | null>(null);
   const [approvals, setApprovals] = useState<PendingApproval[]>([]);
@@ -153,7 +164,7 @@ export function useEngineStreams({
 
   /** 用当前事件窗口重算对话、队列与回显退休（快照与增量共用一条路径）。 */
   const refreshFromEvents = useCallback(() => {
-    setItems(foldChatItems(eventsRef.current));
+    setItems(foldChatItemsWithLocal(eventsRef.current, localCommandsRef.current));
     const folded = foldQueue(eventsRef.current);
     setQueue(folded.queue);
     setTurnStartedAt(lastTurnStartTime(eventsRef.current));
@@ -433,6 +444,7 @@ export function useEngineStreams({
     setReasoningActive(false);
     setQueue([]);
     setEchoes([]);
+    setLocalCommands([]);
     setTurnStartedAt(null);
     // 滚动复位与该会话草稿载入由界面层完成（草稿桶与滚动容器不在本 hook）
     onSessionSwitched(currentId);
@@ -669,6 +681,36 @@ export function useEngineStreams({
     setEchoes((prev) => prev.filter((echo) => echo.rpcId !== rpcId));
   }, []);
 
+  /** 界面自执行指令开始执行：立刻在对话流末尾落一张「执行中」卡片。 */
+  const beginLocalCommand = useCallback(
+    (commandId: string, name: string) => {
+      setLocalCommands((prev) => [
+        ...prev,
+        { commandId, name, outcome: null, time: Date.now() },
+      ]);
+    },
+    [],
+  );
+
+  /** 界面自执行指令结束：把结果回填到同一张卡片。 */
+  const settleLocalCommand = useCallback(
+    (commandId: string, outcome: { kind: "success" | "error"; text?: string }) => {
+      setLocalCommands((prev) =>
+        prev.map((entry) =>
+          entry.commandId === commandId
+            ? { ...entry, outcome, time: Date.now() }
+            : entry,
+        ),
+      );
+    },
+    [],
+  );
+
+  /** 本地条目变化即重投影对话流：它们和日志条目同属一条可见性通道。 */
+  useEffect(() => {
+    refreshFromEvents();
+  }, [localCommands, refreshFromEvents]);
+
   return {
     // 会话与工作区注册表
     sessions,
@@ -694,6 +736,9 @@ export function useEngineStreams({
     // 乐观回显（发送管线写入，事件投影退休）
     pushEcho,
     removeEchoByRpcId,
+    // 界面自执行指令（对话流条目，切换会话即清空）
+    beginLocalCommand,
+    settleLocalCommand,
     // 流式展示态
     draft,
     liveReasoning,

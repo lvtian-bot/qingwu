@@ -61,12 +61,6 @@ export const BUILTIN_COMMAND_METAS: Record<string, BuiltinCommandMeta> = {
     section: 'add',
     tokens: ['计划', 'jh', 'jihua'],
   },
-  feedback: {
-    label: 'composer.slash.labels.feedback',
-    description: '发送关于当前会话的反馈',
-    section: 'add',
-    tokens: ['反馈', 'fk', 'fankui'],
-  },
   compact: {
     label: 'composer.slash.labels.compact',
     description: '压缩以上对话内容',
@@ -97,7 +91,6 @@ export const BUILTIN_COMMAND_METAS: Record<string, BuiltinCommandMeta> = {
 const BUILTIN_DESCRIPTION_KEYS: Record<string, string> = {
   goal: 'composer.slash.descriptions.goal',
   plan: 'composer.slash.descriptions.plan',
-  feedback: 'composer.slash.descriptions.feedback',
   compact: 'composer.slash.descriptions.compact',
   permission: 'composer.slash.descriptions.permission',
   model: 'composer.slash.descriptions.model',
@@ -121,14 +114,21 @@ export function slashItemDescription(
   return key ? t(key) : item.description;
 }
 
-/** 官方预设排序顺序。未列出的命令归入 commands 并按原样追加在后。 */
+/** 官方预设排序顺序。未列出的命令归入 commands 并按原样追加在后。
+ * 官方菜单的 add 分组还有 feedback，青梧不接入会话反馈（不采集、无反馈面板），故不列出。 */
 export const SECTION_ORDER: Record<SlashSection, string[]> = {
-  add: ['goal', 'plan', 'feedback'],
+  add: ['goal', 'plan'],
   commands: ['compact', 'permission', 'model', 'export'],
   skills: [],
 };
 
-/** 纯前端命令扩展：如 /model 用于呼出模型与推理档位面板。 */
+/**
+ * 纯前端命令扩展（由界面自己执行，不走引擎的命令 RPC）：
+ * - `/model` 呼出模型与推理档位面板；
+ * - `/export` 由主进程把当前会话日志打包成 ZIP 存到下载目录。官方 `/export`
+ *   由 web-app 层注册宿主命令，青梧的 profile 不加载该层，引擎里没有这条指令，
+ *   因此由客户端接管，用户可感知的行为与官方一致（导出会话 + 子会话 + 附件）。
+ */
 export const CLIENT_COMMANDS: SlashCommandItem[] = [
   {
     name: 'model',
@@ -136,6 +136,14 @@ export const CLIENT_COMMANDS: SlashCommandItem[] = [
     description: BUILTIN_COMMAND_METAS.model.description,
     section: BUILTIN_COMMAND_METAS.model.section,
     tokens: BUILTIN_COMMAND_METAS.model.tokens,
+    isClient: true,
+  },
+  {
+    name: 'export',
+    label: BUILTIN_COMMAND_METAS.export.label,
+    description: BUILTIN_COMMAND_METAS.export.description,
+    section: BUILTIN_COMMAND_METAS.export.section,
+    tokens: BUILTIN_COMMAND_METAS.export.tokens,
     isClient: true,
   },
 ];
@@ -158,13 +166,6 @@ export const BASELINE_HOST_COMMANDS: SlashCommandItem[] = [
     tokens: BUILTIN_COMMAND_METAS.plan.tokens,
   },
   {
-    name: 'feedback',
-    label: BUILTIN_COMMAND_METAS.feedback.label,
-    description: BUILTIN_COMMAND_METAS.feedback.description,
-    section: 'add',
-    tokens: BUILTIN_COMMAND_METAS.feedback.tokens,
-  },
-  {
     name: 'compact',
     label: BUILTIN_COMMAND_METAS.compact.label,
     description: BUILTIN_COMMAND_METAS.compact.description,
@@ -177,13 +178,6 @@ export const BASELINE_HOST_COMMANDS: SlashCommandItem[] = [
     description: BUILTIN_COMMAND_METAS.permission.description,
     section: 'commands',
     tokens: BUILTIN_COMMAND_METAS.permission.tokens,
-  },
-  {
-    name: 'export',
-    label: BUILTIN_COMMAND_METAS.export.label,
-    description: BUILTIN_COMMAND_METAS.export.description,
-    section: 'commands',
-    tokens: BUILTIN_COMMAND_METAS.export.tokens,
   },
 ];
 
@@ -451,7 +445,6 @@ export function filterSlashCommands(
 const TOKEN_TO_BUILTIN_NAME: Record<string, string> = {
   目标: 'goal',
   计划: 'plan',
-  反馈: 'feedback',
   压缩: 'compact',
   权限: 'permission',
   模型: 'model',

@@ -70,6 +70,24 @@ export const chat = {
     copied: "已复制",
     forkTitle: "从这条回复分出新会话",
   },
+  command: {
+    title: "指令",
+    running: "执行中…",
+    done: "已完成",
+    failed: "指令失败",
+  },
+  commands: {
+    exportNoArgs: "导出不需要参数",
+    exported: "已导出到 {path}",
+  },
+  compaction: {
+    title: "压缩",
+    running: "正在压缩…",
+    failed: "压缩未完成",
+    completed: "已压缩 {items} 条历史记录（约 {tokens} tokens）",
+    completedPlain: "上下文已压缩",
+    expand: "点击查看压缩摘要",
+  },
   strip: {
     working: "工作中",
     elapsedSeconds: "{count} 秒",

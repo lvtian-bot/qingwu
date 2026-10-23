@@ -9,6 +9,7 @@ import type {
   TurnView,
 } from "./events";
 import { DeliverableCards } from "./DeliverableCards";
+import { CommandItem } from "./CommandItem";
 import { parseUserTextMentions } from "./file-mentions";
 import { MessageImageView } from "./images";
 import { Markdown } from "./markdown";
@@ -507,6 +508,9 @@ export function TurnItems({
     if (item.kind === "tool") {
       return <ToolCard key={item.key} tool={item.tool} cwd={cwd} />;
     }
+    if (item.kind === "command" || item.kind === "compaction") {
+      return <CommandItem key={item.key} item={item} />;
+    }
     if (item.kind === "assistant") {
       // 分叉按钮只挂在这一轮的正式答复上（answer 仅在轮次收束后有值，
       // 运行中的轮次天然不出现）；思考行、过程消息一律不挂。
@@ -593,16 +597,20 @@ export function TurnItems({
   const answerIndex = view.items.findIndex(
     (item) => item.key === view.answer?.key,
   );
-  const leadingUserItems =
+  // 指令与压缩是用户主动发起的独立动作，不能被过程折叠吞掉：它们留在原位
+  // 直接显示。不这样处理的话，用户点完「压缩」再看到过程被收起，会以为指令没执行。
+  const standalone = (item: MarkedChatItem) =>
+    item.kind === "user" || item.kind === "command" || item.kind === "compaction";
+  const leadingItems =
     answerIndex >= 0
-      ? view.items.slice(0, answerIndex).filter((item) => item.kind === "user")
+      ? view.items.slice(0, answerIndex).filter(standalone)
       : [];
   const trailingItems =
     answerIndex >= 0 ? view.items.slice(answerIndex + 1) : [];
 
   return (
     <>
-      {leadingUserItems.map((item) => renderItem(item))}
+      {leadingItems.map((item) => renderItem(item))}
       <TurnProcessRow
         toolCount={view.toolCount}
         messageCount={view.messageCount}

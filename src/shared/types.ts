@@ -162,6 +162,14 @@ export interface QingwuApi {
   openPath: (targetPath: string) => Promise<string>;
   /** 在文件管理器中高亮定位指定文件或目录。 */
   showItemInFolder: (targetPath: string) => Promise<void>;
+  /**
+   * `/export`：把当前会话（含子会话）的日志打包成 ZIP 存到系统下载目录。
+   * 返回落地路径与打包的会话数，失败时带回可直接展示的原因。
+   */
+  exportSessionArchive: (sessionId: string) => Promise<
+    | { ok: true; filePath: string; sessionCount: number; mediaCount: number }
+    | { ok: false; message: string }
+  >;
   /** 安全读取本地图片并返回 Data URL。限制常见图片扩展名与 20MB 大小。若不存在或超限返回 null。 */
   readLocalImage: (
     targetPath: string,

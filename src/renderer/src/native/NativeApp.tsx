@@ -215,6 +215,8 @@ export function NativeApp({
     skills,
     pushEcho,
     removeEchoByRpcId,
+    beginLocalCommand,
+    settleLocalCommand,
   } = streams;
 
   useChatScrollFollow(scroll, {
@@ -492,6 +494,37 @@ export function NativeApp({
         setError(toErrMsg(err));
         return;
       }
+    }
+
+    // /export 由青梧自己执行：引擎的 web 层未加载导出插件，宿主里没有这条指令。
+    // 结果以一张指令卡落进对话流，和引擎指令走同一条可见性通道。
+    if (parsed.name === "export") {
+      if (!options?.preserveInput) {
+        clearForSubmit(currentId, submittedDraft);
+      }
+      if (parsed.args) {
+        setError(t("chat.commands.exportNoArgs"));
+        return;
+      }
+      const commandId = crypto.randomUUID();
+      beginLocalCommand(commandId, "export");
+      try {
+        const result = await window.qingwu.exportSessionArchive(
+          targetSessionId,
+        );
+        settleLocalCommand(
+          commandId,
+          result.ok
+            ? { kind: "success", text: t("chat.commands.exported", { path: result.filePath }) }
+            : { kind: "error", text: result.message },
+        );
+      } catch (err) {
+        settleLocalCommand(commandId, {
+          kind: "error",
+          text: toErrMsg(err),
+        });
+      }
+      return;
     }
 
     const cmdDesc = hostCommands.find(

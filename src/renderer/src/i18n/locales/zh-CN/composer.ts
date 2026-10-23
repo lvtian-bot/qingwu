@@ -92,7 +92,6 @@ export const composer = {
     labels: {
       goal: "目标",
       plan: "计划",
-      feedback: "反馈",
       compact: "压缩",
       permission: "权限",
       model: "模型",
@@ -101,7 +100,6 @@ export const composer = {
     descriptions: {
       goal: "设置或查看长期任务目标",
       plan: "进入或退出计划模式",
-      feedback: "发送关于当前会话的反馈",
       compact: "压缩以上对话内容",
       permission: "切换权限预设（沙箱模式与审批策略）",
       model: "切换当前会话或默认模型",

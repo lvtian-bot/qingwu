@@ -13,7 +13,7 @@ import { UpdateService } from "./update";
 import { UpdateWindowManager } from "./update-window";
 import { TrayManager } from "./tray";
 import { DshBridge } from "./dsh-bridge";
-import { resolveQingwuProfileDir } from "./dsh-paths";
+import { resolveQingwuProfileDir, resolveDshHome } from "./dsh-paths";
 import { settings } from "./settings";
 import { CONFIG } from "./config";
 import { AppLifecycle } from "./app-lifecycle";
@@ -26,6 +26,7 @@ import {
   readLocalImage,
 } from "./terminal";
 import { renderDocumentPreview } from "./document-preview";
+import { exportSessionArchive } from "./session-export";
 import { setupApplicationDiagnostics } from "./diagnostics";
 import { NotificationManager } from "./notification";
 import type { RendererErrorReport } from "../shared/types";
@@ -231,6 +232,14 @@ if (!gotTheLock) {
   );
   ipcMain.handle("workspace:readLocalImage", (_event, targetPath: string) =>
     readLocalImage(targetPath),
+  );
+  // /export：把会话日志树打包到系统下载目录（对齐官方 /export 的用户可见结果）
+  ipcMain.handle("session:exportArchive", (_event, sessionId: string) =>
+    exportSessionArchive(
+      path.join(resolveDshHome(), "sessions"),
+      sessionId,
+      app.getPath("downloads"),
+    ),
   );
   ipcMain.handle(
     "workspace:renderDocumentPreview",

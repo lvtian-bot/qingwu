@@ -75,6 +75,24 @@ export const chat: typeof zhChat = {
     copied: "Copied",
     forkTitle: "Fork a new session from this reply",
   },
+  command: {
+    title: "Command",
+    running: "Running…",
+    done: "Done",
+    failed: "Command failed",
+  },
+  commands: {
+    exportNoArgs: "/export takes no arguments",
+    exported: "Exported to {path}",
+  },
+  compaction: {
+    title: "Compact",
+    running: "Compacting…",
+    failed: "Compaction did not complete",
+    completed: "Compacted {items} history items (~{tokens} tokens)",
+    completedPlain: "Context compacted",
+    expand: "View compaction summary",
+  },
   strip: {
     working: "Working",
     elapsedSeconds: "{count}s",

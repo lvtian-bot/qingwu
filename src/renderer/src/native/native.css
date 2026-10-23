@@ -1501,6 +1501,146 @@ textarea {
   }
 }
 
+/* ---------- 指令卡片（斜杠指令与上下文压缩） ---------- */
+
+/*
+ * 一行指令的状态卡：左侧图标 + 指令名 + 状态/结果说明。
+ * 设计上贴着对话流的过程行，而不是用户气泡或助手段落——它记录的是
+ * 一次操作而不是一次对话内容，所以更轻、更矮，失败时才用红色提醒。
+ */
+.native-command {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  margin-bottom: 8px;
+}
+
+.native-command-head {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--native-fg);
+  font: inherit;
+  font-size: 14px;
+  line-height: 24px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.native-command-head:disabled {
+  cursor: default;
+}
+
+.native-command-head:not(:disabled):hover .native-command-summary {
+  color: var(--native-fg);
+}
+
+.native-command-icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  margin-right: 6px;
+  color: var(--native-muted);
+}
+
+.native-command[data-state="running"] .native-command-icon {
+  color: var(--native-accent);
+  animation: native-command-pulse 1.4s ease-in-out infinite;
+}
+
+.native-command[data-state="error"] .native-command-icon {
+  color: var(--native-error);
+}
+
+.native-command-name {
+  flex: none;
+  max-width: 40%;
+  overflow: hidden;
+  font-weight: 500;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.native-command-sep {
+  flex: none;
+  width: 2px;
+  height: 2px;
+  margin: 0 8px;
+  border-radius: 1px;
+  background: var(--native-muted);
+}
+
+.native-command-summary {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--native-muted);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.native-command-summary[data-error] {
+  color: var(--native-error);
+}
+
+.native-command-chevron {
+  flex: none;
+  margin-left: 6px;
+  transform: rotate(-90deg);
+  transition: transform 0.1s ease;
+}
+
+.native-command-chevron.open {
+  transform: rotate(0);
+}
+
+/* 展开的原始输出：限高滚动，避免长指令结果撑满对话区 */
+.native-command-body {
+  max-height: 260px;
+  margin: 4px 0 4px 20px;
+  padding: 12px 16px;
+  overflow: auto;
+  border: 0.5px solid var(--native-border);
+  border-radius: 10px;
+  background: var(--native-surface);
+  color: var(--native-fg);
+  font-family: var(--native-mono);
+  font-size: 12px;
+  line-height: 18px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.native-command-time {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--native-muted);
+}
+
+@keyframes native-command-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .native-command[data-state="running"] .native-command-icon {
+    animation: none;
+  }
+  .native-command-chevron {
+    transition: none;
+  }
+}
+
 /* ---------- 流式状态 ---------- */
 
 .native-tool-hint {

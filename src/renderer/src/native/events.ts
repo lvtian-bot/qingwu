@@ -4,6 +4,11 @@ import type {
   AssistantBlockDelta,
   AssistantMessageData,
   AssistantStreamRecord,
+  CommandDoneEventData,
+  CommandRunEventData,
+  CompactionCheckpointSource,
+  CompactionLifecycleEventData,
+  CompactionSummaryEventData,
   ImageAttachmentRef,
   InboxMessage,
   InboxSplicedEventData,
@@ -14,6 +19,9 @@ import type {
 import type { ToolItem } from "./ToolCard";
 import { deriveTurnTokenUsage } from "@deepseek-ai/dsh-token-meter/client";
 import type { TurnTokenUsage } from "@deepseek-ai/dsh-token-meter/client";
+
+/** 压缩替换检查点的来源标识（引擎写入的 user/message source.kind）。 */
+const COMPACT_CHECKPOINT_KIND = "compact-checkpoint";
 
 /** 按块类型提取可展示文本（text / reasoning 块均携带 text 字段）。 */
 function textOf(content: unknown[], blockType: "text" | "reasoning"): string {
@@ -138,7 +146,46 @@ export type ChatItem =
       /** 最近一条 user 消息时间（无则 null），用于计算用时。 */
       startTime: number | null;
     }
-  | { kind: "tool"; key: string; tool: ToolItem };
+  | { kind: "tool"; key: string; tool: ToolItem }
+  | {
+      /**
+       * 宿主斜杠指令的生命周期（对齐官方 command 节点）。
+       *
+       * outcome 为 null 表示仍在执行；done 事件到达后填成功或失败。
+       * 失败的指令同样落一条条目，错误原因留在 outcome.text 里就地展示，
+       * 不再只靠顶部提示条。
+       */
+      kind: "command";
+      key: string;
+      name: string;
+      args?: string;
+      outcome: {
+        kind: "success" | "error";
+        text?: string;
+      } | null;
+      time: number;
+    }
+  | {
+      /**
+       * 手动 `/compact` 的压缩进度（对齐官方 manual-compaction 节点）。
+       *
+       * outcome 为 null 表示压缩仍在进行；结束后 carrying 成功统计或失败原因。
+       */
+      kind: "compaction";
+      key: string;
+      outcome: {
+        kind: "success" | "error";
+        /** 被压缩的历史条目数（引擎 shadowedSeqs 长度）。 */
+        itemCount?: number;
+        /** 被压缩的历史 token 数。 */
+        tokenCount?: number;
+        /** 压缩摘要正文，可展开查看。 */
+        summary?: string;
+        /** 失败原因（或引擎返回的说明文本）。 */
+        text?: string;
+      } | null;
+      time: number;
+    };
 
 /**
  * 带轮次归属的渲染条目。
@@ -193,6 +240,11 @@ export interface TurnView {
   metrics?: TurnMetrics;
   /** 本轮显式交付的文件（有才携带，收尾卡片渲染）。 */
   deliverables?: TurnDeliverable[];
+  /**
+   * 轮内指令与压缩条目的数量：它们不是模型的思考与工具过程，
+   * 折叠收起后仍要显示在折叠行上，否则用户会以为指令没被执行。
+   */
+  commandCount?: number;
 }
 
 /**
@@ -250,6 +302,12 @@ function groupTurns(
     for (let index = 0; index < answerIndex; index += 1) {
       const item = view.items[index];
       // 用户消息属于输入提示，不作为内部执行过程收进折叠
+      if (item.kind === "command" || item.kind === "compaction") {
+        // 指令与压缩是用户主动发起的独立动作：留在原位直接显示，
+        // 只把「发生过几次」记到折叠行，绝不随过程一起收起来。
+        view.commandCount = (view.commandCount ?? 0) + 1;
+        continue;
+      }
       if (item.kind !== "user") {
         item.tier = "context";
         view.context.push(item);
@@ -386,6 +444,42 @@ function deriveTurnMetrics(
 }
 
 export function foldChatItems(events: SessionEvent[]): TurnView[] {
+  return foldChatItemsWithLocal(events, []);
+}
+
+/** 本地指令条目：由界面自己执行的指令（如 `/export`）在对话流里的落点。 */
+export interface LocalCommandEntry {
+  commandId: string;
+  name: string;
+  outcome: { kind: "success" | "error"; text?: string } | null;
+  time: number;
+}
+
+/**
+ * 在事件投影之上叠加界面自执行指令的条目。
+ *
+ * 引擎只为宿主指令写 command/run、command/done 日志事件；`/export` 这类
+ * 由客户端执行的指令没有日志，却需要同样的「执行中 → 结果」可见性。
+ * 它们同属对话流末尾，所以并进同一次渲染，而不是另起一路。
+ */
+export function foldChatItemsWithLocal(
+  events: SessionEvent[],
+  localCommands: LocalCommandEntry[],
+): TurnView[] {
+  const views = foldEventTurns(events);
+  if (localCommands.length === 0) return views;
+  const localItems: MarkedChatItem[] = localCommands.map((entry) => ({
+    kind: "command",
+    key: `lc-${entry.commandId}`,
+    name: entry.name,
+    outcome: entry.outcome,
+    time: entry.time,
+    turn: Number.MAX_SAFE_INTEGER,
+  }));
+  return [...views, ...groupTurns(localItems, new Set<number>())];
+}
+
+function foldEventTurns(events: SessionEvent[]): TurnView[] {
   const tools = new Map<string, ToolItem>();
   const items: MarkedChatItem[] = [];
   /** 已经收到 turn/end 的轮次：只有这些轮次收进折叠行。 */
@@ -394,6 +488,15 @@ export function foldChatItems(events: SessionEvent[]): TurnView[] {
   const turnSlices = new Map<number, SessionEvent[]>();
   /** 每轮显式交付（deliverables/presented），同一路径保留最近一次的说明。 */
   const turnDeliverables = new Map<number, TurnDeliverable[]>();
+  /** 指令条目按 commandId 索引：done 事件回填到 run 落下的那一条。 */
+  const commands = new Map<string, Extract<MarkedChatItem, { kind: "command" }>>();
+  /** 压缩条目按 compactionId 索引：summary/end 回填到 start 落下的那一条。 */
+  const compactions = new Map<
+    string,
+    Extract<MarkedChatItem, { kind: "compaction" }>
+  >();
+  /** 压缩检查点（user/message 的 replace 表面）：它标记压缩完成的时间点。 */
+  const checkpoints = new Map<string, SessionEvent>();
   let slice: SessionEvent[] | null = null;
   let lastUserTime: number | null = null;
   /** 当前事件所属轮次：优先 turn/start 声明，其次沿用上一条已知轮次。 */
@@ -426,6 +529,16 @@ export function foldChatItems(events: SessionEvent[]): TurnView[] {
         source?: { kind: string };
         content?: unknown[];
       } | null;
+      // 压缩替换检查点：它不是用户输入，而是压缩完成时留在日志里的标记。
+      // 收下它的 seq 供压缩摘要回填时序，同时绝不渲染成用户消息气泡。
+      if (data?.source?.kind === COMPACT_CHECKPOINT_KIND) {
+        const compactionId = (data.source as CompactionCheckpointSource)
+          .compactionId;
+        if (typeof compactionId === "string") {
+          checkpoints.set(compactionId, event);
+        }
+        continue;
+      }
       if (data?.source?.kind === "user" && Array.isArray(data.content)) {
         const eventTurn = (event.data as { turn?: number } | null)?.turn;
         if (typeof eventTurn === "number") turn = eventTurn;
@@ -486,6 +599,96 @@ export function foldChatItems(events: SessionEvent[]): TurnView[] {
       };
       tools.set(data.callId, item);
       items.push({ kind: "tool", key: `t-${event.seq}`, tool: item, turn });
+    } else if (event.type === "command/run") {
+      const data = event.data as CommandRunEventData | null;
+      if (!data || typeof data.commandId !== "string") continue;
+      const existing = commands.get(data.commandId);
+      if (existing) {
+        // 重连或补页可能重复投递同一条 run：保留首次落位，不重复插入
+        if (!existing.name && data.name) existing.name = data.name;
+        if (!existing.args && data.args) existing.args = data.args;
+        continue;
+      }
+      const item: Extract<MarkedChatItem, { kind: "command" }> = {
+        kind: "command",
+        key: `c-${event.seq}`,
+        name: data.name,
+        args: data.args || undefined,
+        outcome: null,
+        time: event.time,
+        turn,
+      };
+      commands.set(data.commandId, item);
+      items.push(item);
+    } else if (event.type === "command/done") {
+      const data = event.data as CommandDoneEventData | null;
+      if (!data || typeof data.commandId !== "string") continue;
+      let target: Extract<MarkedChatItem, { kind: "command" }> | undefined =
+        commands.get(data.commandId);
+      if (!target) {
+        // 只有 done 落在窗口里（run 已被翻页裁掉）：补一条只有结果的卡片
+        const created: Extract<MarkedChatItem, { kind: "command" }> = {
+          kind: "command",
+          key: `c-${event.seq}`,
+          name: "",
+          outcome: null,
+          time: event.time,
+          turn,
+        };
+        commands.set(data.commandId, created);
+        items.push(created);
+        target = created;
+      }
+      target.outcome = {
+        kind: data.kind === "error" ? "error" : "success",
+        text: typeof data.text === "string" && data.text ? data.text : undefined,
+      };
+    } else if (event.type === "compaction/start") {
+      const data = event.data as CompactionLifecycleEventData | null;
+      if (!data || typeof data.compactionId !== "string") continue;
+      if (compactions.has(data.compactionId)) continue;
+      const item: Extract<MarkedChatItem, { kind: "compaction" }> = {
+        kind: "compaction",
+        key: `k-${event.seq}`,
+        outcome: null,
+        time: event.time,
+        turn,
+      };
+      compactions.set(data.compactionId, item);
+      items.push(item);
+    } else if (event.type === "compaction/summary") {
+      const data = event.data as CompactionSummaryEventData | null;
+      if (!data || typeof data.compactionId !== "string") continue;
+      const target = compactions.get(data.compactionId);
+      if (!target) continue;
+      const checkpoint = checkpoints.get(data.compactionId);
+      target.outcome = {
+        kind: "success",
+        itemCount: Array.isArray(data.shadowedSeqs)
+          ? data.shadowedSeqs.length
+          : undefined,
+        tokenCount:
+          typeof data.shadowedTokenCount === "number"
+            ? data.shadowedTokenCount
+            : undefined,
+        summary:
+          Array.isArray(data.summary) && data.summary.length > 0
+            ? textOf(data.summary, "text") || undefined
+            : undefined,
+      };
+      target.time = checkpoint?.time ?? target.time;
+    } else if (event.type === "compaction/end") {
+      const data = event.data as CompactionLifecycleEventData | null;
+      if (!data || typeof data.compactionId !== "string") continue;
+      const target = compactions.get(data.compactionId);
+      if (!target) continue;
+      if (typeof data.error === "string" && data.error) {
+        target.outcome = { kind: "error", text: data.error };
+      } else if (target.outcome === null) {
+        // 成功但没有摘要事件：仍标记收束，避免卡片永远停在「正在压缩」
+        target.outcome = { kind: "success" };
+      }
+      target.time = checkpoints.get(data.compactionId)?.time ?? target.time;
     } else if (event.type === "deliverables/presented") {
       // present 工具成功交付：按事件自带轮次归拢（缺省沿用当前轮次）
       const data = event.data as {

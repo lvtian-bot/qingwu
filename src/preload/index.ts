@@ -168,6 +168,8 @@ const api: QingwuApi = {
   openTerminal: (targetPath) => ipcRenderer.invoke('workspace:openTerminal', targetPath),
   openPath: (targetPath) => ipcRenderer.invoke('workspace:openPath', targetPath),
   showItemInFolder: (targetPath) => ipcRenderer.invoke('workspace:showItemInFolder', targetPath),
+  exportSessionArchive: (sessionId) =>
+    ipcRenderer.invoke('session:exportArchive', sessionId),
   readLocalImage: (targetPath) => ipcRenderer.invoke('workspace:readLocalImage', targetPath),
   renderDocumentPreview: (targetPath) =>
     ipcRenderer.invoke('workspace:renderDocumentPreview', targetPath),

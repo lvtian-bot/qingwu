@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { loadTs } = require('./helpers/load-ts.cjs');
-const { expandStreamRecords, foldChatItems, foldQueue, foldUserRpcIds, foldTodos, lastTurnStartTime } = loadTs('src/renderer/src/native/events.ts');
+const { expandStreamRecords, foldChatItems, foldChatItemsWithLocal, foldQueue, foldUserRpcIds, foldTodos, lastTurnStartTime } = loadTs('src/renderer/src/native/events.ts');
 const { progressLabel } = loadTs('src/renderer/src/native/TodoPanel.tsx');
 
 const event = (type, data, seq = 1) => ({ type, data, seq, time: seq * 1000 });
@@ -421,4 +421,108 @@ test('运行中的轮次不产出指标', () => {
   ];
   const [view] = foldChatItems(events);
   assert.equal(view.metrics, undefined);
+});
+
+// ---------- 斜杠指令与上下文压缩的可见性 ----------
+
+const commandRun = (commandId, name, seq, args) =>
+  event('command/run', args === undefined ? { commandId, name } : { commandId, name, args }, seq);
+const commandDone = (commandId, kind, text, seq) =>
+  event('command/done', text === undefined ? { commandId, kind } : { commandId, kind, text }, seq);
+
+test('指令从执行中收敛为成功结果，并保留在对话流里', () => {
+  const events = [
+    commandRun('c1', 'plan', 1),
+    commandDone('c1', 'success', 'Plan mode on.', 2),
+  ];
+  const [view] = foldChatItems(events);
+  assert.equal(view.items.length, 1);
+  const [item] = view.items;
+  assert.equal(item.kind, 'command');
+  assert.equal(item.name, 'plan');
+  assert.deepEqual(item.outcome, { kind: 'success', text: 'Plan mode on.' });
+});
+
+test('指令执行中在 done 到达前保持未收束状态', () => {
+  const [view] = foldChatItems([commandRun('c1', 'goal', 1)]);
+  assert.equal(view.items[0].kind, 'command');
+  assert.equal(view.items[0].outcome, null);
+});
+
+test('指令失败把错误原因留在卡片上而不是只丢进顶部提示', () => {
+  const [view] = foldChatItems([
+    commandRun('c1', 'permission', 1, 'bogus'),
+    commandDone('c1', 'error', 'Unknown preset: bogus', 2),
+  ]);
+  assert.deepEqual(view.items[0].outcome, { kind: 'error', text: 'Unknown preset: bogus' });
+});
+
+test('压缩从开始收束为条目数与 token 统计，并带上摘要', () => {
+  const events = [
+    event('compaction/start', { compactionId: 'k1', sourceCommandId: 'c1', turn: null }, 1),
+    event('compaction/summary', {
+      compactionId: 'k1',
+      summary: [{ type: 'text', text: '早先讨论的要点' }],
+      shadowedSeqs: [1, 2, 3],
+      shadowedTokenCount: 4200,
+    }, 2),
+    event('compaction/end', { compactionId: 'k1' }, 3),
+  ];
+  const [view] = foldChatItems(events);
+  const [item] = view.items;
+  assert.equal(item.kind, 'compaction');
+  assert.equal(item.outcome.kind, 'success');
+  assert.equal(item.outcome.itemCount, 3);
+  assert.equal(item.outcome.tokenCount, 4200);
+  assert.equal(item.outcome.summary, '早先讨论的要点');
+});
+
+test('压缩失败时卡片带失败原因', () => {
+  const [view] = foldChatItems([
+    event('compaction/start', { compactionId: 'k1' }, 1),
+    event('compaction/end', { compactionId: 'k1', error: 'No history to compact' }, 2),
+  ]);
+  assert.deepEqual(view.items[0].outcome, { kind: 'error', text: 'No history to compact' });
+});
+
+test('压缩检查点不渲染成用户消息气泡', () => {
+  const events = [
+    event('compaction/start', { compactionId: 'k1' }, 1),
+    event('user/message', {
+      source: { kind: 'compact-checkpoint', compactionId: 'k1' },
+      content: [{ type: 'text', text: '摘要' }],
+    }, 2),
+  ];
+  const [view] = foldChatItems(events);
+  assert.equal(view.items.length, 1);
+  assert.equal(view.items[0].kind, 'compaction');
+});
+
+test('指令条目不会被轮次过程折叠吞掉', () => {
+  const events = [
+    event('turn/start', { turn: 1 }, 1),
+    commandRun('c1', 'goal', 2),
+    commandDone('c1', 'success', 'Goal created', 3),
+    event('user/message', message('u1', '继续'), 4),
+    event('assistant/message', {
+      turn: 1,
+      step: 1,
+      message: { content: [{ type: 'text', text: '好的' }] },
+    }, 5),
+    event('turn/end', { turn: 1 }, 6),
+  ];
+  const [view] = foldChatItems(events);
+  // 指令留在原位直接显示，只在折叠行上记一笔数量
+  assert.equal(view.commandCount, 1);
+  assert.equal(view.context.some((item) => item.kind === 'command'), false);
+});
+
+test('界面自执行指令与日志条目同属对话流末尾', () => {
+  const views = foldChatItemsWithLocal([], [
+    { commandId: 'local-1', name: 'export', outcome: null, time: 9000 },
+  ]);
+  assert.equal(views.length, 1);
+  assert.equal(views[0].items[0].kind, 'command');
+  assert.equal(views[0].items[0].name, 'export');
+  assert.equal(views[0].items[0].outcome, null);
 });

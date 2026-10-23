@@ -102,13 +102,6 @@ function renderCommandIcon(cmd: SlashCommandItem): React.ReactNode {
           <path d="M6 5.5h4M6 8h4M6 10.5h2.5" />
         </svg>
       );
-    case 'feedback':
-      return (
-        <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <path d="M2.5 3.5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1h-6.5l-3 2.5v-2.5h-0.5a1 1 0 0 1-1-1v-6z" />
-          <path d="M5.5 5.5h5M5.5 8h3" />
-        </svg>
-      );
     case 'compact':
       return (
         <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
