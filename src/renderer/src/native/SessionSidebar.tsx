@@ -101,6 +101,8 @@ export function useSessionSidebar(
   const [sessionVisibleByGroup, setSessionVisibleByGroup] = useState<
     Map<string, number>
   >(new Map());
+  /** 是否处于搜索态（决定项目分组是否穿透收起状态呈现）。 */
+  const searching = searchText.trim() !== "";
 
   /**
    * 已折叠项目 + 必须保持可见的项目（当前会话所在项目），统一暴露为折叠状态。
@@ -119,11 +121,14 @@ export function useSessionSidebar(
 
   /**
    * 折叠/展开项目分组（持久化）；折叠时同步复位该组会话展示条数，再点开回到默认条数。
-   * 以界面当前呈现的状态（collapsedWorkspaceIds）为切换依据，而不是持久化记录：
+   * 以界面当前呈现的状态（生效的收起状态）为切换依据，而不是持久化记录：
    * 当前会话所在项目会被临时展开，此时点标题应真正收起（写入记录），而不是无效果。
+   * 搜索态不写入记录：搜索期间项目一律按展开呈现，此时点标题无法在结果里收起它，
+   * 若顺手删掉收起记录，退出搜索后项目会意外保持展开，和用户原来的偏好不一致。
    */
   const toggleWorkspaceGroup = useCallback(
     (workspaceId: string) => {
+      if (searching) return;
       const collapsing = !collapsedWorkspaceIds.has(workspaceId);
       setCollapsedWorkspaces((prev) => {
         const next = new Set(prev);
@@ -144,7 +149,7 @@ export function useSessionSidebar(
         });
       }
     },
-    [collapsedWorkspaceIds],
+    [collapsedWorkspaceIds, searching],
   );
 
   /** 展开指定项目（新建会话、跳转会话时使用）：只清折叠标记，未折叠时是空操作。 */
@@ -275,15 +280,15 @@ export function useSessionSidebar(
   );
 
   /**
-   * 项目标题此刻应按展开还是收起呈现：按界面上实际露出的会话列表判断，
-   * 而不是只看持久化的收起记录。当前会话所在项目被临时展开、搜索态忽略收起，
-   * 这些情况下标题都要显示为展开，否则会出现「标题是收起的、下面却列着会话」。
+   * 项目分组此刻实际怎么呈现——列表是否露出、标题图标与箭头、点标题的语义，
+   * 三处共用这一份判断，避免各算各的出现「标题展开、下面却没列表」这类矛盾。
+   * 搜索态一律呈现为展开（否则收起项目里的匹配会话会被藏掉）；
+   * 非搜索态按生效的收起状态（collapsedWorkspaceIds 已剔除当前会话所在项目）。
    */
   const isWorkspaceGroupCollapsed = useCallback(
-    (ws: WorkspaceView, wsSessions: SessionSummary[]) =>
-      collapsedWorkspaceIds.has(ws.workspaceId) &&
-      wsSessions.length === 0,
-    [collapsedWorkspaceIds],
+    (workspaceId: string) =>
+      !searching && collapsedWorkspaceIds.has(workspaceId),
+    [searching, collapsedWorkspaceIds],
   );
 
   // 1. 置顶项目（保持置顶时间倒序）
@@ -321,7 +326,6 @@ export function useSessionSidebar(
     setSearchOpen,
     searchText,
     setSearchText,
-    collapsedGroups: collapsedWorkspaceIds,
     sessionVisibleByGroup,
     setSessionVisibleCount,
     toggleWorkspaceGroup,
@@ -388,7 +392,6 @@ export function SessionSidebar({
     setSearchOpen,
     searchText,
     setSearchText,
-    collapsedGroups,
     sessionVisibleByGroup,
     setSessionVisibleCount,
     toggleWorkspaceGroup,
@@ -581,7 +584,8 @@ export function SessionSidebar({
     wsSessions: SessionSummary[],
   ) => {
     const searching = searchText.trim() !== "";
-    if (!searching && collapsedGroups.has(ws.workspaceId)) return null;
+    // 与标题图标、箭头共用同一份呈现判断：收起时不渲染列表
+    if (isWorkspaceGroupCollapsed(ws.workspaceId)) return null;
     const requiredCount = requiredSessionCount(wsSessions, (session) => ({
       running: session.running,
       pending: Boolean(pendingKindBySession.get(session.sessionId)),
@@ -748,7 +752,7 @@ export function SessionSidebar({
                       >
                         <WorkspaceRow
                           workspace={ws}
-                          collapsed={isWorkspaceGroupCollapsed(ws, wsSessions)}
+                          collapsed={isWorkspaceGroupCollapsed(ws.workspaceId)}
                           pinned={true}
                           canMoveUp={canReorder && index > 0}
                           canMoveDown={
@@ -892,7 +896,7 @@ export function SessionSidebar({
                     >
                       <WorkspaceRow
                         workspace={ws}
-                        collapsed={isWorkspaceGroupCollapsed(ws, wsSessions)}
+                        collapsed={isWorkspaceGroupCollapsed(ws.workspaceId)}
                         pinned={false}
                         canMoveUp={canReorder && index > 0}
                         canMoveDown={
