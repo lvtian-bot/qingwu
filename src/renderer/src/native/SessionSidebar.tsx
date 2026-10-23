@@ -715,13 +715,17 @@ export function SessionSidebar({
                           dropPosition={dropPosition}
                           onToggle={() => toggleWorkspaceGroup(ws.workspaceId)}
                           onNewSession={() => {
-                            // 在折叠的项目里新建会话：先展开，否则新会话落进收起的组里看不见
-                            expandWorkspace(ws.workspaceId);
-                            void createSessionIn(ws.workspaceId).catch((err) =>
-                              setError(
-                                err instanceof Error ? err.message : String(err),
-                              ),
-                            );
+                            // 折叠的项目里新建会话：等创建成功再展开，
+                            // 失败时不改变项目的收起状态
+                            void createSessionIn(ws.workspaceId)
+                              .then(() => expandWorkspace(ws.workspaceId))
+                              .catch((err) =>
+                                setError(
+                                  err instanceof Error
+                                    ? err.message
+                                    : String(err),
+                                ),
+                              );
                           }}
                           onRename={(title) =>
                             handleWorkspaceRename(ws.workspaceId, title)
@@ -855,13 +859,17 @@ export function SessionSidebar({
                         dropPosition={dropPosition}
                         onToggle={() => toggleWorkspaceGroup(ws.workspaceId)}
                         onNewSession={() => {
-                          // 在折叠的项目里新建会话：先展开，否则新会话落进收起的组里看不见
-                          expandWorkspace(ws.workspaceId);
-                          void createSessionIn(ws.workspaceId).catch((err) =>
-                            setError(
-                              err instanceof Error ? err.message : String(err),
-                            ),
-                          );
+                          // 折叠的项目里新建会话：等创建成功再展开，
+                          // 失败时不改变项目的收起状态
+                          void createSessionIn(ws.workspaceId)
+                            .then(() => expandWorkspace(ws.workspaceId))
+                            .catch((err) =>
+                              setError(
+                                err instanceof Error
+                                  ? err.message
+                                  : String(err),
+                              ),
+                            );
                         }}
                         onRename={(title) =>
                           handleWorkspaceRename(ws.workspaceId, title)
