@@ -493,12 +493,24 @@ export function NativeApp({
       beginLocalCommand(commandId, "export");
       try {
         const result = await window.qingwu.exportSessionArchive(sessionId);
-        settleLocalCommand(
-          commandId,
-          result.ok
-            ? { kind: "success", text: t("chat.commands.exported", { path: result.filePath }) }
-            : { kind: "error", text: result.message },
-        );
+        if (!result.ok) {
+          settleLocalCommand(commandId, { kind: "error", text: result.message });
+          return;
+        }
+        // 导出读的是已经落盘的日志；会话可能还有刚产生、尚未写盘的事件。
+        // 引擎没有对外暴露落盘屏障，界面无法保证包含最新消息，因此如实标注
+        // 「生成时间」与可能滞后的事实，而不是让用户以为拿到的是完整对话。
+        const stamp = new Date().toLocaleTimeString("zh-CN", {
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+        const text = result.oversized
+          ? t("chat.commands.exportedOversized", { path: result.filePath })
+          : t("chat.commands.exported", {
+              path: result.filePath,
+              time: stamp,
+            });
+        settleLocalCommand(commandId, { kind: "success", text });
       } catch (err) {
         settleLocalCommand(commandId, {
           kind: "error",
@@ -1003,8 +1015,8 @@ export function NativeApp({
                   onPreviewImage={handlePreviewImage}
                   commands={availableCommands}
                   onExecuteCommand={(line) => void handleExecuteCommand(line)}
-                  onClientCommand={(name) =>
-                    void handleExecuteCommand(`/${name}`)
+                  onClientCommand={(name, options) =>
+                    void handleExecuteCommand(`/${name}`, options)
                   }
                   onQueryFileReferences={handleQueryFileReferences}
                   contextPressure={currentProjections?.contextPressure}
@@ -1216,8 +1228,8 @@ export function NativeApp({
                     onPreviewImage={handlePreviewImage}
                     commands={availableCommands}
                     onExecuteCommand={(line) => void handleExecuteCommand(line)}
-                    onClientCommand={(name) =>
-                      void handleExecuteCommand(`/${name}`)
+                    onClientCommand={(name, options) =>
+                      void handleExecuteCommand(`/${name}`, options)
                     }
                     onQueryFileReferences={handleQueryFileReferences}
                     contextPressure={currentProjections?.contextPressure}

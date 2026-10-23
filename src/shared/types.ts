@@ -165,9 +165,16 @@ export interface QingwuApi {
   /**
    * `/export`：把当前会话（含子会话）的日志打包成 ZIP 存到系统下载目录。
    * 返回落地路径与打包的会话数，失败时带回可直接展示的原因。
+   * `oversized` 表示有日志超过解压上限、按原始压缩格式打包（内容未转成纯文本）。
    */
   exportSessionArchive: (sessionId: string) => Promise<
-    | { ok: true; filePath: string; sessionCount: number; mediaCount: number }
+    | {
+        ok: true;
+        filePath: string;
+        sessionCount: number;
+        mediaCount: number;
+        oversized?: true;
+      }
     | { ok: false; message: string }
   >;
   /** 安全读取本地图片并返回 Data URL。限制常见图片扩展名与 20MB 大小。若不存在或超限返回 null。 */

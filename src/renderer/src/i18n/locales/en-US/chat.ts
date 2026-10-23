@@ -84,7 +84,10 @@ export const chat: typeof zhChat = {
   commands: {
     exportNoArgs: "/export takes no arguments",
     exportNoSession: "Open a session before exporting",
-    exported: "Exported to {path}",
+    exported:
+      "Exported to {path} ({time}; messages still in flight may not be written yet)",
+    exportedOversized:
+      "Exported to {path} (log exceeded the extraction limit; kept in its original compressed form)",
   },
   compaction: {
     title: "Compact",

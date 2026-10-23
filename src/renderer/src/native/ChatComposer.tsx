@@ -45,7 +45,10 @@ interface ChatComposerProps {
    * 客户端自处理命令（`/model`、`/export`）的执行入口。
    * 斜杠菜单点到这类条目时走这里；缺省时菜单只会清空输入而不执行任何动作。
    */
-  onClientCommand?: (commandName: string) => void;
+  onClientCommand?: (
+    commandName: string,
+    options?: { preserveInput?: boolean },
+  ) => void;
   onQueryFileReferences: (
     query: string,
     signal: AbortSignal,

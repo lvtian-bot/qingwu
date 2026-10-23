@@ -8,7 +8,17 @@ const zstdDecompressAsync = promisify(zstdDecompress);
 
 /** 导出结果：成功带回落地路径与统计，失败带回可直接展示的原因。 */
 export type SessionExportResult =
-  | { ok: true; filePath: string; sessionCount: number; mediaCount: number }
+  | {
+      ok: true;
+      filePath: string;
+      sessionCount: number;
+      mediaCount: number;
+      /**
+       * 有日志超过解压上限，按原始压缩格式原样打包。
+       * 打包本身成功，但内容不是纯文本 JSONL，界面要如实说明。
+       */
+      oversized?: true;
+    }
   | { ok: false; message: string };
 
 /**
@@ -48,7 +58,10 @@ interface LogFile {
  *
  * 文件名不能按字符串排序：`session.v3` 会排在 `session.jsonl.zstd` 前面，
  * `v9` 也会排在 `v10` 前面，结果可能把过期历史当成当前日志导出。
- * 比较顺序：版本号数值 → 同版本压缩编码优先 → 文件名。
+ *
+ * 代次的真实语义是「有没有后缀」：引擎当前写的是无后缀的 `session.jsonl`，
+ * 带 `.vN` 的全部是历史迁移留下的旧格式。所以先比「是否当前代次」，
+ * 再看版本号数值，同版本压缩编码优先。
  */
 function pickLatestLog(names: string[]): LogFile | null {
   let best: LogFile | null = null;
@@ -60,15 +73,23 @@ function pickLatestLog(names: string[]): LogFile | null {
       compressed: name.endsWith('.zstd'),
       name,
     };
-    if (
-      best === null ||
-      candidate.version > best.version ||
-      (candidate.version === best.version &&
-        candidate.compressed &&
-        !best.compressed) ||
-      (candidate.version === best.version &&
-        candidate.compressed === best.compressed &&
-        candidate.name > best.name)
+    if (best === null) {
+      best = candidate;
+      continue;
+    }
+    // 当前代次（无后缀）永远压过任何带后缀的旧代次
+    const candidateCurrent = !name.includes('.v');
+    const bestCurrent = !best.name.includes('.v');
+    if (candidateCurrent !== bestCurrent) {
+      if (candidateCurrent) best = candidate;
+      continue;
+    }
+    if (candidate.version > best.version) {
+      best = candidate;
+    } else if (
+      candidate.version === best.version &&
+      candidate.compressed &&
+      !best.compressed
     ) {
       best = candidate;
     }
@@ -194,7 +215,11 @@ async function decompressAllFrames(raw: Buffer): Promise<Buffer> {
     }
     parts.push(chunk);
     produced += chunk.length;
-    if (produced > MAX_LOG_BYTES) break;
+    // 超限绝不能当作正常结束：调用方会把只解了一半的内容当成完整日志打包，
+    // 用户拿到一份「导出成功」但对话残缺的压缩包。抛给上层按失败处理。
+    if (produced > MAX_LOG_BYTES) {
+      throw new Error('OVERSIZED_LOG');
+    }
     offset = end;
   }
 
@@ -204,14 +229,18 @@ async function decompressAllFrames(raw: Buffer): Promise<Buffer> {
 /** 读一份日志的正文；压缩日志逐帧解压，失败时退回原始字节，避免整个导出失败。 */
 async function readLogBody(
   log: FoundLog,
-): Promise<{ name: string; body: Uint8Array }> {
+): Promise<{ name: string; body: Uint8Array; oversized?: boolean }> {
   const raw = await fs.promises.readFile(log.logPath);
   const base = path.basename(log.logPath).replace(/\.zstd$/, '');
   const target = `sessions/${log.sessionId}/${base}`;
   if (!log.compressed) return { name: target, body: raw };
   try {
     return { name: target, body: await decompressAllFrames(raw) };
-  } catch {
+  } catch (err) {
+    if (err instanceof Error && err.message === 'OVERSIZED_LOG') {
+      // 解压后超过上限：保留原始压缩日志，导出照常完成但不谎报内容完整
+      return { name: `${target}.zstd`, body: raw, oversized: true };
+    }
     return { name: `${target}.zstd`, body: raw };
   }
 }
@@ -300,15 +329,23 @@ export async function exportSessionArchive(
     }
 
     const files: Record<string, Uint8Array> = {};
+    let oversized = false;
     for (const log of ordered) {
-      const { name, body } = await readLogBody(log);
-      files[name] = body;
+      const body = await readLogBody(log);
+      if (body.oversized) oversized = true;
+      files[body.name] = body.body;
     }
 
     const archive = await compressAsync(files);
     await fs.promises.mkdir(downloadDir, { recursive: true });
     const safeId = sessionId.replace(/[^A-Za-z0-9_-]/g, '_');
     const filePath = uniquePath(downloadDir, `dsh-session-${safeId}.zip`);
+    if (!filePath) {
+      return {
+        ok: false,
+        message: '下载目录中同名文件过多，请先清理后再导出',
+      };
+    }
     await fs.promises.writeFile(filePath, archive);
 
     return {
@@ -316,6 +353,7 @@ export async function exportSessionArchive(
       filePath,
       sessionCount: ordered.length,
       mediaCount: 0,
+      ...(oversized ? { oversized: true as const } : {}),
     };
   } catch (err) {
     return {
@@ -338,8 +376,12 @@ function compressAsync(files: Record<string, Uint8Array>): Promise<Uint8Array> {
   });
 }
 
-/** 目标文件已存在时追加 (n)，绝不静默覆盖用户已有的导出。 */
-function uniquePath(dir: string, filename: string): string {
+/**
+ * 目标文件已存在时追加 (n)，绝不静默覆盖用户已有的导出。
+ * 候选名全部用尽时返回 null，由调用方报错——退回已存在的路径会把用户
+ * 更早的导出覆盖掉，违背这个函数存在的意义。
+ */
+function uniquePath(dir: string, filename: string): string | null {
   const target = path.join(dir, filename);
   if (!fs.existsSync(target)) return target;
   const ext = path.extname(filename);
@@ -348,5 +390,5 @@ function uniquePath(dir: string, filename: string): string {
     const candidate = path.join(dir, `${stem} (${i})${ext}`);
     if (!fs.existsSync(candidate)) return candidate;
   }
-  return target;
+  return null;
 }
