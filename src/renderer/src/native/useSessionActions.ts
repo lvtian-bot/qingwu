@@ -28,6 +28,9 @@ interface SessionActionsOptions {
   setCurrentId: (sessionId: string | null) => void;
   setActiveWorkspaceId: (workspaceId: string | null) => void;
   setSettingsOpen: (open: boolean) => void;
+  /** 所有创建入口共用的成功后界面收尾，不包含打开已有会话。 */
+  onWorkspaceSessionCreated: (workspaceId: string) => void;
+  onWorkspaceDeleted: (workspaceId: string) => void;
 }
 
 export function useSessionActions({
@@ -46,6 +49,8 @@ export function useSessionActions({
   setCurrentId,
   setActiveWorkspaceId,
   setSettingsOpen,
+  onWorkspaceSessionCreated,
+  onWorkspaceDeleted,
 }: SessionActionsOptions) {
   const t = useT();
   const openSession = (sessionId: string) => {
@@ -83,6 +88,7 @@ export function useSessionActions({
     }
     if (reusable) {
       setCurrentId(reusable.sessionId);
+      if (wsId) onWorkspaceSessionCreated(wsId);
       return reusable.sessionId;
     }
     const value = await rpc<{ sessionId: string }>(Endpoints.sessionCreate, {
@@ -90,6 +96,7 @@ export function useSessionActions({
     });
     await refreshSessions();
     setCurrentId(value.sessionId);
+    if (wsId) onWorkspaceSessionCreated(wsId);
     return value.sessionId;
   };
 
@@ -141,6 +148,7 @@ export function useSessionActions({
   const handleWorkspaceDelete = (workspaceId: string): Promise<boolean> => {
     return (async () => {
       await rpc(Endpoints.workspaceDelete, { request: { workspaceId } });
+      onWorkspaceDeleted(workspaceId);
       if (activeWorkspaceId === workspaceId) {
         const rest = workspaces.find((w) => w.workspaceId !== workspaceId);
         setActiveWorkspaceId(rest?.workspaceId ?? null);

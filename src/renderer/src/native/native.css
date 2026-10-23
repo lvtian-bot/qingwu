@@ -740,9 +740,18 @@ textarea {
   flex: 1;
   min-width: 0;
   white-space: nowrap;
+  font-weight: 500;
+}
+
+.native-ws-title-text {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-weight: 500;
+}
+
+.native-ws-main[aria-disabled="true"],
+.native-sidebar-section-toggle:disabled {
+  cursor: default;
 }
 
 /* 悬停浮现的操作按钮（visibility 占位，保持行宽稳定） */

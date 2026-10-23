@@ -252,6 +252,13 @@ export function NativeApp({
     return map;
   }, [workspaces]);
 
+  const sidebar = useSessionSidebar(
+    sessions,
+    workspaces,
+    archivedSet,
+    currentId,
+  );
+
   const actions = useSessionActions({
     sessions,
     workspaces,
@@ -268,6 +275,8 @@ export function NativeApp({
     setCurrentId,
     setActiveWorkspaceId,
     setSettingsOpen,
+    onWorkspaceSessionCreated: sidebar.expandWorkspace,
+    onWorkspaceDeleted: sidebar.forgetCollapsedWorkspace,
   });
   const {
     openSession,
@@ -339,13 +348,6 @@ export function NativeApp({
       setCurrentId(null);
     }
   }, [currentId, archivedSet, setCurrentId]);
-
-  const sidebar = useSessionSidebar(
-    sessions,
-    workspaces,
-    archivedSet,
-    currentId,
-  );
 
   /** 会话 id → 摘要（待处理项归位要沿 parentSessionId 找归属会话）。 */
   const sessionById = useMemo(

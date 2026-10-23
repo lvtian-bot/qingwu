@@ -78,12 +78,14 @@ export function useSessionSidebar(
   /** 会话搜索（纯前端标题过滤）。 */
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchText, setSearchText] = useState("");
+  const searching = searchText.trim() !== "";
   /** 侧栏三大分区折叠状态（本地持久化）。 */
   const [collapsedSections, setCollapsedSections] = useState<
     Set<SidebarSectionKey>
   >(loadCollapsedSections);
   const toggleSectionCollapse = useCallback(
     (sectionKey: SidebarSectionKey) => {
+      if (searching) return;
       setCollapsedSections((prev) => {
         const next = new Set(prev);
         if (next.has(sectionKey)) {
@@ -95,40 +97,45 @@ export function useSessionSidebar(
         return next;
       });
     },
-    [],
+    [searching],
   );
   /** 项目会话组当前展示条数（缺省=默认条数；折叠项目或点「收起」即复位）。 */
   const [sessionVisibleByGroup, setSessionVisibleByGroup] = useState<
     Map<string, number>
   >(new Map());
-  /** 是否处于搜索态（决定项目分组是否穿透收起状态呈现）。 */
-  const searching = searchText.trim() !== "";
+  const currentWorkspaceId = useMemo(
+    () =>
+      workspaces.find((ws) => currentId && ws.sessionIds.includes(currentId))
+        ?.workspaceId ?? null,
+    [workspaces, currentId],
+  );
+
+  /** 搜索及当前会话所在项目强制展开，点击标题不改变保存的偏好。 */
+  const isWorkspaceGroupLocked = useCallback(
+    (workspaceId: string) => searching || workspaceId === currentWorkspaceId,
+    [searching, currentWorkspaceId],
+  );
 
   /**
    * 已折叠项目 + 必须保持可见的项目（当前会话所在项目），统一暴露为折叠状态。
    * 与官方一致：用户上次把某项目收起来了，但当前正在浏览它里面的会话时仍保持展开。
    */
   const collapsedWorkspaceIds = useMemo(() => {
-    if (!currentId) return collapsedWorkspaces;
-    const owner = workspaces.find((ws) => ws.sessionIds.includes(currentId));
-    if (!owner || !collapsedWorkspaces.has(owner.workspaceId)) {
+    if (!currentWorkspaceId || !collapsedWorkspaces.has(currentWorkspaceId)) {
       return collapsedWorkspaces;
     }
     const next = new Set(collapsedWorkspaces);
-    next.delete(owner.workspaceId);
+    next.delete(currentWorkspaceId);
     return next;
-  }, [collapsedWorkspaces, workspaces, currentId]);
+  }, [collapsedWorkspaces, currentWorkspaceId]);
 
   /**
    * 折叠/展开项目分组（持久化）；折叠时同步复位该组会话展示条数，再点开回到默认条数。
-   * 以界面当前呈现的状态（生效的收起状态）为切换依据，而不是持久化记录：
-   * 当前会话所在项目会被临时展开，此时点标题应真正收起（写入记录），而不是无效果。
-   * 搜索态不写入记录：搜索期间项目一律按展开呈现，此时点标题无法在结果里收起它，
-   * 若顺手删掉收起记录，退出搜索后项目会意外保持展开，和用户原来的偏好不一致。
+   * 搜索及当前会话所在项目强制展开，标题切换禁用，不暗中改写保存的偏好。
    */
   const toggleWorkspaceGroup = useCallback(
     (workspaceId: string) => {
-      if (searching) return;
+      if (isWorkspaceGroupLocked(workspaceId)) return;
       const collapsing = !collapsedWorkspaceIds.has(workspaceId);
       setCollapsedWorkspaces((prev) => {
         const next = new Set(prev);
@@ -149,10 +156,10 @@ export function useSessionSidebar(
         });
       }
     },
-    [collapsedWorkspaceIds, searching],
+    [collapsedWorkspaceIds, isWorkspaceGroupLocked],
   );
 
-  /** 展开指定项目（新建会话、跳转会话时使用）：只清折叠标记，未折叠时是空操作。 */
+  /** 新建/复用空白会话成功或删除项目成功后清除折叠标记。 */
   const expandWorkspace = useCallback((workspaceId: string) => {
     setCollapsedWorkspaces((prev) => {
       if (!prev.has(workspaceId)) return prev;
@@ -177,40 +184,22 @@ export function useSessionSidebar(
   );
 
   /**
-   * 清理某个项目的折叠记录，在它被删除时调用。
-   * 不在渲染期按「当前项目列表」批量清理：启动时项目列表先为空、基线到达后才填充，
-   * 那样会把整份记录误判成已删除项目的残留而清空，重启后收起状态就会丢失。
+   * 只清理本次运行中实际从列表移除的项目，包括最后一个项目。
+   * 启动空列表及首次基线不代表删除，不据此批量过滤保存记录。
    */
-  const forgetCollapsedWorkspace = useCallback((workspaceId: string) => {
-    setCollapsedWorkspaces((prev) => {
-      if (!prev.has(workspaceId)) return prev;
-      const next = new Set(prev);
-      next.delete(workspaceId);
-      saveCollapsedWorkspaces(next);
-      return next;
-    });
-  }, []);
-
-  /**
-   * 项目删除的兜底清理：删除请求成功与「项目已移除」推送谁先谁后不确定，
-   * 只靠请求成功回调会漏掉后者先到的情况，留下已不存在项目的折叠记录。
-   * 等基线到达后才启用（启动时项目列表为空，此时比对会把整份记录清空）。
-   */
-  const workspaceBaselineReadyRef = useRef(false);
+  const previousWorkspaceIdsRef = useRef(new Set<string>());
   const workspaceIdSet = useMemo(
     () => new Set(workspaces.map((ws) => ws.workspaceId)),
     [workspaces],
   );
   useEffect(() => {
-    if (workspaceIdSet.size === 0) return;
-    if (!workspaceBaselineReadyRef.current) {
-      workspaceBaselineReadyRef.current = true;
-      return;
-    }
+    const removed = new Set(
+      [...previousWorkspaceIdsRef.current].filter((id) => !workspaceIdSet.has(id)),
+    );
+    previousWorkspaceIdsRef.current = workspaceIdSet;
+    if (removed.size === 0) return;
     setCollapsedWorkspaces((prev) => {
-      const next = new Set(
-        Array.from(prev).filter((id) => workspaceIdSet.has(id)),
-      );
+      const next = new Set([...prev].filter((id) => !removed.has(id)));
       if (next.size === prev.size) return prev;
       saveCollapsedWorkspaces(next);
       return next;
@@ -330,13 +319,14 @@ export function useSessionSidebar(
     setSessionVisibleCount,
     toggleWorkspaceGroup,
     expandWorkspace,
-    forgetCollapsedWorkspace,
+    forgetCollapsedWorkspace: expandWorkspace,
     toggleWorkspacePin,
     toggleSessionPin,
     reorderPinnedWorkspace,
     getWorkspaceSessions,
     isWorkspaceListed,
     isWorkspaceGroupCollapsed,
+    isWorkspaceGroupLocked,
     pinnedWorkspaces,
     pinnedSessionsList,
     normalWorkspaces,
@@ -395,14 +385,13 @@ export function SessionSidebar({
     sessionVisibleByGroup,
     setSessionVisibleCount,
     toggleWorkspaceGroup,
-    expandWorkspace,
-    forgetCollapsedWorkspace,
     toggleWorkspacePin,
     toggleSessionPin,
     reorderPinnedWorkspace,
     getWorkspaceSessions,
     isWorkspaceListed,
     isWorkspaceGroupCollapsed,
+    isWorkspaceGroupLocked,
     pinnedWorkspaces,
     pinnedSessionsList,
     normalWorkspaces,
@@ -710,6 +699,7 @@ export function SessionSidebar({
                 <button
                   type="button"
                   className="native-sidebar-section-toggle"
+                  disabled={searching}
                   onClick={() => toggleSectionCollapse("pinned")}
                   aria-expanded={!isPinnedCollapsed}
                   title={
@@ -753,6 +743,7 @@ export function SessionSidebar({
                         <WorkspaceRow
                           workspace={ws}
                           collapsed={isWorkspaceGroupCollapsed(ws.workspaceId)}
+                          toggleDisabled={isWorkspaceGroupLocked(ws.workspaceId)}
                           pinned={true}
                           canMoveUp={canReorder && index > 0}
                           canMoveDown={
@@ -763,10 +754,7 @@ export function SessionSidebar({
                           dropPosition={dropPosition}
                           onToggle={() => toggleWorkspaceGroup(ws.workspaceId)}
                           onNewSession={() => {
-                            // 折叠的项目里新建会话：等创建成功再展开，
-                            // 失败时不改变项目的收起状态
                             void createSessionIn(ws.workspaceId)
-                              .then(() => expandWorkspace(ws.workspaceId))
                               .catch((err) =>
                                 setError(
                                   err instanceof Error
@@ -778,16 +766,7 @@ export function SessionSidebar({
                           onRename={(title) =>
                             handleWorkspaceRename(ws.workspaceId, title)
                           }
-                          onDelete={() => {
-                            void handleWorkspaceDelete(ws.workspaceId).then(
-                              (deleted) => {
-                                // 删除成功才清理折叠记录，失败时保持用户的收起偏好
-                                if (deleted) {
-                                  forgetCollapsedWorkspace(ws.workspaceId);
-                                }
-                              },
-                            );
-                          }}
+                          onDelete={() => void handleWorkspaceDelete(ws.workspaceId)}
                           onTogglePin={() => toggleWorkspacePin(ws.workspaceId)}
                           onMoveUp={() => handlePinnedMoveUp(index)}
                           onMoveDown={() => handlePinnedMoveDown(index)}
@@ -834,6 +813,7 @@ export function SessionSidebar({
               <button
                 type="button"
                 className="native-sidebar-section-toggle"
+                disabled={searching}
                 onClick={() => toggleSectionCollapse("projects")}
                 aria-expanded={!isProjectsCollapsed}
                 title={
@@ -897,6 +877,7 @@ export function SessionSidebar({
                       <WorkspaceRow
                         workspace={ws}
                         collapsed={isWorkspaceGroupCollapsed(ws.workspaceId)}
+                        toggleDisabled={isWorkspaceGroupLocked(ws.workspaceId)}
                         pinned={false}
                         canMoveUp={canReorder && index > 0}
                         canMoveDown={
@@ -907,10 +888,7 @@ export function SessionSidebar({
                         dropPosition={dropPosition}
                         onToggle={() => toggleWorkspaceGroup(ws.workspaceId)}
                         onNewSession={() => {
-                          // 折叠的项目里新建会话：等创建成功再展开，
-                          // 失败时不改变项目的收起状态
                           void createSessionIn(ws.workspaceId)
-                            .then(() => expandWorkspace(ws.workspaceId))
                             .catch((err) =>
                               setError(
                                 err instanceof Error
@@ -922,16 +900,7 @@ export function SessionSidebar({
                         onRename={(title) =>
                           handleWorkspaceRename(ws.workspaceId, title)
                         }
-                        onDelete={() => {
-                          void handleWorkspaceDelete(ws.workspaceId).then(
-                            (deleted) => {
-                              // 删除成功才清理折叠记录，失败时保持用户的收起偏好
-                              if (deleted) {
-                                forgetCollapsedWorkspace(ws.workspaceId);
-                              }
-                            },
-                          );
-                        }}
+                        onDelete={() => void handleWorkspaceDelete(ws.workspaceId)}
                         onTogglePin={() => toggleWorkspacePin(ws.workspaceId)}
                         onMoveUp={() => handleNormalMoveUp(index)}
                         onMoveDown={() => handleNormalMoveDown(index)}
@@ -962,6 +931,7 @@ export function SessionSidebar({
                 <button
                   type="button"
                   className="native-sidebar-section-toggle"
+                  disabled={searching}
                   onClick={() => toggleSectionCollapse("sessions")}
                   aria-expanded={!isSessionsCollapsed}
                   title={
