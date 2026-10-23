@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useT } from "../i18n";
 import type { PendingKind } from "./PendingInteraction";
 import { SessionRow, WorkspaceRow } from "./SidebarRows";
@@ -7,9 +7,12 @@ import type { SessionSummary, WorkspaceView } from "./protocol";
 import {
   calculateMoveAnchor,
   loadCollapsedSections,
+  loadCollapsedWorkspaces,
   loadPinnedData,
+  requiredSessionCount,
   reorderIds,
   saveCollapsedSections,
+  saveCollapsedWorkspaces,
   savePinnedData,
   sessionTitle,
   sortSessionsByRecency,
@@ -19,15 +22,20 @@ import {
 } from "./sidebar-data";
 import type { PanelWidth } from "./usePanelWidth";
 
-/** 搜索、置顶、分组展开与宽度由主组件持有生命周期，隐藏侧栏或切换界面时不丢失。 */
+/** 侧栏展示状态由主组件持有生命周期，隐藏侧栏或切换界面时不丢失。 */
 export function useSessionSidebar(
   sessions: SessionSummary[],
   workspaces: WorkspaceView[],
   archivedSet: Set<string>,
+  currentId: string | null,
 ) {
   const t = useT();
   /** 侧栏置顶数据（本地持久化）。 */
   const [pinnedData, setPinnedData] = useState<PinnedData>(loadPinnedData);
+  /** 已折叠的项目分组（本地持久化，未登记的默认展开）。 */
+  const [collapsedWorkspaces, setCollapsedWorkspaces] = useState<Set<string>>(
+    loadCollapsedWorkspaces,
+  );
   const toggleWorkspacePin = useCallback((workspaceId: string) => {
     setPinnedData((prev) => {
       const exists = prev.workspaces.includes(workspaceId);
@@ -70,16 +78,14 @@ export function useSessionSidebar(
   /** 会话搜索（纯前端标题过滤）。 */
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchText, setSearchText] = useState("");
-  /** 侧栏折叠的分组标题集合。 */
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
-    new Set(),
-  );
+  const searching = searchText.trim() !== "";
   /** 侧栏三大分区折叠状态（本地持久化）。 */
   const [collapsedSections, setCollapsedSections] = useState<
     Set<SidebarSectionKey>
   >(loadCollapsedSections);
   const toggleSectionCollapse = useCallback(
     (sectionKey: SidebarSectionKey) => {
+      if (searching) return;
       setCollapsedSections((prev) => {
         const next = new Set(prev);
         if (next.has(sectionKey)) {
@@ -91,12 +97,115 @@ export function useSessionSidebar(
         return next;
       });
     },
-    [],
+    [searching],
   );
-  /** 项目会话组当前展示条数（缺省=默认上限；折叠项目或点「收起」即复位）。 */
+  /** 项目会话组当前展示条数（缺省=默认条数；折叠项目或点「收起」即复位）。 */
   const [sessionVisibleByGroup, setSessionVisibleByGroup] = useState<
     Map<string, number>
   >(new Map());
+  const currentWorkspaceId = useMemo(
+    () =>
+      workspaces.find((ws) => currentId && ws.sessionIds.includes(currentId))
+        ?.workspaceId ?? null,
+    [workspaces, currentId],
+  );
+
+  /** 搜索及当前会话所在项目强制展开，点击标题不改变保存的偏好。 */
+  const isWorkspaceGroupLocked = useCallback(
+    (workspaceId: string) => searching || workspaceId === currentWorkspaceId,
+    [searching, currentWorkspaceId],
+  );
+
+  /**
+   * 已折叠项目 + 必须保持可见的项目（当前会话所在项目），统一暴露为折叠状态。
+   * 与官方一致：用户上次把某项目收起来了，但当前正在浏览它里面的会话时仍保持展开。
+   */
+  const collapsedWorkspaceIds = useMemo(() => {
+    if (!currentWorkspaceId || !collapsedWorkspaces.has(currentWorkspaceId)) {
+      return collapsedWorkspaces;
+    }
+    const next = new Set(collapsedWorkspaces);
+    next.delete(currentWorkspaceId);
+    return next;
+  }, [collapsedWorkspaces, currentWorkspaceId]);
+
+  /**
+   * 折叠/展开项目分组（持久化）；折叠时同步复位该组会话展示条数，再点开回到默认条数。
+   * 搜索及当前会话所在项目强制展开，标题切换禁用，不暗中改写保存的偏好。
+   */
+  const toggleWorkspaceGroup = useCallback(
+    (workspaceId: string) => {
+      if (isWorkspaceGroupLocked(workspaceId)) return;
+      const collapsing = !collapsedWorkspaceIds.has(workspaceId);
+      setCollapsedWorkspaces((prev) => {
+        const next = new Set(prev);
+        if (collapsing) {
+          next.add(workspaceId);
+        } else {
+          next.delete(workspaceId);
+        }
+        saveCollapsedWorkspaces(next);
+        return next;
+      });
+      if (collapsing) {
+        setSessionVisibleByGroup((visible) => {
+          if (!visible.has(workspaceId)) return visible;
+          const reset = new Map(visible);
+          reset.delete(workspaceId);
+          return reset;
+        });
+      }
+    },
+    [collapsedWorkspaceIds, isWorkspaceGroupLocked],
+  );
+
+  /** 新建/复用空白会话成功或删除项目成功后清除折叠标记。 */
+  const expandWorkspace = useCallback((workspaceId: string) => {
+    setCollapsedWorkspaces((prev) => {
+      if (!prev.has(workspaceId)) return prev;
+      const next = new Set(prev);
+      next.delete(workspaceId);
+      saveCollapsedWorkspaces(next);
+      return next;
+    });
+  }, []);
+
+  /** 切换项目内「展开显示」水位：展开一次多一批，点「收起」复位回默认条数（不持久化）。 */
+  const setSessionVisibleCount = useCallback(
+    (workspaceId: string, count: number | null) => {
+      setSessionVisibleByGroup((prev) => {
+        const next = new Map(prev);
+        if (count === null) next.delete(workspaceId);
+        else next.set(workspaceId, count);
+        return next;
+      });
+    },
+    [],
+  );
+
+  /**
+   * 只清理本次运行中实际从列表移除的项目，包括最后一个项目。
+   * 启动空列表及首次基线不代表删除，不据此批量过滤保存记录。
+   */
+  const previousWorkspaceIdsRef = useRef(new Set<string>());
+  const workspaceIdSet = useMemo(
+    () => new Set(workspaces.map((ws) => ws.workspaceId)),
+    [workspaces],
+  );
+  useEffect(() => {
+    const removed = new Set(
+      [...previousWorkspaceIdsRef.current].filter((id) => !workspaceIdSet.has(id)),
+    );
+    previousWorkspaceIdsRef.current = workspaceIdSet;
+    if (removed.size === 0) return;
+    setCollapsedWorkspaces((prev) => {
+      const next = new Set([...prev].filter((id) => !removed.has(id)));
+      if (next.size === prev.size) return prev;
+      saveCollapsedWorkspaces(next);
+      return next;
+    });
+  }, [workspaceIdSet]);
+
   /** 子代理会话（主对话派生的辅助会话）与已归档会话不在主列表展示。 */
   const visibleSessions = useMemo(
     () =>
@@ -145,8 +254,11 @@ export function useSessionSidebar(
     [filteredSessionById],
   );
 
-  /** 判断工作区在搜索态下是否应呈现（名称匹配或内部有匹配会话） */
-  const isWorkspaceMatched = useCallback(
+  /**
+   * 项目在搜索态下是否应出现在侧栏：名称匹配，或内部有匹配会话。
+   * 非搜索态项目一律出现（是否收起由 isWorkspaceGroupCollapsed 决定）。
+   */
+  const isWorkspaceListed = useCallback(
     (ws: WorkspaceView, wsSessions: SessionSummary[]) => {
       const keyword = searchText.trim().toLowerCase();
       if (!keyword) return true;
@@ -154,6 +266,18 @@ export function useSessionSidebar(
       return wsSessions.length > 0;
     },
     [searchText],
+  );
+
+  /**
+   * 项目分组此刻实际怎么呈现——列表是否露出、标题图标与箭头、点标题的语义，
+   * 三处共用这一份判断，避免各算各的出现「标题展开、下面却没列表」这类矛盾。
+   * 搜索态一律呈现为展开（否则收起项目里的匹配会话会被藏掉）；
+   * 非搜索态按生效的收起状态（collapsedWorkspaceIds 已剔除当前会话所在项目）。
+   */
+  const isWorkspaceGroupCollapsed = useCallback(
+    (workspaceId: string) =>
+      !searching && collapsedWorkspaceIds.has(workspaceId),
+    [searching, collapsedWorkspaceIds],
   );
 
   // 1. 置顶项目（保持置顶时间倒序）
@@ -191,15 +315,18 @@ export function useSessionSidebar(
     setSearchOpen,
     searchText,
     setSearchText,
-    collapsedGroups,
-    setCollapsedGroups,
     sessionVisibleByGroup,
-    setSessionVisibleByGroup,
+    setSessionVisibleCount,
+    toggleWorkspaceGroup,
+    expandWorkspace,
+    forgetCollapsedWorkspace: expandWorkspace,
     toggleWorkspacePin,
     toggleSessionPin,
     reorderPinnedWorkspace,
     getWorkspaceSessions,
-    isWorkspaceMatched,
+    isWorkspaceListed,
+    isWorkspaceGroupCollapsed,
+    isWorkspaceGroupLocked,
     pinnedWorkspaces,
     pinnedSessionsList,
     normalWorkspaces,
@@ -222,7 +349,7 @@ interface SessionSidebarProps {
   handleNewSession: () => Promise<void>;
   handleAddWorkspace: () => Promise<string | null>;
   handleWorkspaceRename: (id: string, title: string) => void;
-  handleWorkspaceDelete: (id: string) => void;
+  handleWorkspaceDelete: (id: string) => Promise<boolean>;
   handleWorkspaceReorder: (id: string, beforeId?: string) => Promise<void>;
   handleSessionRename: (id: string, title: string) => Promise<void>;
   handleSessionArchive: (id: string) => Promise<void>;
@@ -255,15 +382,16 @@ export function SessionSidebar({
     setSearchOpen,
     searchText,
     setSearchText,
-    collapsedGroups,
-    setCollapsedGroups,
     sessionVisibleByGroup,
-    setSessionVisibleByGroup,
+    setSessionVisibleCount,
+    toggleWorkspaceGroup,
     toggleWorkspacePin,
     toggleSessionPin,
     reorderPinnedWorkspace,
     getWorkspaceSessions,
-    isWorkspaceMatched,
+    isWorkspaceListed,
+    isWorkspaceGroupCollapsed,
+    isWorkspaceGroupLocked,
     pinnedWorkspaces,
     pinnedSessionsList,
     normalWorkspaces,
@@ -283,6 +411,7 @@ export function SessionSidebar({
 
   const searching = searchText.trim() !== "";
   const canReorder = !searching;
+  // 分区收起状态只在浏览态生效：搜索态一律视为展开，否则收起分区里的匹配结果会被整段藏掉
   const isPinnedCollapsed = !searching && collapsedSections.has("pinned");
   const isProjectsCollapsed = !searching && collapsedSections.has("projects");
   const isSessionsCollapsed = !searching && collapsedSections.has("sessions");
@@ -422,38 +551,43 @@ export function SessionSidebar({
       void handleWorkspaceReorder(ws.workspaceId, beforeId);
     }
   };
-  /** 折叠/展开项目分组；折叠时同时复位该组会话展示条数，再点开回到默认上限。 */
-  const toggleWorkspaceGroup = (workspaceId: string) => {
-    const collapsing = !collapsedGroups.has(workspaceId);
-    setCollapsedGroups((prev) => {
-      const next = new Set(prev);
-      if (collapsing) next.add(workspaceId);
-      else next.delete(workspaceId);
-      return next;
-    });
-    if (!collapsing) return;
-    setSessionVisibleByGroup((prev) => {
-      const next = new Map(prev);
-      next.delete(workspaceId);
-      return next;
-    });
+
+  /**
+   * 打开项目内的会话。会话行能点到就意味着它已经展示出来，这里不改变折叠记录：
+   * 当前会话所在项目可能只是临时展开，用户离开后仍应按之前收起的偏好收回。
+   */
+  const openWorkspaceSession = (_workspaceId: string, sessionId: string) => {
+    openSession(sessionId);
   };
 
   /**
-   * 项目内会话列表：默认最多展示 WORKSPACE_SESSION_PREVIEW_LIMIT 条，
+   * 项目内会话列表：默认露出 WORKSPACE_SESSION_PREVIEW_LIMIT 条；运行中、等待回应、
+   * 后台完成未读或当前会话的条目会自动抬升露出条数（最多 WORKSPACE_SESSION_AUTO_MAX）。
    * 每点一次「展开显示」多展示一批，全部展示后按钮变「收起」（复位回默认条数）。
-   * 折叠项目再点开同样回到默认条数。搜索态不设上限——匹配结果被折叠会让用户以为没搜到。
+   * 折叠项目再点开同样回到默认条数。
+   * 搜索态不设上限且忽略持久化的收起状态：项目标题出现在结果里、匹配会话却被藏着，
+   * 看起来就像搜索失灵。大分区（置顶/项目/会话）在搜索态同样自动穿透展开。
    */
   const renderWorkspaceSessions = (
     ws: WorkspaceView,
     wsSessions: SessionSummary[],
   ) => {
-    if (collapsedGroups.has(ws.workspaceId)) return null;
     const searching = searchText.trim() !== "";
-    const visibleCount = Math.max(
-      searching ? wsSessions.length : WORKSPACE_SESSION_PREVIEW_LIMIT,
-      sessionVisibleByGroup.get(ws.workspaceId) ?? 0,
+    // 与标题图标、箭头共用同一份呈现判断：收起时不渲染列表
+    if (isWorkspaceGroupCollapsed(ws.workspaceId)) return null;
+    const requiredCount = requiredSessionCount(wsSessions, (session) => ({
+      running: session.running,
+      pending: Boolean(pendingKindBySession.get(session.sessionId)),
+      unread: unreadFinishedSessionIds.has(session.sessionId),
+      current: session.sessionId === currentId,
+    }));
+    const baseCount = Math.max(
+      WORKSPACE_SESSION_PREVIEW_LIMIT,
+      requiredCount,
     );
+    const visibleCount = searching
+      ? wsSessions.length
+      : Math.max(baseCount, sessionVisibleByGroup.get(ws.workspaceId) ?? 0);
     const visible = wsSessions.slice(0, visibleCount);
     const hiddenCount = wsSessions.length - visible.length;
     return (
@@ -469,39 +603,31 @@ export function SessionSidebar({
             pending={pendingKindBySession.get(session.sessionId) ?? null}
             unread={unreadFinishedSessionIds.has(session.sessionId)}
             indented
-            onClick={() => openSession(session.sessionId)}
+            onClick={() => openWorkspaceSession(ws.workspaceId, session.sessionId)}
             onTogglePin={() => toggleSessionPin(session.sessionId)}
             onRename={(t) => void handleSessionRename(session.sessionId, t)}
             onArchive={() => void handleSessionArchive(session.sessionId)}
           />
         ))}
-        {!searching &&
-          (hiddenCount > 0 ||
-            visibleCount > WORKSPACE_SESSION_PREVIEW_LIMIT) && (
-            <button
-              type="button"
-              className="native-session-overflow"
-              aria-expanded={hiddenCount === 0}
-              onClick={() =>
-                setSessionVisibleByGroup((prev) => {
-                  const next = new Map(prev);
-                  if (hiddenCount > 0) {
-                    next.set(
-                      ws.workspaceId,
-                      visibleCount + WORKSPACE_SESSION_PREVIEW_LIMIT,
-                    );
-                  } else {
-                    next.delete(ws.workspaceId);
-                  }
-                  return next;
-                })
-              }
-            >
-              {hiddenCount > 0
-                ? t("sidebar.group.expand")
-                : t("sidebar.group.collapse")}
-            </button>
-          )}
+        {!searching && (hiddenCount > 0 || visibleCount > baseCount) && (
+          <button
+            type="button"
+            className="native-session-overflow"
+            aria-expanded={hiddenCount === 0}
+            onClick={() =>
+              setSessionVisibleCount(
+                ws.workspaceId,
+                hiddenCount > 0
+                  ? visibleCount + WORKSPACE_SESSION_PREVIEW_LIMIT
+                  : null,
+              )
+            }
+          >
+            {hiddenCount > 0
+              ? t("sidebar.group.expand")
+              : t("sidebar.group.collapse")}
+          </button>
+        )}
       </>
     );
   };
@@ -573,6 +699,7 @@ export function SessionSidebar({
                 <button
                   type="button"
                   className="native-sidebar-section-toggle"
+                  disabled={searching}
                   onClick={() => toggleSectionCollapse("pinned")}
                   aria-expanded={!isPinnedCollapsed}
                   title={
@@ -602,7 +729,7 @@ export function SessionSidebar({
                 <div className="native-sidebar-section-content">
                   {pinnedWorkspaces.map((ws, index) => {
                     const wsSessions = getWorkspaceSessions(ws);
-                    if (!isWorkspaceMatched(ws, wsSessions)) return null;
+                    if (!isWorkspaceListed(ws, wsSessions)) return null;
                     const isDragging = dragWsId === ws.workspaceId;
                     const dropPosition =
                       dragOverWs?.id === ws.workspaceId
@@ -615,7 +742,8 @@ export function SessionSidebar({
                       >
                         <WorkspaceRow
                           workspace={ws}
-                          collapsed={collapsedGroups.has(ws.workspaceId)}
+                          collapsed={isWorkspaceGroupCollapsed(ws.workspaceId)}
+                          toggleDisabled={isWorkspaceGroupLocked(ws.workspaceId)}
                           pinned={true}
                           canMoveUp={canReorder && index > 0}
                           canMoveDown={
@@ -625,17 +753,20 @@ export function SessionSidebar({
                           isDragging={isDragging}
                           dropPosition={dropPosition}
                           onToggle={() => toggleWorkspaceGroup(ws.workspaceId)}
-                          onNewSession={() =>
-                            void createSessionIn(ws.workspaceId).catch((err) =>
-                              setError(
-                                err instanceof Error ? err.message : String(err),
-                              ),
-                            )
-                          }
+                          onNewSession={() => {
+                            void createSessionIn(ws.workspaceId)
+                              .catch((err) =>
+                                setError(
+                                  err instanceof Error
+                                    ? err.message
+                                    : String(err),
+                                ),
+                              );
+                          }}
                           onRename={(title) =>
                             handleWorkspaceRename(ws.workspaceId, title)
                           }
-                          onDelete={() => handleWorkspaceDelete(ws.workspaceId)}
+                          onDelete={() => void handleWorkspaceDelete(ws.workspaceId)}
                           onTogglePin={() => toggleWorkspacePin(ws.workspaceId)}
                           onMoveUp={() => handlePinnedMoveUp(index)}
                           onMoveDown={() => handlePinnedMoveDown(index)}
@@ -682,6 +813,7 @@ export function SessionSidebar({
               <button
                 type="button"
                 className="native-sidebar-section-toggle"
+                disabled={searching}
                 onClick={() => toggleSectionCollapse("projects")}
                 aria-expanded={!isProjectsCollapsed}
                 title={
@@ -731,7 +863,7 @@ export function SessionSidebar({
               <div className="native-sidebar-section-content">
                 {normalWorkspaces.map((ws, index) => {
                   const wsSessions = getWorkspaceSessions(ws);
-                  if (!isWorkspaceMatched(ws, wsSessions)) return null;
+                  if (!isWorkspaceListed(ws, wsSessions)) return null;
                   const isDragging = dragWsId === ws.workspaceId;
                   const dropPosition =
                     dragOverWs?.id === ws.workspaceId
@@ -744,7 +876,8 @@ export function SessionSidebar({
                     >
                       <WorkspaceRow
                         workspace={ws}
-                        collapsed={collapsedGroups.has(ws.workspaceId)}
+                        collapsed={isWorkspaceGroupCollapsed(ws.workspaceId)}
+                        toggleDisabled={isWorkspaceGroupLocked(ws.workspaceId)}
                         pinned={false}
                         canMoveUp={canReorder && index > 0}
                         canMoveDown={
@@ -754,17 +887,20 @@ export function SessionSidebar({
                         isDragging={isDragging}
                         dropPosition={dropPosition}
                         onToggle={() => toggleWorkspaceGroup(ws.workspaceId)}
-                        onNewSession={() =>
-                          void createSessionIn(ws.workspaceId).catch((err) =>
-                            setError(
-                              err instanceof Error ? err.message : String(err),
-                            ),
-                          )
-                        }
+                        onNewSession={() => {
+                          void createSessionIn(ws.workspaceId)
+                            .catch((err) =>
+                              setError(
+                                err instanceof Error
+                                  ? err.message
+                                  : String(err),
+                              ),
+                            );
+                        }}
                         onRename={(title) =>
                           handleWorkspaceRename(ws.workspaceId, title)
                         }
-                        onDelete={() => handleWorkspaceDelete(ws.workspaceId)}
+                        onDelete={() => void handleWorkspaceDelete(ws.workspaceId)}
                         onTogglePin={() => toggleWorkspacePin(ws.workspaceId)}
                         onMoveUp={() => handleNormalMoveUp(index)}
                         onMoveDown={() => handleNormalMoveDown(index)}
@@ -795,6 +931,7 @@ export function SessionSidebar({
                 <button
                   type="button"
                   className="native-sidebar-section-toggle"
+                  disabled={searching}
                   onClick={() => toggleSectionCollapse("sessions")}
                   aria-expanded={!isSessionsCollapsed}
                   title={
