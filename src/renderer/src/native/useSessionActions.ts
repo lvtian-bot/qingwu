@@ -28,6 +28,9 @@ interface SessionActionsOptions {
   setCurrentId: (sessionId: string | null) => void;
   setActiveWorkspaceId: (workspaceId: string | null) => void;
   setSettingsOpen: (open: boolean) => void;
+  /** 所有创建入口共用的成功后界面收尾，不包含打开已有会话。 */
+  onWorkspaceSessionCreated: (workspaceId: string) => void;
+  onWorkspaceDeleted: (workspaceId: string) => void;
 }
 
 export function useSessionActions({
@@ -46,6 +49,8 @@ export function useSessionActions({
   setCurrentId,
   setActiveWorkspaceId,
   setSettingsOpen,
+  onWorkspaceSessionCreated,
+  onWorkspaceDeleted,
 }: SessionActionsOptions) {
   const t = useT();
   const openSession = (sessionId: string) => {
@@ -83,6 +88,7 @@ export function useSessionActions({
     }
     if (reusable) {
       setCurrentId(reusable.sessionId);
+      if (wsId) onWorkspaceSessionCreated(wsId);
       return reusable.sessionId;
     }
     const value = await rpc<{ sessionId: string }>(Endpoints.sessionCreate, {
@@ -90,6 +96,7 @@ export function useSessionActions({
     });
     await refreshSessions();
     setCurrentId(value.sessionId);
+    if (wsId) onWorkspaceSessionCreated(wsId);
     return value.sessionId;
   };
 
@@ -134,15 +141,23 @@ export function useSessionActions({
     }).catch((err) => setError(toErrMsg(err)));
   };
 
-  /** 删除工作区注册：会话归入「未分组」，活跃落点回退到剩余首个工作区。 */
-  const handleWorkspaceDelete = (workspaceId: string) => {
-    void (async () => {
+  /**
+   * 删除工作区注册：会话归入「未分组」，活跃落点回退到剩余首个工作区。
+   * 返回删除是否成功（失败已就地报错），调用方可据此做成功后的收尾清理。
+   */
+  const handleWorkspaceDelete = (workspaceId: string): Promise<boolean> => {
+    return (async () => {
       await rpc(Endpoints.workspaceDelete, { request: { workspaceId } });
+      onWorkspaceDeleted(workspaceId);
       if (activeWorkspaceId === workspaceId) {
         const rest = workspaces.find((w) => w.workspaceId !== workspaceId);
         setActiveWorkspaceId(rest?.workspaceId ?? null);
       }
-    })().catch((err) => setError(toErrMsg(err)));
+      return true;
+    })().catch((err) => {
+      setError(toErrMsg(err));
+      return false;
+    });
   };
 
   /** 调整工作区顺序（workspace/insertBefore，follow 流推送 order 帧自动更新列表）。 */
