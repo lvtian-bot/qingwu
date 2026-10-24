@@ -94,9 +94,10 @@ export function NativeApp({
    */
   const [panelOpen, setPanelOpen] = useState(false);
   const panelRef = useRef<RightPanelHandle>(null);
-  /** 会话流里的交付卡片、文件链接等入口：在面板中打开（预览）文件。 */
-  const openFileInPanel = useCallback((path: string) => {
-    panelRef.current?.openFile(path);
+  /** 会话流里的交付卡片、文件链接等入口：在面板中打开（预览）文件，
+   * 链接带行号锚点时一并传出，预览页定位到该行。 */
+  const openFileInPanel = useCallback((path: string, line?: number) => {
+    panelRef.current?.openFile(path, line);
   }, []);
   const [error, setError] = useState<string | null>(null);
   /** 正在处理的队列操作条目 id（按钮禁用态）。 */

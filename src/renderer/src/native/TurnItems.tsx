@@ -418,7 +418,7 @@ function AssistantBody({
   cwd?: string;
   onPreviewImage?: (url: string) => void;
   deliverables?: TurnDeliverable[];
-  onOpenFile?: (path: string) => void;
+  onOpenFile?: (path: string, line?: number) => void;
 }) {
   const t = useT();
   return (
@@ -499,8 +499,8 @@ export function TurnItems({
   onFork?: (atSeq: number) => void;
   /** 本轮显式交付的文件（收尾卡片）。 */
   deliverables?: TurnDeliverable[];
-  /** 点击交付卡片：在右侧面板打开文件预览。 */
-  onOpenFile?: (path: string) => void;
+  /** 点击交付卡片或回复中的文件链接：在右侧面板打开文件预览；链接带行号锚点时传出。 */
+  onOpenFile?: (path: string, line?: number) => void;
 }) {
   const [open, setOpen] = useState(false);
   const t = useT();

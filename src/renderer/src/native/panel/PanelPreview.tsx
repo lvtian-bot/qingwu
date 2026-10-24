@@ -277,12 +277,15 @@ export function PanelPreview({
 
   /** 行号跳转：openFile 携带行号时记录待定位行，内容就绪后滚动定位并高亮。 */
   const pendingLineRef = useRef<number | null>(null);
+  /** 上次自动翻页发起时的行数：行数没有增长说明读取失败，放弃本次跳转而不是无限重试。 */
+  const jumpProgressRef = useRef<{ line: number; lastLines: number } | null>(null);
   const [hitLine, setHitLine] = useState<number | null>(null);
   const hitTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (jump) {
       pendingLineRef.current = jump.line;
+      jumpProgressRef.current = null;
       setHitLine(null);
     }
   }, [jump?.seq]);
@@ -300,8 +303,16 @@ export function PanelPreview({
         // 行号超出文件范围或渲染上限，无从定位
         pendingLineRef.current = null;
       } else if (!state.loadingMore) {
-        // 目标行在后续分页，继续加载后由下一次状态更新重试
-        void loadMore();
+        const progress = jumpProgressRef.current;
+        if (progress && progress.line === line && progress.lastLines === state.lines) {
+          // 发起过翻页但行数没有增长：读取失败，停止自动重试，等用户重新点击链接
+          pendingLineRef.current = null;
+          jumpProgressRef.current = null;
+        } else {
+          jumpProgressRef.current = { line, lastLines: state.lines };
+          // 目标行在后续分页，继续加载后由下一次状态更新重试
+          void loadMore();
+        }
       }
       return;
     }
