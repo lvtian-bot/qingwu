@@ -414,6 +414,7 @@ export const RightPanel = forwardRef<RightPanelHandle, RightPanelProps>(
                   sessionId={sessionId}
                   cwd={cwd}
                   path={tab.path}
+                  active={tab.id === layout.activeTabId}
                   jump={
                     jump && isSameWorkspacePath(jump.path, tab.path, cwd)
                       ? jump

@@ -59,6 +59,8 @@ interface PanelPreviewProps {
   cwd?: string | null;
   /** 要预览的文件路径（绝对或相对会话工作区根）。 */
   path: string;
+  /** 本页签是否处于活动状态：隐藏页签保留行号跳转，切回可见时再定位。 */
+  active: boolean;
   /** 行号跳转指令（路径与本页相同时才传入）：seq 变化即定位到对应行。 */
   jump?: PanelJump | null;
   /** 点击图片时把原图交给应用的大图浮层。 */
@@ -71,6 +73,7 @@ export function PanelPreview({
   sessionId,
   cwd,
   path,
+  active,
   jump,
   onPreviewImage,
   onOpenFile,
@@ -316,22 +319,22 @@ export function PanelPreview({
       }
       return;
     }
-    pendingLineRef.current = null;
     const body = bodyRef.current;
     const row = body?.querySelector<HTMLElement>(`[data-line="${line}"]`);
-    if (body && row) {
-      // 用视口差值滚动使目标行居中；与行的 offsetParent 结构无关
-      const bodyRect = body.getBoundingClientRect();
-      const rowRect = row.getBoundingClientRect();
-      body.scrollTop += rowRect.top - bodyRect.top - body.clientHeight / 2;
-      setHitLine(line);
-      if (hitTimerRef.current != null) window.clearTimeout(hitTimerRef.current);
-      hitTimerRef.current = window.setTimeout(() => {
-        setHitLine(null);
-        hitTimerRef.current = null;
-      }, HIT_HIGHLIGHT_MS);
-    }
-  }, [state, jump?.seq, loadMore]);
+    // 页签隐藏（display:none）时测不到行位置：保留跳转指令，等活动页签切回后再定位
+    if (!active || !body || !row || body.clientHeight === 0) return;
+    pendingLineRef.current = null;
+    // 用视口差值滚动使目标行居中；与行的 offsetParent 结构无关
+    const bodyRect = body.getBoundingClientRect();
+    const rowRect = row.getBoundingClientRect();
+    body.scrollTop += rowRect.top - bodyRect.top - body.clientHeight / 2;
+    setHitLine(line);
+    if (hitTimerRef.current != null) window.clearTimeout(hitTimerRef.current);
+    hitTimerRef.current = window.setTimeout(() => {
+      setHitLine(null);
+      hitTimerRef.current = null;
+    }, HIT_HIGHLIGHT_MS);
+  }, [state, jump?.seq, loadMore, active]);
 
   useEffect(
     () => () => {
