@@ -358,7 +358,7 @@ interface MarkdownContextValue {
   cwd?: string | null;
   baseDir?: string | null;
   onPreviewImage?: (url: string) => void;
-  onOpenFile?: (path: string) => void;
+  onOpenFile?: (path: string, line?: number) => void;
 }
 
 const MarkdownContext = createContext<MarkdownContextValue>({});
@@ -520,7 +520,7 @@ function MarkdownLink({
         title={localFile.path}
         onClick={(e) => {
           e.preventDefault();
-          onOpenFile(localFile.path);
+          onOpenFile(localFile.path, localFile.line);
         }}
       >
         {children}
@@ -564,7 +564,7 @@ export interface MarkdownProps {
   cwd?: string | null;
   baseDir?: string | null;
   onPreviewImage?: (url: string) => void;
-  onOpenFile?: (path: string) => void;
+  onOpenFile?: (path: string, line?: number) => void;
 }
 
 function safeUrlTransform(url: string): string {

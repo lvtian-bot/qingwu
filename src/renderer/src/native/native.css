@@ -4132,6 +4132,22 @@ body.native-ui-active .titlebar {
   align-items: flex-start;
 }
 
+/* 行号跳转命中：短暂高亮后渐隐，定位行一眼可辨 */
+.panel-code-row.hit {
+  animation: panel-line-hit 2s ease-out;
+}
+
+@keyframes panel-line-hit {
+  0%,
+  35% {
+    background: rgba(59, 130, 246, 0.18);
+  }
+
+  100% {
+    background: transparent;
+  }
+}
+
 .panel-code-no {
   flex-shrink: 0;
   width: 44px;

@@ -20,11 +20,14 @@ import {
 } from "./workspace-files";
 import { FileGlyph } from "./glyphs";
 import { PathLabelParts } from "./PanelFiles";
+import type { PanelJump } from "./layout";
 
 /** 每页行数（引擎单页上限 5000，这里取较小值降低单次传输与渲染成本）。 */
 const PAGE_LINES = 2000;
 /** 代码/纯文本视图最多渲染的行数，超出部分提示在面板内查看完整内容。 */
 const MAX_RENDER_LINES = 20000;
+/** 行号命中高亮的停留时长；清除后同一行再次跳转仍能重新高亮。 */
+const HIT_HIGHLIGHT_MS = 2000;
 
 type PreviewState =
   | { phase: "loading" }
@@ -56,16 +59,19 @@ interface PanelPreviewProps {
   cwd?: string | null;
   /** 要预览的文件路径（绝对或相对会话工作区根）。 */
   path: string;
+  /** 行号跳转指令（路径与本页相同时才传入）：seq 变化即定位到对应行。 */
+  jump?: PanelJump | null;
   /** 点击图片时把原图交给应用的大图浮层。 */
   onPreviewImage?: (url: string) => void;
-  /** 点击文件链接时在面板内新建/切换标签页。 */
-  onOpenFile?: (path: string) => void;
+  /** 点击文件链接时在面板内新建/切换标签页；链接带行号锚点时一并传出。 */
+  onOpenFile?: (path: string, line?: number) => void;
 }
 
 export function PanelPreview({
   sessionId,
   cwd,
   path,
+  jump,
   onPreviewImage,
   onOpenFile,
 }: PanelPreviewProps) {
@@ -269,6 +275,60 @@ export function PanelPreview({
     [loadMore],
   );
 
+  /** 行号跳转：openFile 携带行号时记录待定位行，内容就绪后滚动定位并高亮。 */
+  const pendingLineRef = useRef<number | null>(null);
+  const [hitLine, setHitLine] = useState<number | null>(null);
+  const hitTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (jump) {
+      pendingLineRef.current = jump.line;
+      setHitLine(null);
+    }
+  }, [jump?.seq]);
+
+  useEffect(() => {
+    const line = pendingLineRef.current;
+    if (line == null || state.phase !== "text") return;
+    // Markdown 渲染视图没有行结构，行号锚点无处落点
+    if (state.info.kind === "markdown") {
+      pendingLineRef.current = null;
+      return;
+    }
+    if (line > state.lines) {
+      if (state.eof || state.lines >= MAX_RENDER_LINES) {
+        // 行号超出文件范围或渲染上限，无从定位
+        pendingLineRef.current = null;
+      } else if (!state.loadingMore) {
+        // 目标行在后续分页，继续加载后由下一次状态更新重试
+        void loadMore();
+      }
+      return;
+    }
+    pendingLineRef.current = null;
+    const body = bodyRef.current;
+    const row = body?.querySelector<HTMLElement>(`[data-line="${line}"]`);
+    if (body && row) {
+      // 用视口差值滚动使目标行居中；与行的 offsetParent 结构无关
+      const bodyRect = body.getBoundingClientRect();
+      const rowRect = row.getBoundingClientRect();
+      body.scrollTop += rowRect.top - bodyRect.top - body.clientHeight / 2;
+      setHitLine(line);
+      if (hitTimerRef.current != null) window.clearTimeout(hitTimerRef.current);
+      hitTimerRef.current = window.setTimeout(() => {
+        setHitLine(null);
+        hitTimerRef.current = null;
+      }, HIT_HIGHLIGHT_MS);
+    }
+  }, [state, jump?.seq, loadMore]);
+
+  useEffect(
+    () => () => {
+      if (hitTimerRef.current != null) window.clearTimeout(hitTimerRef.current);
+    },
+    [],
+  );
+
   const openExternal = () => {
     const abs =
       state.phase === "text" ||
@@ -419,7 +479,7 @@ export function PanelPreview({
           </div>
         )}
         {state.phase === "text" && state.info.kind !== "markdown" && (
-          <CodeRows text={state.text} info={state.info} wrap={wrap} />
+          <CodeRows text={state.text} info={state.info} wrap={wrap} hitLine={hitLine} />
         )}
         {state.phase === "text" && !state.eof && (
           <button
@@ -441,10 +501,12 @@ const CodeRows = memo(function CodeRows({
   text,
   info,
   wrap,
+  hitLine,
 }: {
   text: string;
   info: FileTypeInfo;
   wrap: boolean;
+  hitLine?: number | null;
 }) {
   const t = useT();
   const allLines = text.length > 0 ? text.split("\n") : [];
@@ -453,7 +515,11 @@ const CodeRows = memo(function CodeRows({
   return (
     <div className={`panel-code${wrap ? " wrap" : ""}`}>
       {lines.map((line, index) => (
-        <div className="panel-code-row" key={index}>
+        <div
+          className={`panel-code-row${index + 1 === hitLine ? " hit" : ""}`}
+          data-line={index + 1}
+          key={index}
+        >
           <span className="panel-code-no">{index + 1}</span>
           <span className="panel-code-ln">{line || " "}</span>
         </div>

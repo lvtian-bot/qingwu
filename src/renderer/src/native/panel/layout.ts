@@ -17,6 +17,13 @@ export interface PanelLayout {
   activeTabId: string | null;
 }
 
+/** 面板内的行号跳转指令：openFile 携带行号时发出，预览页按 seq 变化执行定位。 */
+export interface PanelJump {
+  path: string;
+  line: number;
+  seq: number;
+}
+
 export const PANEL_MIN_WIDTH = 240;
 export const PANEL_MAX_WIDTH = 720;
 export const PANEL_DEFAULT_WIDTH = 600;

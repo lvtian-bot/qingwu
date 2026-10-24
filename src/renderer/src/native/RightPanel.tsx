@@ -28,6 +28,7 @@ import {
   PANEL_MIN_WIDTH,
   savePanelLayout,
   savePanelWidth,
+  type PanelJump,
   type PanelLayout,
   type PanelTab,
 } from "./panel/layout";
@@ -44,8 +45,8 @@ import {
 export interface RightPanelHandle {
   /** 打开（或聚焦）工作区文件页；面板收起时先展开。 */
   openFiles: () => void;
-  /** 打开（或聚焦）一个文件的预览页；面板收起时先展开。 */
-  openFile: (path: string) => void;
+  /** 打开（或聚焦）一个文件的预览页；面板收起时先展开。带行号时定位到该行。 */
+  openFile: (path: string, line?: number) => void;
 }
 
 export interface RightPanelProps {
@@ -174,11 +175,18 @@ export const RightPanel = forwardRef<RightPanelHandle, RightPanelProps>(
       focusOrCreate({ id: "files", kind: "files" }, { replaceGuide: true });
     }, [focusOrCreate, onOpenChange]);
 
+    /** 行号跳转序号：同一行重复点击也要重新触发定位。 */
+    const jumpSeqRef = useRef(0);
+    const [jump, setJump] = useState<PanelJump | null>(null);
+
     const openFile = useCallback(
-      (path: string) => {
+      (path: string, line?: number) => {
         if (!path) return;
         onOpenChange(true);
         focusOrCreate({ id: `preview:${path}`, kind: "preview", path });
+        if (line && line > 0) {
+          setJump({ path, line, seq: ++jumpSeqRef.current });
+        }
       },
       [focusOrCreate, onOpenChange],
     );
@@ -406,6 +414,11 @@ export const RightPanel = forwardRef<RightPanelHandle, RightPanelProps>(
                   sessionId={sessionId}
                   cwd={cwd}
                   path={tab.path}
+                  jump={
+                    jump && isSameWorkspacePath(jump.path, tab.path, cwd)
+                      ? jump
+                      : null
+                  }
                   onPreviewImage={onPreviewImage}
                   onOpenFile={openFile}
                 />
