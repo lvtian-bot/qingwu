@@ -19,10 +19,81 @@
 //    412/466），对它们做键集比对会全量误报；optionalDependencies 同理
 //    不纳入（本项目未使用）；v1 老格式或损坏的 lock（无 packages 结构）
 //    明确报不可用。
+// 4. file: 本地目录依赖（@qingwu/dsh-profile）按内容双向核对副本与源
+//    目录：npm 在 lock 未变时跳过重拷贝这类依赖，副本内容陈旧（曾因
+//    缺少 Exa 插件配置致契约测试失败）只有内容比对能发现。npm 打包
+//    永远不会带入 .git、node_modules、.DS_Store，比对时跳过以免误报；
+//    副本未安装的情形由口径 2 的版本核对覆盖，不重复报。
 // 任一处对不上即失败并提示先安装，让问题在开工第一秒被拦下。
 
 const fs = require('node:fs');
 const path = require('node:path');
+
+// npm 打包本地目录依赖时的永久排除项，出现在源目录也不进副本
+const FILE_DEP_PACK_EXCLUDES = new Set(['.git', 'node_modules', '.DS_Store']);
+
+function listFilesRel(root) {
+  const files = [];
+  const walk = (current) => {
+    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+      if (entry.isDirectory()) {
+        if (!FILE_DEP_PACK_EXCLUDES.has(entry.name)) walk(path.join(current, entry.name));
+      } else if (entry.isFile()) {
+        files.push(path.relative(root, path.join(current, entry.name)));
+      }
+    }
+  };
+  walk(root);
+  return files.sort();
+}
+
+/**
+ * 核对 file: 本地目录依赖的副本内容与源目录一致。
+ *
+ * @param {string} dir 项目目录。
+ * @param {{ dependencies?: Record<string, string>, devDependencies?: Record<string, string> }} pkg
+ *   已解析的 package.json。
+ * @returns {Array<{ name: string, kind: 'filedep', detail: string }>}
+ *   detail 概述首个失配文件的相对路径与差异形态（内容不同、副本缺失、
+ *   副本多出、源目录缺失），最多列 5 条。副本目录不存在时不报，由版本
+ *   核对层统一覆盖。
+ */
+function collectFileDepMismatches(dir, pkg) {
+  const mismatches = [];
+  const specs = { ...pkg.dependencies, ...pkg.devDependencies };
+  for (const [name, spec] of Object.entries(specs)) {
+    if (typeof spec !== 'string' || !spec.startsWith('file:')) continue;
+    const sourceRoot = path.resolve(dir, spec.slice('file:'.length));
+    const copyRoot = path.join(dir, 'node_modules', name);
+    if (!fs.existsSync(copyRoot)) continue;
+    if (!fs.existsSync(sourceRoot)) {
+      mismatches.push({ name, kind: 'filedep', detail: '源目录缺失' });
+      continue;
+    }
+    const sourceFiles = listFilesRel(sourceRoot);
+    const copyFiles = listFilesRel(copyRoot);
+    const copySet = new Set(copyFiles);
+    const sourceSet = new Set(sourceFiles);
+    const details = [];
+    for (const rel of sourceFiles) {
+      if (!copySet.has(rel)) {
+        details.push(`${rel} 副本缺失`);
+      } else if (
+        !fs.readFileSync(path.join(sourceRoot, rel)).equals(fs.readFileSync(path.join(copyRoot, rel)))
+      ) {
+        details.push(`${rel} 内容不同`);
+      }
+    }
+    for (const rel of copyFiles) {
+      if (!sourceSet.has(rel)) details.push(`${rel} 副本多出`);
+    }
+    if (details.length > 0) {
+      const list = details.slice(0, 5).join('；') + (details.length > 5 ? '；等' : '');
+      mismatches.push({ name, kind: 'filedep', detail: list });
+    }
+  }
+  return mismatches;
+}
 
 /**
  * 比对一个项目目录的依赖一致性。
@@ -35,8 +106,9 @@ const path = require('node:path');
  *   mismatches 按核对层分类：declared 为某依赖区的声明与 lock 快照键集/版本
  *   失配（section 标注所在区，declared 或 lockDecl 为 undefined 表示单侧
  *   缺失），version 为实际安装与 lock 记录失配（installed 为 null 表示未
- *   安装）；missingLock 表示缺 lock 文件，unusableLock 表示 lock 无 packages
- *   结构（v1 老格式或损坏）。
+ *   安装），filedep 为 file: 本地目录依赖的副本内容与源目录失配（detail
+ *   概述差异文件）；missingLock 表示缺 lock 文件，unusableLock 表示 lock 无
+ *   packages 结构（v1 老格式或损坏）。
  */
 function collectMismatches(dir) {
   const readJson = (p) => JSON.parse(fs.readFileSync(p, 'utf8'));
@@ -103,6 +175,10 @@ function collectMismatches(dir) {
       mismatches.push({ name, kind: 'version', lock: lockVersion, installed });
     }
   }
+  // 第三层：file: 本地目录依赖的副本必须与源目录内容一致。版本核对只看
+  // package.json 的 version，副本内容陈旧（源目录改了、lock 未变、npm 跳过
+  // 重拷贝）在这一层暴露。
+  mismatches.push(...collectFileDepMismatches(dir, pkg));
   return { mismatches, missingLock: false, unusableLock: false };
 }
 
@@ -132,6 +208,10 @@ function main() {
       const lockDeclText = m.lockDecl ?? '未记录';
       const sectionText = m.section === 'devDependencies' ? '开发依赖区' : '生产依赖区';
       console.error(`  ${m.name}（${sectionText}）: 声明 ${declaredText} / lock 快照 ${lockDeclText}`);
+    } else if (m.kind === 'filedep') {
+      console.error(
+        `  ${m.name}（file: 本地依赖）: 副本与源目录不一致——${m.detail}；请删除 node_modules/${m.name} 后重新 npm install`,
+      );
     } else {
       const installedText = m.installed ?? '未安装';
       const lockText = m.lock ?? 'lock 未记录';
