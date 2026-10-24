@@ -190,6 +190,7 @@ const api: QingwuApi = {
     }
   },
   readClipboardFilePaths: () => ipcRenderer.invoke('clipboard:readFilePaths'),
+  setExaSearchKey: (value: string) => ipcRenderer.invoke('exa-key:set', { value }),
 };
 
 contextBridge.exposeInMainWorld('qingwu', api);

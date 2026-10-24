@@ -207,4 +207,6 @@ export interface QingwuApi {
   readClipboardFilePaths: () => Promise<
     Array<{ path: string; isDirectory: boolean; isImage: boolean }>
   >;
+  /** 把 Exa 搜索密钥写入 dsh 用户环境层（$DSH_HOME/.env）；Exa 插件从启动环境读取该密钥。 */
+  setExaSearchKey: (value: string) => Promise<void>;
 }

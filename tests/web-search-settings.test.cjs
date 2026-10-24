@@ -4,6 +4,16 @@ const { loadTs } = require("./helpers/load-ts.cjs");
 const fields = loadTs("src/renderer/src/native/web-search-settings.ts");
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 const deferred = () => { let resolve; const promise = new Promise((r) => { resolve = r; }); return { promise, resolve }; };
+// 模拟 $DSH_HOME/.env 的 EXA_API_KEY 与主进程写入通道；引擎凭据查询对用户环境层
+// 有回退，写入后 describe 应显示已配置。
+const exaEnvStore = {};
+let dropExaWrite = false;
+globalThis.window = {
+  qingwu: { setExaSearchKey: async (value) => {
+    if (dropExaWrite) throw new Error("环境层写入失败");
+    exaEnvStore.EXA_API_KEY = value;
+  } },
+};
 function initial() {
   return { writable: true, namespaces: [
     { ns: "web", revision: 1, base: { searchProvider: "deepseek-search-api", fetchProvider: "deepseek-fetch-api" },
@@ -15,6 +25,8 @@ function initial() {
 }
 function setup(data = initial()) {
   let cursor = 0;
+  exaEnvStore.EXA_API_KEY = undefined;
+  dropExaWrite = false;
   const hooks = [], effects = [], calls = [];
   const same = (a, b) => a && b && a.length === b.length && a.every((v, i) => Object.is(v, b[i]));
   let snapshot = structuredClone(data), credentialGate, readGate, failedNamespace, readError = false, dropCredential = false;
@@ -51,7 +63,10 @@ function setup(data = initial()) {
       }
       if (endpoint === "credentials/describe") {
         const reply = Object.fromEntries(args.refs.map((ref) => [ref,
-          credentialStore[ref] || { configured: false, writable: true, source: "none" }]));
+          credentialStore[ref]
+          || (ref === "EXA_API_KEY" && exaEnvStore.EXA_API_KEY
+            ? { configured: true, writable: true, source: "user-env" }
+            : { configured: false, writable: true, source: "none" })]));
         const gate = credentialGate; credentialGate = undefined;
         if (gate) await gate;
         return reply;
@@ -97,9 +112,9 @@ test("未改动的设置不会重写；仅改结果条数仍沿用模型密钥",
   assert.equal(h.calls.some((c) => c.endpoint === "credentials/set"), false);
 });
 
-test("两种服务的草稿分别保留；Exa 保存只写凭据与服务切换", async () => {
+test("两种服务的草稿分别保留；Exa 保存只写环境层与服务切换", async () => {
   const h = setup();
-  h.credentialStore.EXA_API_KEY = { configured: true, writable: true, source: "stored" };
+  exaEnvStore.EXA_API_KEY = "fixture-existing";
   await h.mount();
   assert.deepEqual(h.render().availableModes, ["api", "exa"]);
   edit(h, "limit", "30");
@@ -110,6 +125,8 @@ test("两种服务的草稿分别保留；Exa 保存只写凭据与服务切换"
   h.render().changeMode("exa");
   assert.equal(h.render().apiKeyDraft, "fixture-new-exa");
   await h.render().save();
+  assert.equal(exaEnvStore.EXA_API_KEY, "fixture-new-exa");
+  assert.equal(h.calls.some((c) => c.endpoint === "credentials/set"), false);
   assert.deepEqual(writes(h).map((c) => c.args.ns), ["web"]);
   assert.equal(h.render().mode, "exa");
   assert.equal(h.render().message, "settings.webSearch.exaSavedRestart");
@@ -117,7 +134,7 @@ test("两种服务的草稿分别保留；Exa 保存只写凭据与服务切换"
 
 test("切换写入失败时不启用服务，选择保留并能重试", async () => {
   const h = setup();
-  h.credentialStore.EXA_API_KEY = { configured: true, writable: true, source: "stored" };
+  exaEnvStore.EXA_API_KEY = "fixture-existing";
   await h.mount();
   h.render().changeMode("exa");
   h.failNamespace("web");
@@ -277,6 +294,7 @@ test("模型密钥引用与 Exa 重名时拒绝保存 Exa 密钥", async () => {
   await h.render().save();
   assert.equal(h.render().error, "settings.webSearch.exaKeyConflict");
   assert.equal(h.calls.some((c) => c.endpoint === "credentials/set"), false);
+  assert.equal(exaEnvStore.EXA_API_KEY, undefined);
   assert.equal(writes(h).length, 0);
 });
 
@@ -330,12 +348,13 @@ test("Exa 只有独立密钥：未配置时保存被拒绝且不产生任何写�
   assert.equal(writes(h).length, 0);
 });
 
-test("Exa 密钥走凭据通道，保存即切换服务并提示重启生效", async () => {
+test("Exa 密钥写入用户环境层，保存即切换服务并提示重启生效", async () => {
   const h = setup(); await h.mount();
   h.render().changeMode("exa");
   edit(h, "apiKeyDraft", "fixture-exa-value");
   await h.render().save();
-  assert.equal(h.calls.find((c) => c.endpoint === "credentials/set").args.ref, "EXA_API_KEY");
+  assert.equal(exaEnvStore.EXA_API_KEY, "fixture-exa-value");
+  assert.equal(h.calls.some((c) => c.endpoint === "credentials/set"), false);
   assert.deepEqual(writes(h).find((c) => c.args.ns === "web").args.ops, [
     { op: "set", path: ["searchProvider"], value: "exa" },
     { op: "set", path: ["fetchProvider"], value: "http" },
@@ -344,6 +363,37 @@ test("Exa 密钥走凭据通道，保存即切换服务并提示重启生效", a
   assert.equal(h.render().mode, "exa");
   assert.equal(h.render().hasKey, true);
   assert.equal(h.render().message, "settings.webSearch.exaSavedRestart");
+});
+
+test("Exa 密钥写入成功但切换失败后，重试成功仍提示重启生效", async () => {
+  const h = setup(); await h.mount();
+  h.render().changeMode("exa");
+  edit(h, "apiKeyDraft", "fixture-new-exa");
+  h.failNamespace("web");
+  await h.render().save();
+  assert.ok(h.render().error);
+  assert.equal(exaEnvStore.EXA_API_KEY, "fixture-new-exa");
+  assert.equal(h.render().apiKeyDraft, "");
+  h.failNamespace(undefined);
+  await h.render().save();
+  assert.equal(h.render().error, null);
+  assert.equal(h.render().message, "settings.webSearch.exaSavedRestart");
+});
+
+test("Exa 环境层写入失败时不启用服务，明文输入保留待重试", async () => {
+  const h = setup();
+  dropExaWrite = true;
+  await h.mount();
+  h.render().changeMode("exa");
+  edit(h, "apiKeyDraft", "fixture-exa-value");
+  await h.render().save();
+  assert.ok(h.render().error);
+  assert.equal(h.render().apiKeyDraft, "fixture-exa-value");
+  assert.equal(writes(h).length, 0);
+  dropExaWrite = false;
+  await h.render().save();
+  assert.equal(h.render().error, null);
+  assert.equal(exaEnvStore.EXA_API_KEY, "fixture-exa-value");
 });
 
 test("刷新和翻译变化保留未保存字段；新的默认值仍能更新未编辑字段", async () => {

@@ -13,6 +13,9 @@ interface CredentialState extends Partial<CredentialInfo> { known: boolean }
 export interface WebSearchSettingsOptions { onRefreshCredentials?: () => void }
 const emptyDraft = (): SearchDraft => ({ limit: "", keySource: "model", apiKeyDraft: "" });
 const emptyDrafts = (): Record<SearchService, SearchDraft> => ({ api: emptyDraft(), exa: emptyDraft() });
+/** 本次界面会话内已写入 Exa 密钥且引擎尚未重启：后续保存成功仍提示"重启生效"，
+ * 覆盖密钥已写入但服务切换失败后的重试。应用重启（引擎随之重启）后自然清零。 */
+let exaKeyWritten = false;
 /** 服务是否具备引擎设置命名空间；Exa 无运行时配置面，只参与切换与凭据。 */
 function serviceNamespace(snapshot: SettingsDescribeValue | null, service: SearchService) {
   const config = SEARCH_SERVICES[service];
@@ -187,7 +190,14 @@ export function useWebSearchSettings(options?: WebSearchSettingsOptions) {
     let serviceSaved = false;
     try {
       if (keyChange) {
-        await rpc(Endpoints.credentialsSet, { ref, value: selectedDraft.apiKeyDraft.trim() });
+        if (targetMode === "exa") {
+          // Exa 插件只读启动环境、不接凭据体系；密钥由主进程写入用户环境层
+          // （$DSH_HOME/.env），凭据状态查询经引擎回退层同样覆盖该文件。
+          await window.qingwu.setExaSearchKey(selectedDraft.apiKeyDraft.trim());
+          exaKeyWritten = true;
+        } else {
+          await rpc(Endpoints.credentialsSet, { ref, value: selectedDraft.apiKeyDraft.trim() });
+        }
         const verified = await rpc<Record<string, CredentialInfo>>(Endpoints.credentialsDescribe, { refs: [ref] });
         if (!verified?.[ref]?.configured) throw new Error("凭据未保存");
         publishDrafts({ ...draftsRef.current, [targetMode]: { ...draftsRef.current[targetMode], apiKeyDraft: "" } });
@@ -202,7 +212,8 @@ export function useWebSearchSettings(options?: WebSearchSettingsOptions) {
         ns: "web", ops: selectOps, expectedRevision: namespace(current, "web")!.revision,
       });
       if (await load(targetMode) && alive.current) setMessage(translation.current(
-        targetMode === "exa" && keyChange ? "settings.webSearch.exaSavedRestart" : "settings.webSearch.savedSuccess",
+        targetMode === "exa" && (keyChange || exaKeyWritten)
+          ? "settings.webSearch.exaSavedRestart" : "settings.webSearch.savedSuccess",
       ));
     } catch {
       // 错误原文可能含凭据，不放进界面或日志。回读快照供重试，保留未保存草稿。
