@@ -68,6 +68,7 @@ export const settings = {
     readOnly: "当前运行环境设置处于只读模式，不可修改",
     invalidLimit: "请输入正整数；搜索支持 1–50 条结果。",
     keyRequired: "请填写独立搜索密钥，或选择沿用 DeepSeek 模型密钥。",
+    exaKeyConflict: "模型密钥引用与 Exa 冲突，无法保存 Exa 密钥；请先调整模型密钥配置。",
     externalDesc: "当前使用其他搜索配置，已保留原设置。选择 DeepSeek 服务后可在此配置。",
     provider: {
       label: "搜索服务",

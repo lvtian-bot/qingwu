@@ -69,6 +69,7 @@ export const settings: typeof zhSettings = {
     readOnly: "Settings are currently read-only.",
     invalidLimit: "Enter a positive integer; search supports 1–50 results.",
     keyRequired: "Enter a separate search key or use the DeepSeek model key.",
+    exaKeyConflict: "The model key reference conflicts with Exa; adjust the model key configuration before saving an Exa key.",
     externalDesc: "Your existing search configuration is retained. Select a DeepSeek service to configure it here.",
     provider: {
       label: "Search service",

@@ -24,8 +24,10 @@ export const SEARCH_SERVICES = {
   },
 } as const;
 export const SEARCH_SERVICES_LIST = ["api", "exa"] as const;
-/** 已下线的旧版搜索提供方 id；检测到存量选择时由设置页自动迁移到新版。 */
+/** 已下线的旧版搜索提供方配对（dsh-base 默认组合）；自动迁移仅识别这一完整组合，
+ * 搭配自定义抓取服务的配置不属于旧版默认，按外部配置保留，不自动改写。 */
 export const LEGACY_SEARCH_PROVIDER = "deepseek-official";
+export const LEGACY_FETCH_PROVIDER = "http";
 export function section(ns?: SettingsNamespaceView): Record<string, unknown> {
   return (ns?.value ?? {}) as Record<string, unknown>;
 }
@@ -126,10 +128,14 @@ export function selectionOps(snapshot: SettingsDescribeValue, service: SearchSer
     return base[field] === value ? { op: "unset", path: [field] } : { op: "set", path: [field], value };
   });
 }
-/** 旧版迁移的凭据绑定：旧版选用独立搜索引用时，切换前把同一引用绑定到新版，
- * 避免只配过独立密钥的用户迁移后失去鉴权。字面密钥不读取明文，无法迁移。 */
+/** 旧版迁移的凭据绑定：旧版命名空间显式配置过独立搜索引用时，切换前把同一引用
+ * 绑定到新版，避免只配过独立密钥的用户迁移后失去鉴权。旧版命名空间缺失或未显式
+ * 配置引用时不迁移——默认引用名不代表存在独立绑定，误绑会断开新版的模型密钥继承。
+ * 字面密钥不读取明文，无法迁移。 */
 export function legacyCredentialOps(snapshot: SettingsDescribeValue): SettingsPathOp[] {
-  const legacyRef = searchKeyRef(namespace(snapshot, "web-search-deepseek"));
+  const declared = section(namespace(snapshot, "web-search-deepseek")).apiKeyEnv;
+  if (typeof declared !== "string" || !declared.trim()) return [];
+  const legacyRef = declared.trim();
   if (legacyRef === modelKeyRef(snapshot)) return [];
   const target = namespace(snapshot, SEARCH_SERVICES.api.ns);
   if (!target || searchKeyRef(target) === legacyRef) return [];

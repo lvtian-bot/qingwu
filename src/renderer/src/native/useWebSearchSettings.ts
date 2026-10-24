@@ -3,9 +3,9 @@ import { useT } from "../i18n";
 import { Endpoints, type CredentialInfo, type SettingsDescribeValue } from "./protocol";
 import { rpc } from "./rpc";
 import {
-  SEARCH_SERVICES, SEARCH_SERVICES_LIST, LEGACY_SEARCH_PROVIDER, configOps, draftFrom,
-  hasLiteralKey, legacyCredentialOps, modelKeyRef, namespace, rebaseDraft, searchKeyRef,
-  section, selectedMode, selectionOps, targetKeyRef, validateDraft,
+  SEARCH_SERVICES, SEARCH_SERVICES_LIST, LEGACY_SEARCH_PROVIDER, LEGACY_FETCH_PROVIDER,
+  configOps, draftFrom, hasLiteralKey, legacyCredentialOps, modelKeyRef, namespace,
+  rebaseDraft, searchKeyRef, section, selectedMode, selectionOps, targetKeyRef, validateDraft,
   type SearchDraft, type SearchMode, type SearchService,
 } from "./web-search-settings";
 
@@ -13,6 +13,11 @@ interface CredentialState extends Partial<CredentialInfo> { known: boolean }
 export interface WebSearchSettingsOptions { onRefreshCredentials?: () => void }
 const emptyDraft = (): SearchDraft => ({ limit: "", keySource: "model", apiKeyDraft: "" });
 const emptyDrafts = (): Record<SearchService, SearchDraft> => ({ api: emptyDraft(), exa: emptyDraft() });
+/** Exa 凭据已落盘但插件重建尚未成功的标记。模块级：设置页关闭再打开后仍需补做重建；
+ * renderer 整体重载会丢失，届时新密钥待下次 Exa 保存或引擎重启后生效。 */
+let pendingExaReload = false;
+/** 仅供测试观察待重建状态。 */
+export function exaReloadPending(): boolean { return pendingExaReload; }
 
 export function useWebSearchSettings(options?: WebSearchSettingsOptions) {
   const t = useT();
@@ -23,8 +28,6 @@ export function useWebSearchSettings(options?: WebSearchSettingsOptions) {
   const snapshot = useRef<SettingsDescribeValue | null>(null);
   const draftsRef = useRef(emptyDrafts());
   const modeRef = useRef<SearchMode>("api");
-  // Exa 凭据已落盘但插件重建尚未成功时保持 true，重试时继续补做重建写入。
-  const pendingExaReload = useRef(false);
   const savingRef = useRef(false);
   const alive = useRef(true);
   const loadSequence = useRef(0);
@@ -68,8 +71,12 @@ export function useWebSearchSettings(options?: WebSearchSettingsOptions) {
       let result = await rpc<SettingsDescribeValue>(Endpoints.settingsDescribe, {});
       if (!alive.current || sequence !== loadSequence.current) return false;
       if (!Array.isArray(result?.namespaces) || !namespace(result, "web")) throw new Error("配置不可用");
-      // 旧版搜索已下线：可写时静默迁移到新版，普通用户无感；失败则按外部配置兜底，下次进入再试。
-      if (result.writable === true && section(namespace(result, "web")).searchProvider === LEGACY_SEARCH_PROVIDER) {
+      // 旧版搜索已下线：检测到旧版默认组合（旧版搜索 + 官方匿名抓取）且可写时静默迁移
+      // 到新版，普通用户无感；失败或其他非标准搭配按外部配置兜底，不自动改写。
+      const webSection = section(namespace(result, "web"));
+      const legacyPair = webSection.searchProvider === LEGACY_SEARCH_PROVIDER
+        && webSection.fetchProvider === LEGACY_FETCH_PROVIDER;
+      if (result.writable === true && legacyPair) {
         const webNs = namespace(result, "web");
         const credOps = legacyCredentialOps(result);
         const selectOps = selectionOps(result, "api");
@@ -159,7 +166,10 @@ export function useWebSearchSettings(options?: WebSearchSettingsOptions) {
     const invalid = validateDraft(targetMode, selectedDraft);
     if (invalid) { setError(translation.current("settings.webSearch." + invalid)); return; }
     const keyChange = selectedDraft.keySource === "independent" && Boolean(selectedDraft.apiKeyDraft.trim());
-    const ops = configOps(current, targetMode, selectedDraft, keyChange || pendingExaReload.current);
+    if (targetMode === "exa" && keyChange && modelKeyRef(current) === SEARCH_SERVICES.exa.keyRef) {
+      setError(translation.current("settings.webSearch.exaKeyConflict")); return;
+    }
+    const ops = configOps(current, targetMode, selectedDraft, keyChange || pendingExaReload);
     const selectOps = selectionOps(current, targetMode);
     if (!current.writable && (ops.length || selectOps.length)) {
       setError(translation.current("settings.webSearch.readOnly")); return;
@@ -181,14 +191,14 @@ export function useWebSearchSettings(options?: WebSearchSettingsOptions) {
         const verified = await rpc<Record<string, CredentialInfo>>(Endpoints.credentialsDescribe, { refs: [ref] });
         if (!verified?.[ref]?.configured) throw new Error("凭据未保存");
         // 仅 Exa 凭据写入置位待重建；DeepSeek 的保存不得清除尚未完成的 Exa 重建。
-        if (targetMode === "exa") pendingExaReload.current = true;
+        if (targetMode === "exa") pendingExaReload = true;
         publishDrafts({ ...draftsRef.current, [targetMode]: { ...draftsRef.current[targetMode], apiKeyDraft: "" } });
         callbacks.current?.onRefreshCredentials?.();
       }
       // 与 dsh 官方一致：目标服务设置先落盘，最后才启用它。
       if (ops.length) {
         await rpc(Endpoints.settingsMutate, { ns: targetNs.ns, ops, expectedRevision: targetNs.revision });
-        if (ops.some((op) => op.path[0] === SEARCH_SERVICES.exa.limitField)) pendingExaReload.current = false;
+        if (ops.some((op) => op.path[0] === SEARCH_SERVICES.exa.limitField)) pendingExaReload = false;
         serviceSaved = true;
       }
       if (selectOps.length) await rpc(Endpoints.settingsMutate, {

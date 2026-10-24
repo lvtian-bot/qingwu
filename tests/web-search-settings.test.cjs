@@ -21,7 +21,7 @@ function setup(data = initial()) {
   let snapshot = structuredClone(data), credentialGate, readGate, failedNamespace, readError = false, dropCredential = false;
   const credentialStore = { DEEPSEEK_API_KEY: { configured: true, writable: true, source: "stored" } };
   let refreshed = 0;
-  const { useWebSearchSettings } = loadTs("src/renderer/src/native/useWebSearchSettings.ts", {
+  const mod = loadTs("src/renderer/src/native/useWebSearchSettings.ts", {
     react: {
       useState(initialValue) {
         const index = cursor++;
@@ -76,9 +76,9 @@ function setup(data = initial()) {
       }
     } },
   });
-  function render() { cursor = 0; return useWebSearchSettings({ onRefreshCredentials: () => refreshed++ }); }
+  function render() { cursor = 0; return mod.useWebSearchSettings({ onRefreshCredentials: () => refreshed++ }); }
   return {
-    calls, credentialStore, render, snapshot: () => snapshot, refreshed: () => refreshed,
+    calls, credentialStore, render, mod, snapshot: () => snapshot, refreshed: () => refreshed,
     async mount() { render(); effects.shift()(); await tick(); return render(); },
     blockCredentials(gate) { credentialGate = gate.promise; },
     blockRead(gate) { readGate = gate.promise; },
@@ -248,6 +248,36 @@ test("旧版搜索存量可写时静默迁移到新版", async () => {
   assert.equal(h.snapshot().namespaces[0].value.searchProvider, "deepseek-search-api");
 });
 
+test("旧版搜索搭配自定义抓取时不自动迁移，按外部配置展示", async () => {
+  const data = initial();
+  data.namespaces[0].value = { searchProvider: "deepseek-official", fetchProvider: "custom-fetch" };
+  const h = setup(data); await h.mount();
+  assert.equal(writes(h).length, 0);
+  assert.equal(h.render().mode, "external");
+  assert.equal(h.render().externalProvider, "deepseek-official");
+});
+
+test("旧版命名空间缺失时不迁移凭据绑定，保持新版继承模型引用", async () => {
+  const data = initial();
+  data.namespaces[0].value = { searchProvider: "deepseek-official", fetchProvider: "http" };
+  data.namespaces[3].value = { apiKeyEnv: "MY_MODEL_KEY" };
+  const h = setup(data); await h.mount();
+  assert.equal(writes(h).some((c) => c.args.ns === "web-deepseek-api"), false);
+  assert.equal(h.render().mode, "api");
+});
+
+test("模型密钥引用与 Exa 重名时拒绝保存 Exa 密钥", async () => {
+  const data = initial();
+  data.namespaces[3].value = { apiKeyEnv: "EXA_API_KEY" };
+  const h = setup(data); await h.mount();
+  h.render().changeMode("exa");
+  edit(h, "apiKeyDraft", "fixture-exa-value");
+  await h.render().save();
+  assert.equal(h.render().error, "settings.webSearch.exaKeyConflict");
+  assert.equal(h.calls.some((c) => c.endpoint === "credentials/set"), false);
+  assert.equal(writes(h).length, 0);
+});
+
 test("旧版独立搜索引用随迁移绑定到新版，不丢独立鉴权", async () => {
   const data = initial();
   data.namespaces[0].value = { searchProvider: "deepseek-official", fetchProvider: "http" };
@@ -326,9 +356,11 @@ test("Exa 换密钥后重建写入失败，重试不重输密钥仍补做插件�
   await h.render().save();
   assert.ok(h.render().error);
   assert.equal(h.render().apiKeyDraft, "");
+  assert.equal(h.mod.exaReloadPending(), true);
   h.failNamespace(undefined);
   await h.render().save();
   assert.equal(h.render().error, null);
+  assert.equal(h.mod.exaReloadPending(), false);
   const exaWrites = writes(h).filter((c) => c.args.ns === "web-search-exa");
   assert.deepEqual(exaWrites[exaWrites.length - 1].args.ops, [
     { op: "set", path: ["numResults"], value: 10 },
