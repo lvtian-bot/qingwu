@@ -294,6 +294,11 @@ export function PanelPreview({
       pendingLineRef.current = jump.line;
       jumpProgressRef.current = null;
       setHitLine(null);
+    } else {
+      // 指令消失（无行号重开、被新指令取代后的清理回执）：取消本地未完成的
+      // 导航——不再继续翻页定位，也不会在完成后误消费其他请求的指令
+      pendingLineRef.current = null;
+      jumpProgressRef.current = null;
     }
   }, [jump?.seq]);
 
