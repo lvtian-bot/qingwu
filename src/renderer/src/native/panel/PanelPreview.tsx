@@ -20,11 +20,14 @@ import {
 } from "./workspace-files";
 import { FileGlyph } from "./glyphs";
 import { PathLabelParts } from "./PanelFiles";
+import type { PanelJump } from "./layout";
 
 /** 每页行数（引擎单页上限 5000，这里取较小值降低单次传输与渲染成本）。 */
 const PAGE_LINES = 2000;
 /** 代码/纯文本视图最多渲染的行数，超出部分提示在面板内查看完整内容。 */
 const MAX_RENDER_LINES = 20000;
+/** 行号命中高亮的停留时长；清除后同一行再次跳转仍能重新高亮。 */
+const HIT_HIGHLIGHT_MS = 2000;
 
 type PreviewState =
   | { phase: "loading" }
@@ -56,16 +59,26 @@ interface PanelPreviewProps {
   cwd?: string | null;
   /** 要预览的文件路径（绝对或相对会话工作区根）。 */
   path: string;
+  /** 本页签是否处于活动状态：隐藏页签保留行号跳转，切回可见时再定位。 */
+  active: boolean;
+  /** 行号跳转指令（路径与本页相同时才传入）：seq 变化即定位到对应行。 */
+  jump?: PanelJump | null;
+  /** 跳转指令被消费（定位完成或放弃）后的回执：面板据此清除指令，
+   * 防止预览页签重开时把已完成的旧指令当作新跳转重放。 */
+  onJumpConsumed?: () => void;
   /** 点击图片时把原图交给应用的大图浮层。 */
   onPreviewImage?: (url: string) => void;
-  /** 点击文件链接时在面板内新建/切换标签页。 */
-  onOpenFile?: (path: string) => void;
+  /** 点击文件链接时在面板内新建/切换标签页；链接带行号锚点时一并传出。 */
+  onOpenFile?: (path: string, line?: number) => void;
 }
 
 export function PanelPreview({
   sessionId,
   cwd,
   path,
+  active,
+  jump,
+  onJumpConsumed,
   onPreviewImage,
   onOpenFile,
 }: PanelPreviewProps) {
@@ -269,6 +282,81 @@ export function PanelPreview({
     [loadMore],
   );
 
+  /** 行号跳转：openFile 携带行号时记录待定位行，内容就绪后滚动定位并高亮。 */
+  const pendingLineRef = useRef<number | null>(null);
+  /** 上次自动翻页发起时的行数：行数没有增长说明读取失败，放弃本次跳转而不是无限重试。 */
+  const jumpProgressRef = useRef<{ line: number; lastLines: number } | null>(null);
+  const [hitLine, setHitLine] = useState<number | null>(null);
+  const hitTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (jump) {
+      pendingLineRef.current = jump.line;
+      jumpProgressRef.current = null;
+      setHitLine(null);
+    } else {
+      // 指令消失（无行号重开、被新指令取代后的清理回执）：取消本地未完成的
+      // 导航——不再继续翻页定位，也不会在完成后误消费其他请求的指令
+      pendingLineRef.current = null;
+      jumpProgressRef.current = null;
+    }
+  }, [jump?.seq]);
+
+  useEffect(() => {
+    const line = pendingLineRef.current;
+    if (line == null || state.phase !== "text") return;
+    /** 指令消费（定位完成或放弃）：清待定位行并回执面板清除指令。 */
+    const consume = () => {
+      pendingLineRef.current = null;
+      onJumpConsumed?.();
+    };
+    // Markdown 渲染视图没有行结构，行号锚点无处落点
+    if (state.info.kind === "markdown") {
+      consume();
+      return;
+    }
+    if (line > state.lines) {
+      if (state.eof || state.lines >= MAX_RENDER_LINES) {
+        // 行号超出文件范围或渲染上限，无从定位
+        consume();
+      } else if (!state.loadingMore) {
+        const progress = jumpProgressRef.current;
+        if (progress && progress.line === line && progress.lastLines === state.lines) {
+          // 发起过翻页但行数没有增长：读取失败，停止自动重试，等用户重新点击链接
+          consume();
+          jumpProgressRef.current = null;
+        } else {
+          jumpProgressRef.current = { line, lastLines: state.lines };
+          // 目标行在后续分页，继续加载后由下一次状态更新重试
+          void loadMore();
+        }
+      }
+      return;
+    }
+    const body = bodyRef.current;
+    const row = body?.querySelector<HTMLElement>(`[data-line="${line}"]`);
+    // 页签隐藏（display:none）时测不到行位置：保留跳转指令，等活动页签切回后再定位
+    if (!active || !body || !row || body.clientHeight === 0) return;
+    // 用视口差值滚动使目标行居中；与行的 offsetParent 结构无关
+    const bodyRect = body.getBoundingClientRect();
+    const rowRect = row.getBoundingClientRect();
+    body.scrollTop += rowRect.top - bodyRect.top - body.clientHeight / 2;
+    consume();
+    setHitLine(line);
+    if (hitTimerRef.current != null) window.clearTimeout(hitTimerRef.current);
+    hitTimerRef.current = window.setTimeout(() => {
+      setHitLine(null);
+      hitTimerRef.current = null;
+    }, HIT_HIGHLIGHT_MS);
+  }, [state, jump?.seq, loadMore, active, onJumpConsumed]);
+
+  useEffect(
+    () => () => {
+      if (hitTimerRef.current != null) window.clearTimeout(hitTimerRef.current);
+    },
+    [],
+  );
+
   const openExternal = () => {
     const abs =
       state.phase === "text" ||
@@ -419,7 +507,7 @@ export function PanelPreview({
           </div>
         )}
         {state.phase === "text" && state.info.kind !== "markdown" && (
-          <CodeRows text={state.text} info={state.info} wrap={wrap} />
+          <CodeRows text={state.text} info={state.info} wrap={wrap} hitLine={hitLine} />
         )}
         {state.phase === "text" && !state.eof && (
           <button
@@ -441,10 +529,12 @@ const CodeRows = memo(function CodeRows({
   text,
   info,
   wrap,
+  hitLine,
 }: {
   text: string;
   info: FileTypeInfo;
   wrap: boolean;
+  hitLine?: number | null;
 }) {
   const t = useT();
   const allLines = text.length > 0 ? text.split("\n") : [];
@@ -453,7 +543,11 @@ const CodeRows = memo(function CodeRows({
   return (
     <div className={`panel-code${wrap ? " wrap" : ""}`}>
       {lines.map((line, index) => (
-        <div className="panel-code-row" key={index}>
+        <div
+          className={`panel-code-row${index + 1 === hitLine ? " hit" : ""}`}
+          data-line={index + 1}
+          key={index}
+        >
           <span className="panel-code-no">{index + 1}</span>
           <span className="panel-code-ln">{line || " "}</span>
         </div>

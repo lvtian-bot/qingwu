@@ -120,16 +120,16 @@ export function selectionOps(snapshot: SettingsDescribeValue, service: SearchSer
     return base[field] === value ? { op: "unset", path: [field] } : { op: "set", path: [field], value };
   });
 }
-/** 旧版迁移的凭据绑定：旧版命名空间显式配置过独立搜索引用时，切换前把同一引用
- * 绑定到新版，避免只配过独立密钥的用户迁移后失去鉴权。旧版命名空间缺失或未显式
- * 配置引用时不迁移——默认引用名不代表存在独立绑定，误绑会断开新版的模型密钥继承。
- * 字面密钥优先于引用（与 configOps 同语义）：新版残留的旧字面值会遮蔽迁移过来的
- * 引用，引用已经相同也必须以空覆盖停止它。字面密钥本身不读取明文，无法迁移。 */
+/** 旧版迁移的凭据绑定：旧版命名空间显式配置过 apiKeyEnv 时，切换前把该绑定完整
+ * 对齐到新版（含清除新版残留的字面遮蔽），无论它是不是模型引用——旧版显式声明
+ * 即代表该配置下的搜索鉴权事实，新版残留的过期独立引用不得沿用过期凭据。
+ * 旧版命名空间缺失或未显式配置引用时不迁移——默认引用名不代表存在独立绑定，
+ * 误绑会断开新版的模型密钥继承。字面密钥优先于引用（与 configOps 同语义）；
+ * 字面密钥本身不读取明文，无法迁移。 */
 export function legacyCredentialOps(snapshot: SettingsDescribeValue): SettingsPathOp[] {
   const declared = section(namespace(snapshot, "web-search-deepseek")).apiKeyEnv;
   if (typeof declared !== "string" || !declared.trim()) return [];
   const legacyRef = declared.trim();
-  if (legacyRef === modelKeyRef(snapshot)) return [];
   const target = namespace(snapshot, SEARCH_SERVICES.api.ns);
   if (!target) return [];
   const ops: SettingsPathOp[] = [];
