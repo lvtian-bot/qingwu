@@ -3,3 +3,8 @@
   config:
     searchProvider: deepseek-search-api
     fetchProvider: deepseek-fetch-api
+
+# Exa 搜索提供方：可选服务，密钥经凭据系统以 EXA_API_KEY 注入启动环境，
+# 不在此写 config，避免密钥进入插件配置与设置回显。
+- id: web-search-exa
+  name: '@deepseek-ai/dsh-web-search-exa'

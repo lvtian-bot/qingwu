@@ -4,5 +4,8 @@
   "private": true,
   "description": "青梧的 dsh 默认配置层",
   "files": ["cordis.patch.yml"],
+  "dependencies": {
+    "@deepseek-ai/dsh-web-search-exa": "0.2.1-rc.2"
+  },
   "dsh": { "bundle": { "patch": "./cordis.patch.yml" } }
 }

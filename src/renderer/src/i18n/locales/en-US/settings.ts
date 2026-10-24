@@ -67,15 +67,14 @@ export const settings: typeof zhSettings = {
     saveFailed: "Saving failed. Check the current settings and retry; any saved changes are retained.",
     loadFailed: "Unable to load search settings. Reopen settings or reconnect and retry.",
     readOnly: "Settings are currently read-only.",
-    invalidBaseURL: "Enter a valid endpoint URL starting with http:// or https://",
-    invalidLimit: "Enter a positive integer; the new search supports 1–50 results.",
+    invalidLimit: "Enter a positive integer; search supports 1–50 results.",
     keyRequired: "Enter a separate search key or use the DeepSeek model key.",
     externalDesc: "Your existing search configuration is retained. Select a DeepSeek service to configure it here.",
     provider: {
       label: "Search service",
       desc: "Use search and page fetch provided by dsh.",
       api: "DeepSeek new search (default)",
-      messages: "DeepSeek legacy search",
+      exa: "Exa search",
       external: "Keep current configuration",
     },
     keySource: {
@@ -90,17 +89,13 @@ export const settings: typeof zhSettings = {
       unconfiguredDesc: "No API key detected. Signed-in DeepSeek sessions can use account authentication; other sessions need a model key or a separate search key.",
       placeholderConfigured: "Leave empty to keep current key",
       placeholderUnconfigured: "Enter DeepSeek API key",
+      placeholderExaUnconfigured: "Enter Exa API key",
+      exaUnconfiguredDesc: "No Exa key configured. Create an API key on the Exa website and paste it here; it is only used for Exa search.",
       statusErrorDesc: "Credential status is unknown; key editing is disabled.",
-    },
-    baseURL: {
-      label: "API base URL",
-      desc: "Connection address for this service; leave empty to restore the engine's inherited or default value.",
     },
     limit: {
       countLabel: "Results per search",
       countDesc: "API request count: 1–50, default 10. The engine controls how many results the agent uses. Leave empty to restore the inherited or default value.",
-      usesLabel: "Maximum searches per request",
-      usesDesc: "A positive integer, default 5. Leave empty to restore the inherited or default value.",
     },
   },
   shared: {
