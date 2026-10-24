@@ -11,7 +11,7 @@ import koffi from 'koffi';
  * 注意继承只发生在控制台子系统进程之间：GUI 子进程（electron.exe 自身）
  * 不继承父进程控制台，因此引擎必须用控制台子系统的 Node 运行时启动才能
  * 吃到这个隐藏控制台——见 harness.ts 的 resolveRuntime 与
- * docs/tech-architecture.md「引擎运行方式」。
+ * docs/技术架构.md「引擎运行方式」。
  *
  * @returns 当前进程此刻是否已有控制台（从终端继承的，或本次新申请并已隐藏的）。
  *   调用方据此判断派生引擎时能否依赖继承；拿不到控制台时须用 windowsHide 兜底。

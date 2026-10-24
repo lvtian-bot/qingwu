@@ -107,12 +107,12 @@ test("parseLocalFileLink 解析 Markdown 文档链接", () => {
   assert.equal(subDoc.line, undefined);
 
   // 4. 上级相对路径（含 .. 规约）
-  const parentDoc = parseLocalFileLink("../tech-architecture.md", cwd, docDir);
-  assert.equal(parentDoc.path, "D:\\code\\qingwu\\docs\\tech-architecture.md");
+  const parentDoc = parseLocalFileLink("../技术架构.md", cwd, docDir);
+  assert.equal(parentDoc.path, "D:\\code\\qingwu\\docs\\技术架构.md");
 
   // 5. 带有 #L 行号锚点
-  const anchorLink = parseLocalFileLink("../tech-architecture.md#L42", cwd, docDir);
-  assert.equal(anchorLink.path, "D:\\code\\qingwu\\docs\\tech-architecture.md");
+  const anchorLink = parseLocalFileLink("../技术架构.md#L42", cwd, docDir);
+  assert.equal(anchorLink.path, "D:\\code\\qingwu\\docs\\技术架构.md");
   assert.equal(anchorLink.line, 42);
 
   // 6. 范围行号锚点 #L10-L20

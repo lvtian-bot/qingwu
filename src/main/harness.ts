@@ -135,7 +135,7 @@ export class HarnessManager {
 
     console.warn(
       "[Harness] 未找到控制台子系统的 Node 运行时，退回 Electron 运行时：" +
-        "Agent 执行命令时仍会新建可见控制台窗口（见 docs/tech-architecture.md）",
+        "Agent 执行命令时仍会新建可见控制台窗口（见 docs/技术架构.md）",
     );
     return {
       command: process.execPath,
