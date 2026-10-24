@@ -1,27 +1,34 @@
 import type { SettingsDescribeValue, SettingsNamespaceView, SettingsPathOp } from "./protocol";
 
-export type DeepSeekSearchMode = "api" | "messages";
-export type SearchMode = DeepSeekSearchMode | "external";
+export type SearchService = "api" | "exa";
+export type SearchMode = SearchService | "external";
 export type SearchKeySource = "model" | "independent";
 export interface SearchDraft {
-  baseURL: string;
   limit: string;
   keySource: SearchKeySource;
   apiKeyDraft: string;
 }
-/** 仅映射 dsh 的提供方和字段，不实现搜索、凭据或配置持久化。 */
-export const SEARCH_MODES = {
+/** 仅映射 dsh 的提供方和字段，不实现搜索、凭据或配置持久化。
+ * Exa 插件未声明运行时可修改字段（无 volatile 契约），设置接口不暴露其命名空间，
+ * 因此 Exa 只做服务切换与独立密钥，不写插件配置；条数等使用插件默认值。 */
+export const SEARCH_SERVICES = {
   api: {
     ns: "web-deepseek-api", search: "deepseek-search-api", fetch: "deepseek-fetch-api",
-    baseURL: "https://api.deepseek.com/v1/tools", limit: "count", defaultLimit: 10,
+    limitField: "count", defaultLimit: 10, maxLimit: 50,
+    keySourceSelectable: true,
     independentRef: "QINGWU_DEEPSEEK_SEARCH_API_KEY",
   },
-  messages: {
-    ns: "web-search-deepseek", search: "deepseek-official", fetch: "http",
-    baseURL: "https://api.deepseek.com/anthropic/v1", limit: "maxUses", defaultLimit: 5,
-    independentRef: "QINGWU_DEEPSEEK_MESSAGES_SEARCH_API_KEY",
+  exa: {
+    search: "exa", fetch: "http",
+    keySourceSelectable: false,
+    keyRef: "EXA_API_KEY",
   },
 } as const;
+export const SEARCH_SERVICES_LIST = ["api", "exa"] as const;
+/** 已下线的旧版搜索提供方配对（dsh-base 默认组合）；自动迁移仅识别这一完整组合，
+ * 搭配自定义抓取服务的配置不属于旧版默认，按外部配置保留，不自动改写。 */
+export const LEGACY_SEARCH_PROVIDER = "deepseek-official";
+export const LEGACY_FETCH_PROVIDER = "http";
 export function section(ns?: SettingsNamespaceView): Record<string, unknown> {
   return (ns?.value ?? {}) as Record<string, unknown>;
 }
@@ -41,78 +48,92 @@ export function hasLiteralKey(ns?: SettingsNamespaceView): boolean {
 }
 export function selectedMode(snapshot: SettingsDescribeValue): SearchMode {
   const web = section(namespace(snapshot, "web"));
-  for (const mode of ["api", "messages"] as const) {
-    if (web.searchProvider === SEARCH_MODES[mode].search && web.fetchProvider === SEARCH_MODES[mode].fetch) return mode;
+  for (const service of SEARCH_SERVICES_LIST) {
+    const config = SEARCH_SERVICES[service];
+    if (web.searchProvider === config.search && web.fetchProvider === config.fetch) return service;
   }
   return "external";
 }
-export function draftFrom(snapshot: SettingsDescribeValue, mode: DeepSeekSearchMode): SearchDraft {
-  const config = SEARCH_MODES[mode];
+export function draftFrom(snapshot: SettingsDescribeValue, service: SearchService): SearchDraft {
+  const config = SEARCH_SERVICES[service];
+  if (!("ns" in config)) return { limit: "", keySource: "independent", apiKeyDraft: "" };
   const ns = namespace(snapshot, config.ns);
   const value = section(ns);
+  const independent = hasLiteralKey(ns) || searchKeyRef(ns) !== modelKeyRef(snapshot);
   return {
-    baseURL: typeof value.baseURL === "string" ? value.baseURL : "",
-    limit: String(value[config.limit] ?? config.defaultLimit),
-    keySource: hasLiteralKey(ns) || searchKeyRef(ns) !== modelKeyRef(snapshot) ? "independent" : "model",
+    limit: String(value[config.limitField] ?? config.defaultLimit),
+    keySource: independent ? "independent" : "model",
     apiKeyDraft: "",
   };
 }
-export function targetKeyRef(snapshot: SettingsDescribeValue, mode: DeepSeekSearchMode, source: SearchKeySource): string {
+export function targetKeyRef(snapshot: SettingsDescribeValue | null, service: SearchService, source: SearchKeySource): string {
+  const config = SEARCH_SERVICES[service];
+  if ("keyRef" in config) return config.keyRef;
+  if (source === "model") return modelKeyRef(snapshot);
   const shared = modelKeyRef(snapshot);
-  if (source === "model") return shared;
-  const current = searchKeyRef(namespace(snapshot, SEARCH_MODES[mode].ns));
+  const current = searchKeyRef(namespace(snapshot, config.ns));
   if (current !== shared) return current;
-  const independent = SEARCH_MODES[mode].independentRef;
+  const independent = config.independentRef;
   return independent !== shared ? independent : `${independent}_INDEPENDENT`;
 }
 /** 刷新只更新未编辑字段，保留草稿。 */
 export function rebaseDraft(draft: SearchDraft, before: SearchDraft, after: SearchDraft): SearchDraft {
   return {
-    baseURL: draft.baseURL === before.baseURL ? after.baseURL : draft.baseURL,
     limit: draft.limit === before.limit ? after.limit : draft.limit,
     keySource: draft.keySource === before.keySource ? after.keySource : draft.keySource,
     apiKeyDraft: draft.apiKeyDraft,
   };
 }
-export function validateDraft(mode: DeepSeekSearchMode, draft: SearchDraft): "invalidBaseURL" | "invalidLimit" | null {
-  if (draft.baseURL.trim()) {
-    try {
-      const url = new URL(draft.baseURL.trim());
-      if (url.protocol !== "https:" && url.protocol !== "http:") return "invalidBaseURL";
-    } catch { return "invalidBaseURL"; }
-  }
+export function validateDraft(draft: SearchDraft): "invalidLimit" | null {
   if (draft.limit.trim()) {
     const n = Number(draft.limit);
-    if (!Number.isSafeInteger(n) || n < 1 || (mode === "api" && n > 50)) return "invalidLimit";
+    if (!Number.isSafeInteger(n) || n < 1 || n > 50) return "invalidLimit";
   }
   return null;
 }
-export function configOps(snapshot: SettingsDescribeValue, mode: DeepSeekSearchMode, draft: SearchDraft): SettingsPathOp[] {
-  const config = SEARCH_MODES[mode];
-  const baseline = draftFrom(snapshot, mode);
-  const ns = namespace(snapshot, config.ns);
+export function configOps(snapshot: SettingsDescribeValue, service: SearchService, draft: SearchDraft): SettingsPathOp[] {
+  const config = SEARCH_SERVICES[service];
+  if (!("ns" in config)) return [];
+  const baseline = draftFrom(snapshot, service);
+  const keyChange = draft.keySource === "independent" && Boolean(draft.apiKeyDraft.trim());
   const ops: SettingsPathOp[] = [];
-  for (const [field, current, original] of [
-    ["baseURL", draft.baseURL, baseline.baseURL], [config.limit, draft.limit, baseline.limit],
-  ]) {
-    if (current.trim() === original.trim()) continue;
-    ops.push(current.trim()
-      ? { op: "set", path: [field], value: field === "baseURL" ? current.trim() : Number(current) }
-      : { op: "unset", path: [field] });
+  if (draft.limit.trim() !== baseline.limit.trim()) {
+    ops.push(draft.limit.trim()
+      ? { op: "set", path: [config.limitField], value: Number(draft.limit) }
+      : { op: "unset", path: [config.limitField] });
   }
-  if (draft.keySource !== baseline.keySource || (draft.keySource === "independent" && draft.apiKeyDraft.trim())) {
-    const ref = targetKeyRef(snapshot, mode, draft.keySource);
+  if (draft.keySource !== baseline.keySource || (draft.keySource === "independent" && keyChange)) {
+    const ref = targetKeyRef(snapshot, service, draft.keySource);
+    const ns = namespace(snapshot, config.ns);
     if (searchKeyRef(ns) !== ref) ops.push({ op: "set", path: ["apiKeyEnv"], value: ref });
     // 字面密钥优先于引用。空覆盖停止它，不读取或回传任何明文。
     if (hasLiteralKey(ns)) ops.push({ op: "set", path: ["apiKey"], value: "" });
   }
   return ops;
 }
-export function selectionOps(snapshot: SettingsDescribeValue, mode: DeepSeekSearchMode): SettingsPathOp[] {
-  if (mode === selectedMode(snapshot)) return [];
+export function selectionOps(snapshot: SettingsDescribeValue, service: SearchService): SettingsPathOp[] {
+  if (selectedMode(snapshot) === service) return [];
+  const config = SEARCH_SERVICES[service];
   const base = (namespace(snapshot, "web")?.base ?? {}) as Record<string, unknown>;
   return (["searchProvider", "fetchProvider"] as const).map((field) => {
-    const value = field === "searchProvider" ? SEARCH_MODES[mode].search : SEARCH_MODES[mode].fetch;
+    const value = field === "searchProvider" ? config.search : config.fetch;
     return base[field] === value ? { op: "unset", path: [field] } : { op: "set", path: [field], value };
   });
+}
+/** 旧版迁移的凭据绑定：旧版命名空间显式配置过独立搜索引用时，切换前把同一引用
+ * 绑定到新版，避免只配过独立密钥的用户迁移后失去鉴权。旧版命名空间缺失或未显式
+ * 配置引用时不迁移——默认引用名不代表存在独立绑定，误绑会断开新版的模型密钥继承。
+ * 字面密钥优先于引用（与 configOps 同语义）：新版残留的旧字面值会遮蔽迁移过来的
+ * 引用，引用已经相同也必须以空覆盖停止它。字面密钥本身不读取明文，无法迁移。 */
+export function legacyCredentialOps(snapshot: SettingsDescribeValue): SettingsPathOp[] {
+  const declared = section(namespace(snapshot, "web-search-deepseek")).apiKeyEnv;
+  if (typeof declared !== "string" || !declared.trim()) return [];
+  const legacyRef = declared.trim();
+  if (legacyRef === modelKeyRef(snapshot)) return [];
+  const target = namespace(snapshot, SEARCH_SERVICES.api.ns);
+  if (!target) return [];
+  const ops: SettingsPathOp[] = [];
+  if (searchKeyRef(target) !== legacyRef) ops.push({ op: "set", path: ["apiKeyEnv"], value: legacyRef });
+  if (hasLiteralKey(target)) ops.push({ op: "set", path: ["apiKey"], value: "" });
+  return ops;
 }

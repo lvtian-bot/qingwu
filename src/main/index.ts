@@ -28,6 +28,7 @@ import {
 import { renderDocumentPreview } from "./document-preview";
 import { exportSessionArchive } from "./session-export";
 import { setupApplicationDiagnostics } from "./diagnostics";
+import { setExaSearchKey } from "./user-env";
 import { NotificationManager } from "./notification";
 import type { RendererErrorReport } from "../shared/types";
 import { formatMessage } from "../shared/i18n-core";
@@ -179,6 +180,9 @@ if (!gotTheLock) {
       const result = await dshBridge.call(endpoint, payload);
       return result;
     },
+  );
+  ipcMain.handle("exa-key:set", (_event, { value }: { value: string }) =>
+    setExaSearchKey(value),
   );
   ipcMain.handle("dsh:stream-open", (_event, { endpoint, payload }) =>
     dshBridge.openStream(endpoint, payload),

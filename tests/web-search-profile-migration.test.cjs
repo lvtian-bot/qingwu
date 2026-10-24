@@ -116,3 +116,16 @@ test("配置清单损坏时停止初始化，不覆盖原文件或用户补丁",
   assert.equal(fs.readFileSync(path.join(f.dir, "package.json"), "utf8"), "{");
   assert.equal(fs.readFileSync(f.patch, "utf8"), "[]\n");
 });
+
+test("应用默认层以 insert 装载 Exa 搜索插件，组合清单包含该行", async (t) => {
+  const f = fixture(t);
+  await f.harness.ensureQingwuProfile();
+  const entries = f.composed();
+  const exa = find(entries, "web-search-exa");
+  assert.ok(exa, "Exa 插件行必须经顶层 insert 进入组合清单，无 insert 的条目会被跳过");
+  assert.equal(exa.name, "@deepseek-ai/dsh-web-search-exa");
+  assert.equal(exa.config, undefined, "不携带 config，密钥经用户环境层供给");
+  const web = find(entries, "web");
+  assert.equal(web.config.searchProvider, "deepseek-search-api");
+  assert.equal(web.config.fetchProvider, "deepseek-fetch-api");
+});
