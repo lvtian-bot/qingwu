@@ -339,14 +339,17 @@ export async function exportSessionArchive(
     const archive = await compressAsync(files);
     await fs.promises.mkdir(downloadDir, { recursive: true });
     const safeId = sessionId.replace(/[^A-Za-z0-9_-]/g, '_');
-    const filePath = uniquePath(downloadDir, `dsh-session-${safeId}.zip`);
+    const filePath = await writeArchiveExclusively(
+      downloadDir,
+      `dsh-session-${safeId}.zip`,
+      archive,
+    );
     if (!filePath) {
       return {
         ok: false,
         message: '下载目录中同名文件过多，请先清理后再导出',
       };
     }
-    await fs.promises.writeFile(filePath, archive);
 
     return {
       ok: true,
@@ -377,18 +380,30 @@ function compressAsync(files: Record<string, Uint8Array>): Promise<Uint8Array> {
 }
 
 /**
- * 目标文件已存在时追加 (n)，绝不静默覆盖用户已有的导出。
+ * 以独占模式写入归档并返回实际路径，文件名被占用时换下一个序号。
+ *
+ * 先 `existsSync` 选名再写入存在竞态：并发导出同一会话时，后一次在先
+ * 一次落盘之前看到的目录里还没有同名文件，两次选中同一个名字，先写完
+ * 的被后写完的覆盖，甚至交错写坏 ZIP。`wx` 标志把「占名」和「写入」合
+ * 成一步，谁先创建成功谁拿到这个名字，撞名方按 `(n)` 序号重试。
  * 候选名全部用尽时返回 null，由调用方报错——退回已存在的路径会把用户
  * 更早的导出覆盖掉，违背这个函数存在的意义。
  */
-function uniquePath(dir: string, filename: string): string | null {
-  const target = path.join(dir, filename);
-  if (!fs.existsSync(target)) return target;
+async function writeArchiveExclusively(
+  dir: string,
+  filename: string,
+  archive: Uint8Array,
+): Promise<string | null> {
   const ext = path.extname(filename);
   const stem = filename.slice(0, filename.length - ext.length);
-  for (let i = 2; i < 1000; i += 1) {
-    const candidate = path.join(dir, `${stem} (${i})${ext}`);
-    if (!fs.existsSync(candidate)) return candidate;
+  for (let i = 1; i < 1000; i += 1) {
+    const candidate = path.join(dir, i === 1 ? filename : `${stem} (${i})${ext}`);
+    try {
+      await fs.promises.writeFile(candidate, archive, { flag: 'wx' });
+      return candidate;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
+    }
   }
   return null;
 }

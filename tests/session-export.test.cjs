@@ -123,6 +123,28 @@ test('同名导出已存在时不覆盖，改用带序号的名称', async () =>
   assert.ok(fs.existsSync(second.filePath));
 });
 
+test('同一会话并发导出两次，各自拿到独立文件且都完整', async () => {
+  const root = tempRoot();
+  const out = path.join(root, 'out');
+  writeSession(root, 'ws', 's4', { type: 'session', version: 0, id: 's4' }, [
+    { type: 'user/message', seq: 1, time: 1, data: { source: { kind: 'user' } } },
+  ]);
+  const [first, second] = await Promise.all([
+    exportSessionArchive(root, 's4', out),
+    exportSessionArchive(root, 's4', out),
+  ]);
+  assert.equal(first.ok, true);
+  assert.equal(second.ok, true);
+  assert.notEqual(first.filePath, second.filePath);
+  // 两份归档都能解开且内容一致，证明谁也没有覆盖谁
+  const linesOf = (result) =>
+    Buffer.from(readZip(result.filePath)['sessions/s4/session.jsonl'])
+      .toString('utf8')
+      .split('\n')
+      .filter(Boolean);
+  assert.deepEqual(linesOf(first), linesOf(second));
+});
+
 test('会话尚未落盘时返回明确失败而不是空压缩包', async () => {
   const root = tempRoot();
   const out = path.join(root, 'out');
