@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type Dispatch,
   type SetStateAction,
@@ -134,8 +135,13 @@ export function useProviderDirectory(options: {
     draft: Record<string, unknown>;
   }>({ key: "", baseline: {}, draft: {} });
 
+  /** 目录加载代次：保存搜索凭据会触发外部刷新，两次加载可能重叠，
+   * 只有最新一次的回执允许发布状态，防止旧回执把界面覆盖回旧凭据。 */
+  const loadGenRef = useRef(0);
+
   // 读取供应商目录并入凭据状态：目录 join → profile 的 apiKeyEnv → 一次批量凭据 describe
   const loadProviders = useCallback(async () => {
+    const gen = ++loadGenRef.current;
     try {
       const [registered, declared, described] = await Promise.all([
         rpc<RegisteredProvider[]>(Endpoints.llmListProviders, {}),
@@ -145,6 +151,7 @@ export function useProviderDirectory(options: {
         ),
         rpc<SettingsDescribeValue>(Endpoints.settingsDescribe, {}),
       ]);
+      if (gen !== loadGenRef.current) return;
       const namespaces = new Map(
         described.namespaces.map((view) => [view.ns, view]),
       );
@@ -179,6 +186,7 @@ export function useProviderDirectory(options: {
           Endpoints.credentialsDescribe,
           { refs },
         );
+        if (gen !== loadGenRef.current) return;
       }
       const joined = rows.map((row) => ({
         ...row,
@@ -196,6 +204,7 @@ export function useProviderDirectory(options: {
         return firstAdded?.provider ?? null;
       });
     } catch (e) {
+      if (gen !== loadGenRef.current) return;
       console.error("[SettingsPage] 读取供应商目录失败", e);
     }
   }, []);

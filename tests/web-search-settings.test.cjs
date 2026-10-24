@@ -300,6 +300,33 @@ test("旧版迁移引用不同且存在字面密钥时，绑定与清遮蔽一�
   ]);
 });
 
+test("旧版引用等于模型密钥时也对齐新版绑定，不沿用过期独立引用", async () => {
+  const data = initial();
+  data.namespaces[0].value = { searchProvider: "deepseek-official", fetchProvider: "http" };
+  data.namespaces.push({ ns: "web-search-deepseek", revision: 5,
+    value: { apiKeyEnv: "DEEPSEEK_API_KEY", maxUses: 5 }, base: {} });
+  // 新版残留过期的独立引用：迁移后沿用它会让搜索失去鉴权
+  data.namespaces[1].value.apiKeyEnv = "STALE_SEARCH_REF";
+  const h = setup(data); await h.mount();
+  const credWrite = writes(h).find((c) => c.args.ns === "web-deepseek-api");
+  assert.ok(credWrite, "旧版显式配置过引用即应完整对齐新版绑定");
+  assert.deepEqual(credWrite.args.ops, [
+    { op: "set", path: ["apiKeyEnv"], value: "DEEPSEEK_API_KEY" },
+  ]);
+  assert.equal(h.render().keySource, "model");
+});
+
+test("旧版引用等于模型密钥时，新版字面遮蔽同样在迁移中清除", async () => {
+  const data = initial();
+  data.namespaces[0].value = { searchProvider: "deepseek-official", fetchProvider: "http" };
+  data.namespaces.push({ ns: "web-search-deepseek", revision: 5,
+    value: { apiKeyEnv: "DEEPSEEK_API_KEY", maxUses: 5 }, base: {} });
+  data.namespaces[1].secrets = [{ path: ["apiKey"], set: true }];
+  const h = setup(data); await h.mount();
+  const credWrite = writes(h).find((c) => c.args.ns === "web-deepseek-api");
+  assert.deepEqual(credWrite.args.ops, [{ op: "set", path: ["apiKey"], value: "" }]);
+});
+
 test("引擎凭据查询失败不阻塞 Exa 密钥保存", async () => {
   const h = setup();
   exaCredentialQueryFails = true;
