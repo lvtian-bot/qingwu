@@ -186,6 +186,10 @@ export const RightPanel = forwardRef<RightPanelHandle, RightPanelProps>(
         focusOrCreate({ id: `preview:${path}`, kind: "preview", path });
         if (line && line > 0) {
           setJump({ path, line, seq: ++jumpSeqRef.current });
+        } else {
+          // 无行号打开（文件树、交付卡片）：清掉已完成的旧跳转，
+          // 避免重开同一文件的预览页签时旧指令复活、再次定位翻页
+          setJump(null);
         }
       },
       [focusOrCreate, onOpenChange],
