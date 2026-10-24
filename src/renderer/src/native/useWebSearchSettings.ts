@@ -4,8 +4,8 @@ import { Endpoints, type CredentialInfo, type SettingsDescribeValue } from "./pr
 import { rpc } from "./rpc";
 import {
   SEARCH_SERVICES, SEARCH_SERVICES_LIST, LEGACY_SEARCH_PROVIDER, configOps, draftFrom,
-  hasLiteralKey, modelKeyRef, namespace, rebaseDraft, searchKeyRef, section, selectedMode,
-  selectionOps, targetKeyRef, validateDraft,
+  hasLiteralKey, legacyCredentialOps, modelKeyRef, namespace, rebaseDraft, searchKeyRef,
+  section, selectedMode, selectionOps, targetKeyRef, validateDraft,
   type SearchDraft, type SearchMode, type SearchService,
 } from "./web-search-settings";
 
@@ -23,6 +23,8 @@ export function useWebSearchSettings(options?: WebSearchSettingsOptions) {
   const snapshot = useRef<SettingsDescribeValue | null>(null);
   const draftsRef = useRef(emptyDrafts());
   const modeRef = useRef<SearchMode>("api");
+  // Exa 凭据已落盘但插件重建尚未成功时保持 true，重试时继续补做重建写入。
+  const pendingExaReload = useRef(false);
   const savingRef = useRef(false);
   const alive = useRef(true);
   const loadSequence = useRef(0);
@@ -69,10 +71,18 @@ export function useWebSearchSettings(options?: WebSearchSettingsOptions) {
       // 旧版搜索已下线：可写时静默迁移到新版，普通用户无感；失败则按外部配置兜底，下次进入再试。
       if (result.writable === true && section(namespace(result, "web")).searchProvider === LEGACY_SEARCH_PROVIDER) {
         const webNs = namespace(result, "web");
-        const ops = selectionOps(result, "api");
-        if (webNs && ops.length) {
+        const credOps = legacyCredentialOps(result);
+        const selectOps = selectionOps(result, "api");
+        const targets: Array<[string, typeof credOps]> = [];
+        if (credOps.length) targets.push([SEARCH_SERVICES.api.ns, credOps]);
+        if (webNs && selectOps.length) targets.push(["web", selectOps]);
+        if (targets.length) {
           try {
-            await rpc(Endpoints.settingsMutate, { ns: "web", ops, expectedRevision: webNs.revision });
+            // 与保存一致：先把独立凭据绑定落到目标服务，最后切换服务选择。
+            for (const [nsName, ops] of targets) {
+              const ns = namespace(result, nsName)!;
+              await rpc(Endpoints.settingsMutate, { ns: nsName, ops, expectedRevision: ns.revision });
+            }
             const migrated = await rpc<SettingsDescribeValue>(Endpoints.settingsDescribe, {});
             if (Array.isArray(migrated?.namespaces) && namespace(migrated, "web")) result = migrated;
           } catch {
@@ -149,7 +159,7 @@ export function useWebSearchSettings(options?: WebSearchSettingsOptions) {
     const invalid = validateDraft(targetMode, selectedDraft);
     if (invalid) { setError(translation.current("settings.webSearch." + invalid)); return; }
     const keyChange = selectedDraft.keySource === "independent" && Boolean(selectedDraft.apiKeyDraft.trim());
-    const ops = configOps(current, targetMode, selectedDraft, true);
+    const ops = configOps(current, targetMode, selectedDraft, keyChange || pendingExaReload.current);
     const selectOps = selectionOps(current, targetMode);
     if (!current.writable && (ops.length || selectOps.length)) {
       setError(translation.current("settings.webSearch.readOnly")); return;
@@ -170,12 +180,14 @@ export function useWebSearchSettings(options?: WebSearchSettingsOptions) {
         await rpc(Endpoints.credentialsSet, { ref, value: selectedDraft.apiKeyDraft.trim() });
         const verified = await rpc<Record<string, CredentialInfo>>(Endpoints.credentialsDescribe, { refs: [ref] });
         if (!verified?.[ref]?.configured) throw new Error("凭据未保存");
+        pendingExaReload.current = targetMode === "exa";
         publishDrafts({ ...draftsRef.current, [targetMode]: { ...draftsRef.current[targetMode], apiKeyDraft: "" } });
         callbacks.current?.onRefreshCredentials?.();
       }
       // 与 dsh 官方一致：目标服务设置先落盘，最后才启用它。
       if (ops.length) {
         await rpc(Endpoints.settingsMutate, { ns: targetNs.ns, ops, expectedRevision: targetNs.revision });
+        if (ops.some((op) => op.path[0] === SEARCH_SERVICES.exa.limitField)) pendingExaReload.current = false;
         serviceSaved = true;
       }
       if (selectOps.length) await rpc(Endpoints.settingsMutate, {

@@ -97,9 +97,10 @@ export function configOps(
   const keyChange = draft.keySource === "independent" && Boolean(draft.apiKeyDraft.trim());
   const limitChanged = draft.limit.trim() !== baseline.limit.trim();
   const ops: SettingsPathOp[] = [];
-  if (limitChanged || (reload && keyChange && service === "exa")) {
+  if (limitChanged || (reload && service === "exa")) {
     // Exa 插件在构造时快照启动环境里的 EXA_API_KEY；凭据更新后必须写入
     // 一次插件配置触发重建，新密钥才会被读取。numResults 是唯一安全的触发字段。
+    // reload 也覆盖凭据已落盘、重建写入失败后的重试：待重建状态由调用方跟踪。
     const value = draft.limit.trim() || (limitChanged ? "" : String(baseline.limit || config.defaultLimit));
     ops.push(value
       ? { op: "set", path: [config.limitField], value: Number(value) }
@@ -124,4 +125,13 @@ export function selectionOps(snapshot: SettingsDescribeValue, service: SearchSer
     const value = field === "searchProvider" ? config.search : config.fetch;
     return base[field] === value ? { op: "unset", path: [field] } : { op: "set", path: [field], value };
   });
+}
+/** 旧版迁移的凭据绑定：旧版选用独立搜索引用时，切换前把同一引用绑定到新版，
+ * 避免只配过独立密钥的用户迁移后失去鉴权。字面密钥不读取明文，无法迁移。 */
+export function legacyCredentialOps(snapshot: SettingsDescribeValue): SettingsPathOp[] {
+  const legacyRef = searchKeyRef(namespace(snapshot, "web-search-deepseek"));
+  if (legacyRef === modelKeyRef(snapshot)) return [];
+  const target = namespace(snapshot, SEARCH_SERVICES.api.ns);
+  if (!target || searchKeyRef(target) === legacyRef) return [];
+  return [{ op: "set", path: ["apiKeyEnv"], value: legacyRef }];
 }

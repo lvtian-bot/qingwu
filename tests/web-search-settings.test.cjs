@@ -248,6 +248,23 @@ test("旧版搜索存量可写时静默迁移到新版", async () => {
   assert.equal(h.snapshot().namespaces[0].value.searchProvider, "deepseek-search-api");
 });
 
+test("旧版独立搜索引用随迁移绑定到新版，不丢独立鉴权", async () => {
+  const data = initial();
+  data.namespaces[0].value = { searchProvider: "deepseek-official", fetchProvider: "http" };
+  data.namespaces.push({ ns: "web-search-deepseek", revision: 5,
+    value: { apiKeyEnv: "QINGWU_DEEPSEEK_MESSAGES_SEARCH_API_KEY", maxUses: 5 }, base: {} });
+  const h = setup(data); await h.mount();
+  const nsWrites = writes(h);
+  const credWrite = nsWrites.find((c) => c.args.ns === "web-deepseek-api");
+  assert.deepEqual(credWrite.args.ops, [
+    { op: "set", path: ["apiKeyEnv"], value: "QINGWU_DEEPSEEK_MESSAGES_SEARCH_API_KEY" },
+  ]);
+  assert.ok(nsWrites.findIndex((c) => c.args.ns === "web-deepseek-api")
+    < nsWrites.findIndex((c) => c.args.ns === "web"), "凭据绑定先于服务切换");
+  assert.equal(h.render().mode, "api");
+  assert.equal(h.render().keySource, "independent");
+});
+
 test("只读环境不自动迁移旧版，按外部配置展示", async () => {
   const data = initial();
   data.writable = false;
@@ -295,6 +312,27 @@ test("Exa 密钥走凭据通道并触发插件重建写入", async () => {
   ]);
   assert.equal(h.render().mode, "exa");
   assert.equal(h.render().hasKey, true);
+});
+
+test("Exa 换密钥后重建写入失败，重试不重输密钥仍补做插件重建", async () => {
+  const h = setup();
+  h.credentialStore.EXA_API_KEY = { configured: true, writable: true, source: "stored" };
+  await h.mount();
+  h.snapshot().namespaces[0].value = { searchProvider: "exa", fetchProvider: "http" };
+  await h.render().refresh();
+  assert.equal(h.render().mode, "exa");
+  edit(h, "apiKeyDraft", "fixture-new-exa");
+  h.failNamespace("web-search-exa");
+  await h.render().save();
+  assert.ok(h.render().error);
+  assert.equal(h.render().apiKeyDraft, "");
+  h.failNamespace(undefined);
+  await h.render().save();
+  assert.equal(h.render().error, null);
+  const exaWrites = writes(h).filter((c) => c.args.ns === "web-search-exa");
+  assert.deepEqual(exaWrites[exaWrites.length - 1].args.ops, [
+    { op: "set", path: ["numResults"], value: 10 },
+  ]);
 });
 
 test("Exa 结果条数可修改与清空，清空不携带重建写入", async () => {
