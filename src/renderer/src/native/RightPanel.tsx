@@ -182,6 +182,11 @@ export const RightPanel = forwardRef<RightPanelHandle, RightPanelProps>(
      * 等任何不经 openFile 的重挂载路径都不会把旧指令当新跳转重放。 */
     const handleJumpConsumed = useCallback(() => setJump(null), []);
 
+    // 会话切换：旧会话的跳转指令随之失效，不泄漏到新会话的同名文件页签
+    useEffect(() => {
+      setJump(null);
+    }, [sessionId]);
+
     const openFile = useCallback(
       (path: string, line?: number) => {
         if (!path) return;
