@@ -8,6 +8,7 @@ const deferred = () => { let resolve; const promise = new Promise((r) => { resol
 // 有回退，写入后 describe 应显示已配置。
 const exaEnvStore = {};
 let dropExaWrite = false;
+let exaCredentialQueryFails = false;
 globalThis.window = {
   qingwu: { setExaSearchKey: async (value) => {
     if (dropExaWrite) throw new Error("环境层写入失败");
@@ -27,6 +28,7 @@ function setup(data = initial()) {
   let cursor = 0;
   exaEnvStore.EXA_API_KEY = undefined;
   dropExaWrite = false;
+  exaCredentialQueryFails = false;
   // 引擎在启动时冻结环境快照：首次凭据查询时捕获，运行期写入 .env 不影响回执。
   let exaSnapshot = null;
   const hooks = [], effects = [], calls = [];
@@ -64,6 +66,7 @@ function setup(data = initial()) {
         return reply;
       }
       if (endpoint === "credentials/describe") {
+        if (exaCredentialQueryFails && args.refs.includes("EXA_API_KEY")) throw new Error("查询失败");
         if (exaSnapshot === null) exaSnapshot = exaEnvStore.EXA_API_KEY ?? false;
         const reply = Object.fromEntries(args.refs.map((ref) => [ref,
           credentialStore[ref]
@@ -268,6 +271,47 @@ test("旧版搜索存量可写时静默迁移到新版", async () => {
   ]);
   assert.equal(h.render().mode, "api");
   assert.equal(h.snapshot().namespaces[0].value.searchProvider, "deepseek-search-api");
+});
+
+test("旧版迁移清除新版残留字面密钥，引用已相同时也停止遮蔽", async () => {
+  const data = initial();
+  data.namespaces[0].value = { searchProvider: "deepseek-official", fetchProvider: "http" };
+  data.namespaces.push({ ns: "web-search-deepseek", revision: 5,
+    value: { apiKeyEnv: "CUSTOM_SEARCH_REF", maxUses: 5 }, base: {} });
+  data.namespaces[1].value.apiKeyEnv = "CUSTOM_SEARCH_REF";
+  data.namespaces[1].secrets = [{ path: ["apiKey"], set: true }];
+  const h = setup(data); await h.mount();
+  const credWrite = writes(h).find((c) => c.args.ns === "web-deepseek-api");
+  assert.deepEqual(credWrite.args.ops, [{ op: "set", path: ["apiKey"], value: "" }]);
+  assert.equal(h.render().keySource, "independent");
+});
+
+test("旧版迁移引用不同且存在字面密钥时，绑定与清遮蔽一并写入", async () => {
+  const data = initial();
+  data.namespaces[0].value = { searchProvider: "deepseek-official", fetchProvider: "http" };
+  data.namespaces.push({ ns: "web-search-deepseek", revision: 5,
+    value: { apiKeyEnv: "LEGACY_SEARCH_REF", maxUses: 5 }, base: {} });
+  data.namespaces[1].secrets = [{ path: ["apiKey"], set: true }];
+  const h = setup(data); await h.mount();
+  const credWrite = writes(h).find((c) => c.args.ns === "web-deepseek-api");
+  assert.deepEqual(credWrite.args.ops, [
+    { op: "set", path: ["apiKeyEnv"], value: "LEGACY_SEARCH_REF" },
+    { op: "set", path: ["apiKey"], value: "" },
+  ]);
+});
+
+test("引擎凭据查询失败不阻塞 Exa 密钥保存", async () => {
+  const h = setup();
+  exaCredentialQueryFails = true;
+  await h.mount();
+  h.render().changeMode("exa");
+  assert.equal(h.render().keyWritable, true);
+  edit(h, "apiKeyDraft", "fixture-exa-value");
+  await h.render().save();
+  assert.equal(h.render().error, null);
+  assert.equal(exaEnvStore.EXA_API_KEY, "fixture-exa-value");
+  assert.equal(h.render().mode, "exa");
+  assert.equal(h.render().message, "settings.webSearch.exaSavedRestart");
 });
 
 test("旧版搜索搭配自定义抓取时不自动迁移，按外部配置展示", async () => {

@@ -123,13 +123,17 @@ export function selectionOps(snapshot: SettingsDescribeValue, service: SearchSer
 /** 旧版迁移的凭据绑定：旧版命名空间显式配置过独立搜索引用时，切换前把同一引用
  * 绑定到新版，避免只配过独立密钥的用户迁移后失去鉴权。旧版命名空间缺失或未显式
  * 配置引用时不迁移——默认引用名不代表存在独立绑定，误绑会断开新版的模型密钥继承。
- * 字面密钥不读取明文，无法迁移。 */
+ * 字面密钥优先于引用（与 configOps 同语义）：新版残留的旧字面值会遮蔽迁移过来的
+ * 引用，引用已经相同也必须以空覆盖停止它。字面密钥本身不读取明文，无法迁移。 */
 export function legacyCredentialOps(snapshot: SettingsDescribeValue): SettingsPathOp[] {
   const declared = section(namespace(snapshot, "web-search-deepseek")).apiKeyEnv;
   if (typeof declared !== "string" || !declared.trim()) return [];
   const legacyRef = declared.trim();
   if (legacyRef === modelKeyRef(snapshot)) return [];
   const target = namespace(snapshot, SEARCH_SERVICES.api.ns);
-  if (!target || searchKeyRef(target) === legacyRef) return [];
-  return [{ op: "set", path: ["apiKeyEnv"], value: legacyRef }];
+  if (!target) return [];
+  const ops: SettingsPathOp[] = [];
+  if (searchKeyRef(target) !== legacyRef) ops.push({ op: "set", path: ["apiKeyEnv"], value: legacyRef });
+  if (hasLiteralKey(target)) ops.push({ op: "set", path: ["apiKey"], value: "" });
+  return ops;
 }

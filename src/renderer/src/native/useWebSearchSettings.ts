@@ -185,7 +185,8 @@ export function useWebSearchSettings(options?: WebSearchSettingsOptions) {
     if (selectedDraft.keySource === "independent" && !literalKept && !keyReady) {
       setError(translation.current("settings.webSearch.keyRequired")); return;
     }
-    if (keyChange && (!credentials[ref]?.known || credentials[ref]?.writable !== true)) {
+    // 引擎凭据库的可写性只约束凭据库写入；Exa 走主进程用户环境层，不依赖该状态。
+    if (keyChange && targetMode !== "exa" && (!credentials[ref]?.known || credentials[ref]?.writable !== true)) {
       setError(translation.current("settings.webSearch.apiKey.statusErrorDesc")); return;
     }
     savingRef.current = true;
