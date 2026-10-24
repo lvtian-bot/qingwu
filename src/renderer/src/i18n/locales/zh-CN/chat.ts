@@ -80,7 +80,7 @@ export const chat = {
     exportNoArgs: "导出不需要参数",
     exportNoSession: "请先打开一个会话再导出",
     exported: "已导出到 {path}（{time} 生成，进行中的消息可能尚未写入）",
-    exportedOversized: "已导出到 {path}（日志超出解压上限，按原始压缩格式保留）",
+    exportedOversized: "已导出到 {path}（部分日志无法解压，已按原始压缩格式保留）",
   },
   compaction: {
     title: "压缩",

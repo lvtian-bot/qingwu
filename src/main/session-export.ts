@@ -14,7 +14,7 @@ export type SessionExportResult =
       sessionCount: number;
       mediaCount: number;
       /**
-       * 有日志超过解压上限，按原始压缩格式原样打包。
+       * 有日志超过解压上限或含损坏帧，按原始压缩格式原样打包。
        * 打包本身成功，但内容不是纯文本 JSONL，界面要如实说明。
        */
       oversized?: true;
@@ -191,7 +191,8 @@ function frameEndOffset(raw: Buffer, start: number): number {
  * 引擎按「头部一帧 + 每次追加一批一帧」写日志，一次性解压只还原第一帧
  * （实测 380KB 的会话只剩 255 字节的头部，对话全部丢失），因此必须逐帧
  * 推进：解出一帧后按帧结构算出结束位置，从那里继续下一帧。
- * 尾部被截断（写入中断）时保留已解出的部分，不让整份导出失败。
+ * 尾部被截断（写入中断）时保留已解出的部分，不让整份导出失败；帧结构
+ * 完整却解压失败属于数据损坏，抛错交由调用方保留原始压缩日志。
  */
 async function decompressAllFrames(raw: Buffer): Promise<Buffer> {
   const parts: Buffer[] = [];
@@ -211,7 +212,10 @@ async function decompressAllFrames(raw: Buffer): Promise<Buffer> {
     try {
       chunk = await zstdDecompressAsync(raw.subarray(offset, end));
     } catch {
-      break;
+      // 完整帧解不开是数据损坏，不是写入中断的截断：静默丢掉这帧和它
+      // 之后的完好内容，导出会「成功」却缺一大截。抛错让上层把整份日志
+      // 按原始压缩格式原样打包，一点不丢。
+      throw new Error('CORRUPT_FRAME');
     }
     parts.push(chunk);
     produced += chunk.length;
@@ -237,8 +241,12 @@ async function readLogBody(
   try {
     return { name: target, body: await decompressAllFrames(raw) };
   } catch (err) {
-    if (err instanceof Error && err.message === 'OVERSIZED_LOG') {
-      // 解压后超过上限：保留原始压缩日志，导出照常完成但不谎报内容完整
+    if (
+      err instanceof Error &&
+      (err.message === 'OVERSIZED_LOG' || err.message === 'CORRUPT_FRAME')
+    ) {
+      // 解压后超上限或含损坏帧：保留原始压缩日志，导出照常完成，但内容
+      // 未转成纯文本，界面要如实说明，不谎报完整
       return { name: `${target}.zstd`, body: raw, oversized: true };
     }
     return { name: `${target}.zstd`, body: raw };

@@ -153,6 +153,39 @@ test('会话尚未落盘时返回明确失败而不是空压缩包', async () =>
   assert.ok(result.message.includes('未找到'));
 });
 
+test('中间帧损坏时整份日志原样打包，不静默丢弃后续内容', async () => {
+  const root = tempRoot();
+  const out = path.join(root, 'out');
+  const header = zlib.zstdCompressSync(
+    Buffer.from('{"type":"session","version":0,"id":"s5"}\n'),
+  );
+  // 高冗余内容保证是真压缩块；翻转帧头的内容尺寸字节——边界结构仍可
+  // 解析，但解压器校验内容尺寸与实际不符会报数据损坏
+  const middle = zlib.zstdCompressSync(
+    Buffer.from(`${JSON.stringify({ type: 'user/message', pad: 'A'.repeat(2000) })}\n`),
+  );
+  const corrupted = Buffer.from(middle);
+  corrupted[6] ^= 0xff;
+  // 前置断言：坏帧必须真的解压失败，否则测试构造失效需调整
+  assert.throws(() => zlib.zstdDecompressSync(corrupted));
+  const tail = zlib.zstdCompressSync(
+    Buffer.from('{"type":"assistant/message"}\n'),
+  );
+  const dir = path.join(root, 'ws', 's5');
+  fs.mkdirSync(dir, { recursive: true });
+  const onDisk = Buffer.concat([header, corrupted, tail]);
+  fs.writeFileSync(path.join(dir, 'session.jsonl.zstd'), onDisk);
+
+  const result = await exportSessionArchive(root, 's5', out);
+  assert.equal(result.ok, true);
+  assert.equal(result.oversized, true);
+  const names = Object.keys(readZip(result.filePath));
+  assert.equal(names.length, 1);
+  assert.equal(names[0], 'sessions/s5/session.jsonl.zstd');
+  // 归档里是磁盘上的原始字节，头部之后的完好尾帧一点不丢
+  assert.deepEqual(Buffer.from(readZip(result.filePath)[names[0]]), onDisk);
+});
+
 /** 读出 ZIP 内的全部文件（用 fflate 解包，不依赖 cwd，测试并行时也稳定）。 */
 function readZip(filePath) {
   const { unzipSync } = require('fflate');

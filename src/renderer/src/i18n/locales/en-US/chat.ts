@@ -87,7 +87,7 @@ export const chat: typeof zhChat = {
     exported:
       "Exported to {path} ({time}; messages still in flight may not be written yet)",
     exportedOversized:
-      "Exported to {path} (log exceeded the extraction limit; kept in its original compressed form)",
+      "Exported to {path} (some logs could not be extracted; kept in their original compressed form)",
   },
   compaction: {
     title: "Compact",
