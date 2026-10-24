@@ -281,6 +281,35 @@ test('file: 依赖副本缺文件与多出文件都报告', () => {
   ]);
 });
 
+test('npm 打包范围外的源文件不要求进副本（files 白名单未命中与排除文件）', () => {
+  // 未入 files 白名单或属 npm 永久排除的源文件不会进副本，要求副本有它们
+  // 会造成重装也无法消除的假缺失
+  const f = makeFileDepProject();
+  const pkgWithFiles = JSON.stringify({ name: '@qingwu/dsh-profile', version: '0.0.1', files: ['cordis.patch.yml'] });
+  f.writeSource('package.json', pkgWithFiles);
+  f.writeCopy('package.json', pkgWithFiles);
+  f.writeSource('cordis.patch.yml', '[]\n');
+  f.writeCopy('cordis.patch.yml', '[]\n');
+  f.writeSource('extra.yml', 'x\n'); // 不在白名单
+  f.writeSource('.DS_Store', 'junk'); // npm 永久排除
+  const { mismatches } = collectMismatches(f.dir);
+  assert.deepEqual(mismatches, []);
+});
+
+test('副本混入 npm 不会打包的文件时报告副本多出', () => {
+  const f = makeFileDepProject();
+  const pkgWithFiles = JSON.stringify({ name: '@qingwu/dsh-profile', version: '0.0.1', files: ['cordis.patch.yml'] });
+  f.writeSource('package.json', pkgWithFiles);
+  f.writeCopy('package.json', pkgWithFiles);
+  f.writeSource('cordis.patch.yml', '[]\n');
+  f.writeCopy('cordis.patch.yml', '[]\n');
+  f.writeCopy('stale.yml', 'y\n'); // 副本残留，npm 打包不会产生它
+  const { mismatches } = collectMismatches(f.dir);
+  assert.deepEqual(mismatches, [
+    { name: '@qingwu/dsh-profile', kind: 'filedep', detail: 'stale.yml 副本多出' },
+  ]);
+});
+
 test('file: 依赖源目录缺失时报告', () => {
   const f = makeFileDepProject();
   fs.rmSync(path.join(f.dir, 'packages'), { recursive: true, force: true });

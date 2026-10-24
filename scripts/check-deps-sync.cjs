@@ -21,30 +21,71 @@
 //    明确报不可用。
 // 4. file: 本地目录依赖（@qingwu/dsh-profile）按内容双向核对副本与源
 //    目录：npm 在 lock 未变时跳过重拷贝这类依赖，副本内容陈旧（曾因
-//    缺少 Exa 插件配置致契约测试失败）只有内容比对能发现。npm 打包
-//    永远不会带入 .git、node_modules、.DS_Store，比对时跳过以免误报；
-//    副本未安装的情形由口径 2 的版本核对覆盖，不重复报。
+//    缺少 Exa 插件配置致契约测试失败）只有内容比对能发现。比对以 npm
+//    打包语义为准：源侧先剔除 npm 永不打包的 .git、node_modules、
+//    .DS_Store，声明 files 白名单时只要求白名单命中项与 npm 恒包含项
+//    （package.json、README、LICENSE）进副本——不在打包范围的源文件
+//    与运行时无关，不要求进副本，否则重装也无法消除、门禁假死。
+//    glob 仅支持 *、**、? 的常见形态；副本未安装由口径 2 覆盖不重复报。
 // 任一处对不上即失败并提示先安装，让问题在开工第一秒被拦下。
 
 const fs = require('node:fs');
 const path = require('node:path');
 
-// npm 打包本地目录依赖时的永久排除项，出现在源目录也不进副本
+// npm 打包本地目录依赖时的永久排除项（文件与目录同名同 exclusion）
 const FILE_DEP_PACK_EXCLUDES = new Set(['.git', 'node_modules', '.DS_Store']);
+
+// npm 无论 files 白名单如何都恒包含的文件形态
+const FILE_DEP_ALWAYS_INCLUDED = [/^package\.json$/i, /^readme(\..*)?$/i, /^licen[cs]e(\..*)?$/i];
 
 function listFilesRel(root) {
   const files = [];
   const walk = (current) => {
     for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+      if (FILE_DEP_PACK_EXCLUDES.has(entry.name)) continue;
       if (entry.isDirectory()) {
-        if (!FILE_DEP_PACK_EXCLUDES.has(entry.name)) walk(path.join(current, entry.name));
+        walk(path.join(current, entry.name));
       } else if (entry.isFile()) {
-        files.push(path.relative(root, path.join(current, entry.name)));
+        files.push(path.relative(root, path.join(current, entry.name)).replace(/\\/g, '/'));
       }
     }
   };
   walk(root);
   return files.sort();
+}
+
+// 极简 glob：** 跨目录、* 段内任意、? 单字符，覆盖 files 白名单常见写法
+function matchesFilePattern(rel, pattern) {
+  const regex = new RegExp(
+    '^' +
+      pattern
+        .split('/')
+        .map((seg) =>
+          seg === '**'
+            ? '.*'
+            : seg.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[^/]*').replace(/\?/g, '.'),
+        )
+        .join('/') +
+      '$',
+  );
+  return regex.test(rel);
+}
+
+// 源目录中按 npm 打包语义会进入副本的文件（相对路径）
+function sourceFilesToPack(sourceRoot) {
+  const all = listFilesRel(sourceRoot);
+  let filesField;
+  try {
+    filesField = JSON.parse(fs.readFileSync(path.join(sourceRoot, 'package.json'), 'utf8')).files;
+  } catch {
+    return all; // 源 package.json 读不了时保守按全量比对，内容核对仍能兜底
+  }
+  if (!Array.isArray(filesField)) return all; // 未声明白名单：除排除项外全打包
+  const patterns = filesField.map((p) => String(p).replace(/\\/g, '/'));
+  return all.filter((rel) => {
+    if (FILE_DEP_ALWAYS_INCLUDED.some((re) => re.test(rel))) return true;
+    return patterns.some((p) => matchesFilePattern(rel, p));
+  });
 }
 
 /**
@@ -70,7 +111,7 @@ function collectFileDepMismatches(dir, pkg) {
       mismatches.push({ name, kind: 'filedep', detail: '源目录缺失' });
       continue;
     }
-    const sourceFiles = listFilesRel(sourceRoot);
+    const sourceFiles = sourceFilesToPack(sourceRoot);
     const copyFiles = listFilesRel(copyRoot);
     const copySet = new Set(copyFiles);
     const sourceSet = new Set(sourceFiles);
