@@ -8,7 +8,7 @@
  * windows-acl runner，于是整条链都没有控制台，Agent 每执行一条命令，
  * 控制台子系统的 pwsh 就会自己新建一个可见控制台窗口（不断闪黑窗）。
  * 换成控制台子系统的 node.exe 启动引擎后，整棵树都继承主进程那个隐藏控制台
- * （见 docs/tech-architecture.md「引擎运行方式」）。
+ * （见 docs/技术架构.md「引擎运行方式」）。
  *
  * 版本固定为与 Electron 内置 Node 相同的版本，避免双运行时行为漂移；
  * 下载后按官方 SHASUMS256.txt 校验，解出 node.exe 到 build/node-runtime/
