@@ -178,6 +178,9 @@ export const RightPanel = forwardRef<RightPanelHandle, RightPanelProps>(
     /** 行号跳转序号：同一行重复点击也要重新触发定位。 */
     const jumpSeqRef = useRef(0);
     const [jump, setJump] = useState<PanelJump | null>(null);
+    /** 预览页消费跳转指令（定位完成或放弃）后清除：收起重开面板、重开页签
+     * 等任何不经 openFile 的重挂载路径都不会把旧指令当新跳转重放。 */
+    const handleJumpConsumed = useCallback(() => setJump(null), []);
 
     const openFile = useCallback(
       (path: string, line?: number) => {
@@ -424,6 +427,7 @@ export const RightPanel = forwardRef<RightPanelHandle, RightPanelProps>(
                       ? jump
                       : null
                   }
+                  onJumpConsumed={handleJumpConsumed}
                   onPreviewImage={onPreviewImage}
                   onOpenFile={openFile}
                 />

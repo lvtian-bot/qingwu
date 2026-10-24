@@ -63,6 +63,9 @@ interface PanelPreviewProps {
   active: boolean;
   /** 行号跳转指令（路径与本页相同时才传入）：seq 变化即定位到对应行。 */
   jump?: PanelJump | null;
+  /** 跳转指令被消费（定位完成或放弃）后的回执：面板据此清除指令，
+   * 防止预览页签重开时把已完成的旧指令当作新跳转重放。 */
+  onJumpConsumed?: () => void;
   /** 点击图片时把原图交给应用的大图浮层。 */
   onPreviewImage?: (url: string) => void;
   /** 点击文件链接时在面板内新建/切换标签页；链接带行号锚点时一并传出。 */
@@ -75,6 +78,7 @@ export function PanelPreview({
   path,
   active,
   jump,
+  onJumpConsumed,
   onPreviewImage,
   onOpenFile,
 }: PanelPreviewProps) {
@@ -296,20 +300,25 @@ export function PanelPreview({
   useEffect(() => {
     const line = pendingLineRef.current;
     if (line == null || state.phase !== "text") return;
+    /** 指令消费（定位完成或放弃）：清待定位行并回执面板清除指令。 */
+    const consume = () => {
+      pendingLineRef.current = null;
+      onJumpConsumed?.();
+    };
     // Markdown 渲染视图没有行结构，行号锚点无处落点
     if (state.info.kind === "markdown") {
-      pendingLineRef.current = null;
+      consume();
       return;
     }
     if (line > state.lines) {
       if (state.eof || state.lines >= MAX_RENDER_LINES) {
         // 行号超出文件范围或渲染上限，无从定位
-        pendingLineRef.current = null;
+        consume();
       } else if (!state.loadingMore) {
         const progress = jumpProgressRef.current;
         if (progress && progress.line === line && progress.lastLines === state.lines) {
           // 发起过翻页但行数没有增长：读取失败，停止自动重试，等用户重新点击链接
-          pendingLineRef.current = null;
+          consume();
           jumpProgressRef.current = null;
         } else {
           jumpProgressRef.current = { line, lastLines: state.lines };
@@ -323,18 +332,18 @@ export function PanelPreview({
     const row = body?.querySelector<HTMLElement>(`[data-line="${line}"]`);
     // 页签隐藏（display:none）时测不到行位置：保留跳转指令，等活动页签切回后再定位
     if (!active || !body || !row || body.clientHeight === 0) return;
-    pendingLineRef.current = null;
     // 用视口差值滚动使目标行居中；与行的 offsetParent 结构无关
     const bodyRect = body.getBoundingClientRect();
     const rowRect = row.getBoundingClientRect();
     body.scrollTop += rowRect.top - bodyRect.top - body.clientHeight / 2;
+    consume();
     setHitLine(line);
     if (hitTimerRef.current != null) window.clearTimeout(hitTimerRef.current);
     hitTimerRef.current = window.setTimeout(() => {
       setHitLine(null);
       hitTimerRef.current = null;
     }, HIT_HIGHLIGHT_MS);
-  }, [state, jump?.seq, loadMore, active]);
+  }, [state, jump?.seq, loadMore, active, onJumpConsumed]);
 
   useEffect(
     () => () => {
