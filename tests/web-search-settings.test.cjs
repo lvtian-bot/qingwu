@@ -335,6 +335,31 @@ test("Exa 换密钥后重建写入失败，重试不重输密钥仍补做插件�
   ]);
 });
 
+test("DeepSeek 密钥保存不清除 Exa 待重建状态，切回后仍补做重建", async () => {
+  const h = setup();
+  h.credentialStore.EXA_API_KEY = { configured: true, writable: true, source: "stored" };
+  await h.mount();
+  h.snapshot().namespaces[0].value = { searchProvider: "exa", fetchProvider: "http" };
+  await h.render().refresh();
+  edit(h, "apiKeyDraft", "fixture-new-exa");
+  h.failNamespace("web-search-exa");
+  await h.render().save();
+  assert.ok(h.render().error);
+  h.failNamespace(undefined);
+  h.render().changeMode("api");
+  edit(h, "keySource", "independent");
+  edit(h, "apiKeyDraft", "fixture-ds-value");
+  await h.render().save();
+  assert.equal(h.render().error, null);
+  h.render().changeMode("exa");
+  await h.render().save();
+  assert.equal(h.render().error, null);
+  const exaWrites = writes(h).filter((c) => c.args.ns === "web-search-exa");
+  assert.deepEqual(exaWrites[exaWrites.length - 1].args.ops, [
+    { op: "set", path: ["numResults"], value: 10 },
+  ]);
+});
+
 test("Exa 结果条数可修改与清空，清空不携带重建写入", async () => {
   const h = setup();
   h.credentialStore.EXA_API_KEY = { configured: true, writable: true, source: "stored" };

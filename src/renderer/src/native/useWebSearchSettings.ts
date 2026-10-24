@@ -180,7 +180,8 @@ export function useWebSearchSettings(options?: WebSearchSettingsOptions) {
         await rpc(Endpoints.credentialsSet, { ref, value: selectedDraft.apiKeyDraft.trim() });
         const verified = await rpc<Record<string, CredentialInfo>>(Endpoints.credentialsDescribe, { refs: [ref] });
         if (!verified?.[ref]?.configured) throw new Error("凭据未保存");
-        pendingExaReload.current = targetMode === "exa";
+        // 仅 Exa 凭据写入置位待重建；DeepSeek 的保存不得清除尚未完成的 Exa 重建。
+        if (targetMode === "exa") pendingExaReload.current = true;
         publishDrafts({ ...draftsRef.current, [targetMode]: { ...draftsRef.current[targetMode], apiKeyDraft: "" } });
         callbacks.current?.onRefreshCredentials?.();
       }
