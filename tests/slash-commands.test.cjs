@@ -164,9 +164,28 @@ test('parseSlashLine 正确解析命令行与参数（支持别名归一化与�
 
 test('mergeCommands 保证分组、排序与基线兜底', () => {
   const mergedEmpty = mergeCommands([]);
-  assert.ok(mergedEmpty.length >= 7);
+  // goal、plan、compact、permission + 客户端命令 model、export
+  assert.ok(mergedEmpty.length >= 6);
   assert.equal(mergedEmpty[0].section, 'add');
   assert.equal(mergedEmpty[0].name, 'goal');
+  // 青梧不接入会话反馈：菜单里不能出现 /feedback
+  assert.equal(
+    mergedEmpty.some((c) => c.name === 'feedback'),
+    false,
+  );
+  // 引擎仍会把它列在 commands/list 里，必须从宿主描述符中过滤掉
+  const withHostFeedback = mergeCommands([
+    { name: 'feedback', description: 'Record feedback about this session' },
+    { name: 'compact', description: 'Compact older conversation history' },
+  ]);
+  assert.equal(
+    withHostFeedback.some((c) => c.name === 'feedback'),
+    false,
+  );
+  // /export 由客户端接管（引擎 profile 未加载导出插件）
+  const exported = mergedEmpty.find((c) => c.name === 'export');
+  assert.ok(exported);
+  assert.equal(exported.isClient, true);
 
   const hostDescriptors = [
     {

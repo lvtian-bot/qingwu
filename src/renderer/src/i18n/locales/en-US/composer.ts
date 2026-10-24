@@ -87,7 +87,6 @@ export const composer: typeof zhComposer = {
     labels: {
       goal: "Goal",
       plan: "Plan",
-      feedback: "Feedback",
       compact: "Compact",
       permission: "Permission",
       model: "Model",
@@ -96,7 +95,6 @@ export const composer: typeof zhComposer = {
     descriptions: {
       goal: "Set or view long-term task goals",
       plan: "Enter or exit plan mode",
-      feedback: "Send feedback about the current session",
       compact: "Compact the conversation above",
       permission:
         "Switch permission presets (sandbox mode and approval policy)",

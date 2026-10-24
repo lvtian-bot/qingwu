@@ -215,6 +215,8 @@ export function NativeApp({
     skills,
     pushEcho,
     removeEchoByRpcId,
+    beginLocalCommand,
+    settleLocalCommand,
   } = streams;
 
   useChatScrollFollow(scroll, {
@@ -479,6 +481,52 @@ export function NativeApp({
     if (!parsed) return;
     const submittedDraft = captureForSubmit(currentId);
 
+    // /export 只读本地会话文件，不需要引擎连接，必须在断线检查之前分流，
+    // 否则引擎断线时会话明明能导也会被拦下。
+    if (parsed.name === "export") {
+      if (!options?.preserveInput) {
+        clearForSubmit(currentId, submittedDraft);
+      }
+      if (parsed.args) {
+        setError(t("chat.commands.exportNoArgs"));
+        return;
+      }
+      const sessionId = currentId;
+      if (!sessionId) {
+        setError(t("chat.commands.exportNoSession"));
+        return;
+      }
+      const commandId = crypto.randomUUID();
+      beginLocalCommand(commandId, "export");
+      try {
+        const result = await window.qingwu.exportSessionArchive(sessionId);
+        if (!result.ok) {
+          settleLocalCommand(commandId, { kind: "error", text: result.message });
+          return;
+        }
+        // 导出读的是已经落盘的日志；会话可能还有刚产生、尚未写盘的事件。
+        // 引擎没有对外暴露落盘屏障，界面无法保证包含最新消息，因此如实标注
+        // 「生成时间」与可能滞后的事实，而不是让用户以为拿到的是完整对话。
+        const stamp = new Date().toLocaleTimeString("zh-CN", {
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+        const text = result.oversized
+          ? t("chat.commands.exportedOversized", { path: result.filePath })
+          : t("chat.commands.exported", {
+              path: result.filePath,
+              time: stamp,
+            });
+        settleLocalCommand(commandId, { kind: "success", text });
+      } catch (err) {
+        settleLocalCommand(commandId, {
+          kind: "error",
+          text: toErrMsg(err),
+        });
+      }
+      return;
+    }
+
     if (!dshConnected) {
       setError(t("chat.errors.executeDisconnected"));
       return;
@@ -500,6 +548,7 @@ export function NativeApp({
         return;
       }
     }
+
 
     const cmdDesc = hostCommands.find(
       (c) => c.name.toLowerCase() === parsed.name,
@@ -535,17 +584,16 @@ export function NativeApp({
     const submittedDraft = captureForSubmit(currentId);
     if (!text && images.length === 0) return;
 
-    if (!dshConnected) {
-      setError(t("chat.errors.sendDisconnected"));
-      return;
-    }
-
     // 斜杠命令拦截：仅拦截真正的宿主系统命令与客户端自处理命令，交由宿主执行，绕过模型 Prompt 循环。
     // 技能（Skill）发出的文本以 /<skill-name> 形式作为普通 prompt 提交给模型，触发底层技能调用。
+    // 客户端命令（/model、/export）不走引擎，包含 /export 在内的判断必须放在连接检查之前。
     const parsedSlash = parseSlashLine(text);
+    const isClientCommand =
+      parsedSlash !== null &&
+      CLIENT_COMMANDS.some((c) => c.name === parsedSlash.name);
     const isHostOrClientCommand =
-      parsedSlash &&
-      (parsedSlash.name === "model" ||
+      parsedSlash !== null &&
+      (isClientCommand ||
         hostCommands.some((c) => c.name.toLowerCase() === parsedSlash.name) ||
         BASELINE_HOST_COMMANDS.some(
           (c) => c.name.toLowerCase() === parsedSlash.name,
@@ -553,6 +601,11 @@ export function NativeApp({
 
     if (isHostOrClientCommand) {
       void handleExecuteCommand(text);
+      return;
+    }
+
+    if (!dshConnected) {
+      setError(t("chat.errors.sendDisconnected"));
       return;
     }
 
@@ -969,6 +1022,9 @@ export function NativeApp({
                   onPreviewImage={handlePreviewImage}
                   commands={availableCommands}
                   onExecuteCommand={(line) => void handleExecuteCommand(line)}
+                  onClientCommand={(name, options) =>
+                    void handleExecuteCommand(`/${name}`, options)
+                  }
                   onQueryFileReferences={handleQueryFileReferences}
                   contextPressure={currentProjections?.contextPressure}
                   contextBreakdown={currentProjections?.contextBreakdown}
@@ -1179,6 +1235,9 @@ export function NativeApp({
                     onPreviewImage={handlePreviewImage}
                     commands={availableCommands}
                     onExecuteCommand={(line) => void handleExecuteCommand(line)}
+                    onClientCommand={(name, options) =>
+                      void handleExecuteCommand(`/${name}`, options)
+                    }
                     onQueryFileReferences={handleQueryFileReferences}
                     contextPressure={currentProjections?.contextPressure}
                     contextBreakdown={currentProjections?.contextBreakdown}

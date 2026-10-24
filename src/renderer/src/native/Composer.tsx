@@ -42,7 +42,10 @@ interface ComposerProps {
   /** 可用斜杠命令列表。 */
   commands?: SlashCommandItem[];
   /** 触发客户端特定命令（如 model）。 */
-  onClientCommand?: (commandName: string) => void;
+  onClientCommand?: (
+    commandName: string,
+    options?: { preserveInput?: boolean },
+  ) => void;
   /** 触发直接执行斜杠命令（无参数命令）。 */
   onExecuteCommand?: (line: string, options?: { preserveInput?: boolean }) => void;
   /** 根据当前会话和 query 查询文件候选。 */
@@ -255,7 +258,8 @@ export function Composer({
       }, 0);
 
       if (cmd.isClient) {
-        onClientCommand?.(cmd.name);
+        // 行内补全只吃掉触发词，周围草稿与附件必须保留（与宿主命令同一语义）
+        onClientCommand?.(cmd.name, { preserveInput: true });
       } else if (onExecuteCommand) {
         onExecuteCommand(`/${cmd.name}`, { preserveInput: true });
       }

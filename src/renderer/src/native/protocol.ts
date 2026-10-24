@@ -378,6 +378,58 @@ export interface UserMessageData {
   content?: ContentBlock[];
 }
 
+/**
+ * 斜杠指令生命周期事件载荷（command/run → command/done）。
+ *
+ * 官方界面把这两条折成对话流里的指令卡片：run 落一条「执行中」，
+ * done 按 kind 落成功或失败结果。sourceEventSeq 只在成功时出现。
+ */
+export interface CommandRunEventData {
+  commandId: string;
+  name: string;
+  args?: string;
+}
+
+export interface CommandDoneEventData {
+  commandId: string;
+  kind: 'success' | 'error';
+  text?: string;
+  sourceEventSeq?: number;
+}
+
+/** 压缩作用的历史区间（引擎 session seq 闭区间）。 */
+export interface CompactionShadowedRange {
+  start: number;
+  end: number;
+}
+
+/** compaction/start 与 compaction/end：turn 为 null 表示它不是某一轮的产物。 */
+export interface CompactionLifecycleEventData {
+  compactionId: string;
+  sourceCommandId?: string;
+  turn?: number | null;
+  error?: string;
+}
+
+/** compaction/summary：压缩摘要与它遮蔽掉的历史统计。 */
+export interface CompactionSummaryEventData {
+  compactionId: string;
+  sourceCommandId?: string;
+  summary?: ContentBlock[];
+  shadowedRange?: CompactionShadowedRange;
+  shadowedSeqs?: number[];
+  shadowedTokenCount?: number;
+  provider?: string;
+  model?: string;
+}
+
+/** 压缩替换检查点：一条 replace 表面的 user/message，source.kind 固定为该值。 */
+export interface CompactionCheckpointSource {
+  kind: string;
+  compactionId?: string;
+  sourceCommandId?: string;
+}
+
 export interface AssistantMessageData {
   turn: number;
   step: number;
