@@ -27,6 +27,8 @@ function setup(data = initial()) {
   let cursor = 0;
   exaEnvStore.EXA_API_KEY = undefined;
   dropExaWrite = false;
+  // 引擎在启动时冻结环境快照：首次凭据查询时捕获，运行期写入 .env 不影响回执。
+  let exaSnapshot = null;
   const hooks = [], effects = [], calls = [];
   const same = (a, b) => a && b && a.length === b.length && a.every((v, i) => Object.is(v, b[i]));
   let snapshot = structuredClone(data), credentialGate, readGate, failedNamespace, readError = false, dropCredential = false;
@@ -62,9 +64,10 @@ function setup(data = initial()) {
         return reply;
       }
       if (endpoint === "credentials/describe") {
+        if (exaSnapshot === null) exaSnapshot = exaEnvStore.EXA_API_KEY ?? false;
         const reply = Object.fromEntries(args.refs.map((ref) => [ref,
           credentialStore[ref]
-          || (ref === "EXA_API_KEY" && exaEnvStore.EXA_API_KEY
+          || (ref === "EXA_API_KEY" && exaSnapshot
             ? { configured: true, writable: true, source: "user-env" }
             : { configured: false, writable: true, source: "none" })]));
         const gate = credentialGate; credentialGate = undefined;

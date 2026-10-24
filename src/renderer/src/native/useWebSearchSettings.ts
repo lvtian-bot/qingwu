@@ -179,7 +179,10 @@ export function useWebSearchSettings(options?: WebSearchSettingsOptions) {
     }
     const ref = targetKeyRef(current, targetMode, selectedDraft.keySource);
     const literalKept = hasLiteralKey(targetNs) && !ops.some((op) => op.path[0] === "apiKey");
-    if (selectedDraft.keySource === "independent" && !literalKept && !credentials[ref]?.configured && !keyChange) {
+    // Exa 的已配置状态以本地写入为准：引擎凭据查询读启动快照，看不到运行期写入。
+    const keyReady = keyChange || credentials[ref]?.configured
+      || (targetMode === "exa" && exaKeyWritten);
+    if (selectedDraft.keySource === "independent" && !literalKept && !keyReady) {
       setError(translation.current("settings.webSearch.keyRequired")); return;
     }
     if (keyChange && (!credentials[ref]?.known || credentials[ref]?.writable !== true)) {
@@ -192,14 +195,15 @@ export function useWebSearchSettings(options?: WebSearchSettingsOptions) {
       if (keyChange) {
         if (targetMode === "exa") {
           // Exa 插件只读启动环境、不接凭据体系；密钥由主进程写入用户环境层
-          // （$DSH_HOME/.env），凭据状态查询经引擎回退层同样覆盖该文件。
+          // （$DSH_HOME/.env）。写成功即已持久化，不向运行中的引擎确认——引擎的
+          // 凭据查询读启动时快照，运行期写入它永远看不到，重启后才可见。
           await window.qingwu.setExaSearchKey(selectedDraft.apiKeyDraft.trim());
           exaKeyWritten = true;
         } else {
           await rpc(Endpoints.credentialsSet, { ref, value: selectedDraft.apiKeyDraft.trim() });
+          const verified = await rpc<Record<string, CredentialInfo>>(Endpoints.credentialsDescribe, { refs: [ref] });
+          if (!verified?.[ref]?.configured) throw new Error("凭据未保存");
         }
-        const verified = await rpc<Record<string, CredentialInfo>>(Endpoints.credentialsDescribe, { refs: [ref] });
-        if (!verified?.[ref]?.configured) throw new Error("凭据未保存");
         publishDrafts({ ...draftsRef.current, [targetMode]: { ...draftsRef.current[targetMode], apiKeyDraft: "" } });
         callbacks.current?.onRefreshCredentials?.();
       }
@@ -230,9 +234,12 @@ export function useWebSearchSettings(options?: WebSearchSettingsOptions) {
     availableModes: SEARCH_SERVICES_LIST.filter((service) => service === "exa" || namespace(snapshot.current, SEARCH_SERVICES[service].ns)),
     hasExternalConfiguration: Boolean(snapshot.current && selectedMode(snapshot.current) === "external"),
     externalProvider: String(section(namespace(snapshot.current, "web")).searchProvider ?? ""),
-    hasKey: Boolean(literalRetained || credential?.configured),
-    keyStatusKnown: Boolean(literalRetained || credential?.known),
-    keyWritable: Boolean(credential?.known && credential.writable && (writable || !needsBinding)),
+    // Exa 的密钥写入走主进程用户环境层，不依赖运行中引擎的凭据观察；
+    // 写入成功后界面按本地状态显示已配置，重启后与引擎快照自然一致。
+    hasKey: Boolean(literalRetained || credential?.configured || (mode === "exa" && exaKeyWritten)),
+    keyStatusKnown: Boolean(literalRetained || credential?.known || mode === "exa"),
+    keyWritable: mode === "exa" ? true
+      : Boolean(credential?.known && credential.writable && (writable || !needsBinding)),
     message, error: error ?? loadError, save, refresh: load, refreshCredentials,
   };
 }
