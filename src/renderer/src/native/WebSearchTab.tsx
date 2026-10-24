@@ -47,11 +47,11 @@ export function WebSearchTab({ controller: c }: { controller: WebSearchSettingsC
               <KeyVisibilityToggle visible={showKey} onToggle={() => setShowKey(!showKey)} />
             </div> : <span>{t("settings.webSearch.keySource.model")}</span>}
           </SettingsRow>
-          <SettingsRow label={t("settings.webSearch.limit.countLabel")} desc={t("settings.webSearch.limit.countDesc")}>
+          {"limitField" in config && <SettingsRow label={t("settings.webSearch.limit.countLabel")} desc={t("settings.webSearch.limit.countDesc")}>
             <input type="number" className="native-settings-input" disabled={disabled} style={{ width: "90px" }}
               min={1} max={config.maxLimit} placeholder={String(config.defaultLimit)}
               value={c.limit} onChange={(e) => c.edit("limit", e.target.value)} />
-          </SettingsRow>
+          </SettingsRow>}
         </> : c.loaded && <div className="native-settings-alert">{t("settings.webSearch.externalDesc")}</div>}
       </div>
       <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "16px" }}>

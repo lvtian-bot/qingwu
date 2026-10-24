@@ -13,11 +13,11 @@ interface CredentialState extends Partial<CredentialInfo> { known: boolean }
 export interface WebSearchSettingsOptions { onRefreshCredentials?: () => void }
 const emptyDraft = (): SearchDraft => ({ limit: "", keySource: "model", apiKeyDraft: "" });
 const emptyDrafts = (): Record<SearchService, SearchDraft> => ({ api: emptyDraft(), exa: emptyDraft() });
-/** Exa 凭据已落盘但插件重建尚未成功的标记。模块级：设置页关闭再打开后仍需补做重建；
- * renderer 整体重载会丢失，届时新密钥待下次 Exa 保存或引擎重启后生效。 */
-let pendingExaReload = false;
-/** 仅供测试观察待重建状态。 */
-export function exaReloadPending(): boolean { return pendingExaReload; }
+/** 服务是否具备引擎设置命名空间；Exa 无运行时配置面，只参与切换与凭据。 */
+function serviceNamespace(snapshot: SettingsDescribeValue | null, service: SearchService) {
+  const config = SEARCH_SERVICES[service];
+  return "ns" in config ? namespace(snapshot, config.ns) : undefined;
+}
 
 export function useWebSearchSettings(options?: WebSearchSettingsOptions) {
   const t = useT();
@@ -52,7 +52,7 @@ export function useWebSearchSettings(options?: WebSearchSettingsOptions) {
     const sequence = ++credentialSequence.current;
     const refs = [...new Set(SEARCH_SERVICES_LIST.flatMap((service) => [
       modelKeyRef(current),
-      searchKeyRef(namespace(current, SEARCH_SERVICES[service].ns)),
+      searchKeyRef(serviceNamespace(current, service)),
       targetKeyRef(current, service, "independent"),
     ]))];
     setCredentials((before) => Object.fromEntries(refs.map((ref) => [ref, { ...before[ref], known: false }])));
@@ -144,14 +144,14 @@ export function useWebSearchSettings(options?: WebSearchSettingsOptions) {
     setError(null);
   }, []);
 
-  const currentNamespace = mode === "external" ? undefined : namespace(snapshot.current, SEARCH_SERVICES[mode].ns);
+  const currentNamespace = mode === "external" ? undefined : serviceNamespace(snapshot.current, mode);
   const draft = mode === "external" ? emptyDraft() : drafts[mode];
   const activeRef = snapshot.current && mode !== "external" ? targetKeyRef(snapshot.current, mode, draft.keySource) : "";
   const credential = credentials[activeRef];
   const baseline = snapshot.current && mode !== "external" ? draftFrom(snapshot.current, mode) : emptyDraft();
   const literalRetained = hasLiteralKey(currentNamespace) && draft.keySource === baseline.keySource && !draft.apiKeyDraft.trim();
   const needsBinding = Boolean(currentNamespace && (searchKeyRef(currentNamespace) !== activeRef || hasLiteralKey(currentNamespace)));
-  const formAvailable = mode !== "external" && Boolean(currentNamespace);
+  const formAvailable = mode === "exa" || Boolean(currentNamespace);
 
   const save = async () => {
     if (savingRef.current) return;
@@ -160,16 +160,16 @@ export function useWebSearchSettings(options?: WebSearchSettingsOptions) {
     const current = snapshot.current;
     const targetMode = modeRef.current;
     if (!loaded || !current || targetMode === "external") return;
-    const targetNs = namespace(current, SEARCH_SERVICES[targetMode].ns);
-    if (!targetNs) return;
+    const targetNs = serviceNamespace(current, targetMode);
+    if (targetMode !== "exa" && !targetNs) return;
     const selectedDraft = draftsRef.current[targetMode];
-    const invalid = validateDraft(targetMode, selectedDraft);
+    const invalid = validateDraft(selectedDraft);
     if (invalid) { setError(translation.current("settings.webSearch." + invalid)); return; }
     const keyChange = selectedDraft.keySource === "independent" && Boolean(selectedDraft.apiKeyDraft.trim());
     if (targetMode === "exa" && keyChange && modelKeyRef(current) === SEARCH_SERVICES.exa.keyRef) {
       setError(translation.current("settings.webSearch.exaKeyConflict")); return;
     }
-    const ops = configOps(current, targetMode, selectedDraft, keyChange || pendingExaReload);
+    const ops = configOps(current, targetMode, selectedDraft);
     const selectOps = selectionOps(current, targetMode);
     if (!current.writable && (ops.length || selectOps.length)) {
       setError(translation.current("settings.webSearch.readOnly")); return;
@@ -190,21 +190,20 @@ export function useWebSearchSettings(options?: WebSearchSettingsOptions) {
         await rpc(Endpoints.credentialsSet, { ref, value: selectedDraft.apiKeyDraft.trim() });
         const verified = await rpc<Record<string, CredentialInfo>>(Endpoints.credentialsDescribe, { refs: [ref] });
         if (!verified?.[ref]?.configured) throw new Error("凭据未保存");
-        // 仅 Exa 凭据写入置位待重建；DeepSeek 的保存不得清除尚未完成的 Exa 重建。
-        if (targetMode === "exa") pendingExaReload = true;
         publishDrafts({ ...draftsRef.current, [targetMode]: { ...draftsRef.current[targetMode], apiKeyDraft: "" } });
         callbacks.current?.onRefreshCredentials?.();
       }
       // 与 dsh 官方一致：目标服务设置先落盘，最后才启用它。
-      if (ops.length) {
+      if (ops.length && targetNs) {
         await rpc(Endpoints.settingsMutate, { ns: targetNs.ns, ops, expectedRevision: targetNs.revision });
-        if (ops.some((op) => op.path[0] === SEARCH_SERVICES.exa.limitField)) pendingExaReload = false;
         serviceSaved = true;
       }
       if (selectOps.length) await rpc(Endpoints.settingsMutate, {
         ns: "web", ops: selectOps, expectedRevision: namespace(current, "web")!.revision,
       });
-      if (await load(targetMode) && alive.current) setMessage(translation.current("settings.webSearch.savedSuccess"));
+      if (await load(targetMode) && alive.current) setMessage(translation.current(
+        targetMode === "exa" && keyChange ? "settings.webSearch.exaSavedRestart" : "settings.webSearch.savedSuccess",
+      ));
     } catch {
       // 错误原文可能含凭据，不放进界面或日志。回读快照供重试，保留未保存草稿。
       await load(serviceSaved ? targetMode : undefined);
@@ -217,7 +216,7 @@ export function useWebSearchSettings(options?: WebSearchSettingsOptions) {
 
   return {
     mode, changeMode, ...draft, edit, loaded, saving, writable, formAvailable,
-    availableModes: SEARCH_SERVICES_LIST.filter((service) => namespace(snapshot.current, SEARCH_SERVICES[service].ns)),
+    availableModes: SEARCH_SERVICES_LIST.filter((service) => service === "exa" || namespace(snapshot.current, SEARCH_SERVICES[service].ns)),
     hasExternalConfiguration: Boolean(snapshot.current && selectedMode(snapshot.current) === "external"),
     externalProvider: String(section(namespace(snapshot.current, "web")).searchProvider ?? ""),
     hasKey: Boolean(literalRetained || credential?.configured),

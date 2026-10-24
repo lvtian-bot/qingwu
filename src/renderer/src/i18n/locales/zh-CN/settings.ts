@@ -63,6 +63,7 @@ export const settings = {
     save: "保存配置",
     saving: "正在保存…",
     savedSuccess: "联网搜索配置已保存",
+    exaSavedRestart: "Exa 密钥已保存，重启应用后生效。",
     saveFailed: "保存失败，请检查当前配置后重试；已保存的部分将保留。",
     loadFailed: "读取联网搜索配置失败，请重新打开设置或恢复连接后重试。",
     readOnly: "当前运行环境设置处于只读模式，不可修改",

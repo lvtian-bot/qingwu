@@ -8,7 +8,9 @@ export interface SearchDraft {
   keySource: SearchKeySource;
   apiKeyDraft: string;
 }
-/** 仅映射 dsh 的提供方和字段，不实现搜索、凭据或配置持久化。 */
+/** 仅映射 dsh 的提供方和字段，不实现搜索、凭据或配置持久化。
+ * Exa 插件未声明运行时可修改字段（无 volatile 契约），设置接口不暴露其命名空间，
+ * 因此 Exa 只做服务切换与独立密钥，不写插件配置；条数等使用插件默认值。 */
 export const SEARCH_SERVICES = {
   api: {
     ns: "web-deepseek-api", search: "deepseek-search-api", fetch: "deepseek-fetch-api",
@@ -17,8 +19,7 @@ export const SEARCH_SERVICES = {
     independentRef: "QINGWU_DEEPSEEK_SEARCH_API_KEY",
   },
   exa: {
-    ns: "web-search-exa", search: "exa", fetch: "http",
-    limitField: "numResults", defaultLimit: 10, maxLimit: 50,
+    search: "exa", fetch: "http",
     keySourceSelectable: false,
     keyRef: "EXA_API_KEY",
   },
@@ -55,11 +56,10 @@ export function selectedMode(snapshot: SettingsDescribeValue): SearchMode {
 }
 export function draftFrom(snapshot: SettingsDescribeValue, service: SearchService): SearchDraft {
   const config = SEARCH_SERVICES[service];
+  if (!("ns" in config)) return { limit: "", keySource: "independent", apiKeyDraft: "" };
   const ns = namespace(snapshot, config.ns);
   const value = section(ns);
-  const independent = config.keySourceSelectable
-    ? hasLiteralKey(ns) || searchKeyRef(ns) !== modelKeyRef(snapshot)
-    : true;
+  const independent = hasLiteralKey(ns) || searchKeyRef(ns) !== modelKeyRef(snapshot);
   return {
     limit: String(value[config.limitField] ?? config.defaultLimit),
     keySource: independent ? "independent" : "model",
@@ -84,38 +84,30 @@ export function rebaseDraft(draft: SearchDraft, before: SearchDraft, after: Sear
     apiKeyDraft: draft.apiKeyDraft,
   };
 }
-export function validateDraft(service: SearchService, draft: SearchDraft): "invalidLimit" | null {
+export function validateDraft(draft: SearchDraft): "invalidLimit" | null {
   if (draft.limit.trim()) {
     const n = Number(draft.limit);
-    if (!Number.isSafeInteger(n) || n < 1 || n > SEARCH_SERVICES[service].maxLimit) return "invalidLimit";
+    if (!Number.isSafeInteger(n) || n < 1 || n > 50) return "invalidLimit";
   }
   return null;
 }
-export function configOps(
-  snapshot: SettingsDescribeValue, service: SearchService, draft: SearchDraft, reload = false,
-): SettingsPathOp[] {
+export function configOps(snapshot: SettingsDescribeValue, service: SearchService, draft: SearchDraft): SettingsPathOp[] {
   const config = SEARCH_SERVICES[service];
+  if (!("ns" in config)) return [];
   const baseline = draftFrom(snapshot, service);
   const keyChange = draft.keySource === "independent" && Boolean(draft.apiKeyDraft.trim());
-  const limitChanged = draft.limit.trim() !== baseline.limit.trim();
   const ops: SettingsPathOp[] = [];
-  if (limitChanged || (reload && service === "exa")) {
-    // Exa 插件在构造时快照启动环境里的 EXA_API_KEY；凭据更新后必须写入
-    // 一次插件配置触发重建，新密钥才会被读取。numResults 是唯一安全的触发字段。
-    // reload 也覆盖凭据已落盘、重建写入失败后的重试：待重建状态由调用方跟踪。
-    const value = draft.limit.trim() || (limitChanged ? "" : String(baseline.limit || config.defaultLimit));
-    ops.push(value
-      ? { op: "set", path: [config.limitField], value: Number(value) }
+  if (draft.limit.trim() !== baseline.limit.trim()) {
+    ops.push(draft.limit.trim()
+      ? { op: "set", path: [config.limitField], value: Number(draft.limit) }
       : { op: "unset", path: [config.limitField] });
   }
-  if (config.keySourceSelectable) {
-    if (draft.keySource !== baseline.keySource || (draft.keySource === "independent" && keyChange)) {
-      const ref = targetKeyRef(snapshot, service, draft.keySource);
-      const ns = namespace(snapshot, config.ns);
-      if (searchKeyRef(ns) !== ref) ops.push({ op: "set", path: ["apiKeyEnv"], value: ref });
-      // 字面密钥优先于引用。空覆盖停止它，不读取或回传任何明文。
-      if (hasLiteralKey(ns)) ops.push({ op: "set", path: ["apiKey"], value: "" });
-    }
+  if (draft.keySource !== baseline.keySource || (draft.keySource === "independent" && keyChange)) {
+    const ref = targetKeyRef(snapshot, service, draft.keySource);
+    const ns = namespace(snapshot, config.ns);
+    if (searchKeyRef(ns) !== ref) ops.push({ op: "set", path: ["apiKeyEnv"], value: ref });
+    // 字面密钥优先于引用。空覆盖停止它，不读取或回传任何明文。
+    if (hasLiteralKey(ns)) ops.push({ op: "set", path: ["apiKey"], value: "" });
   }
   return ops;
 }

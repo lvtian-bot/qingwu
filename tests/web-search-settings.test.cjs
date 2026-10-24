@@ -10,7 +10,6 @@ function initial() {
       value: { searchProvider: "deepseek-search-api", fetchProvider: "deepseek-fetch-api" } },
     { ns: "web-deepseek-api", revision: 2, value: { count: 10, apiKeyEnv: "DEEPSEEK_API_KEY" },
       base: { count: 10, apiKeyEnv: "DEEPSEEK_API_KEY" } },
-    { ns: "web-search-exa", revision: 3, value: {}, base: {} },
     { ns: "llm-deepseek", revision: 4, value: { apiKeyEnv: "DEEPSEEK_API_KEY" } },
   ] };
 }
@@ -98,40 +97,43 @@ test("未改动的设置不会重写；仅改结果条数仍沿用模型密钥",
   assert.equal(h.calls.some((c) => c.endpoint === "credentials/set"), false);
 });
 
-test("两种服务的草稿分别保留；切换服务先落盘服务设置再切换提供方", async () => {
+test("两种服务的草稿分别保留；Exa 保存只写凭据与服务切换", async () => {
   const h = setup();
   h.credentialStore.EXA_API_KEY = { configured: true, writable: true, source: "stored" };
   await h.mount();
+  assert.deepEqual(h.render().availableModes, ["api", "exa"]);
   edit(h, "limit", "30");
   h.render().changeMode("exa");
-  edit(h, "limit", "20");
+  edit(h, "apiKeyDraft", "fixture-new-exa");
   h.render().changeMode("api");
   assert.equal(h.render().limit, "30");
   h.render().changeMode("exa");
+  assert.equal(h.render().apiKeyDraft, "fixture-new-exa");
   await h.render().save();
-  assert.deepEqual(writes(h).map((c) => c.args.ns), ["web-search-exa", "web"]);
+  assert.deepEqual(writes(h).map((c) => c.args.ns), ["web"]);
   assert.equal(h.render().mode, "exa");
+  assert.equal(h.render().message, "settings.webSearch.exaSavedRestart");
 });
 
-test("目标服务保存失败时不启用它，输入不丢失并能重试", async () => {
+test("切换写入失败时不启用服务，选择保留并能重试", async () => {
   const h = setup();
   h.credentialStore.EXA_API_KEY = { configured: true, writable: true, source: "stored" };
   await h.mount();
-  h.render().changeMode("exa"); edit(h, "limit", "7");
-  h.failNamespace("web-search-exa");
+  h.render().changeMode("exa");
+  h.failNamespace("web");
   await h.render().save();
-  assert.equal(writes(h).some((c) => c.args.ns === "web"), false);
-  assert.equal(h.render().limit, "7");
+  assert.ok(h.render().error);
   assert.equal(h.render().mode, "exa");
   h.failNamespace(undefined); await h.render().save();
   assert.equal(h.render().error, null);
+  assert.equal(h.render().mode, "exa");
 });
 
 test("服务设置已成功但切换失败时，重试仅补做服务切换", async () => {
-  const h = setup();
-  h.credentialStore.EXA_API_KEY = { configured: true, writable: true, source: "stored" };
-  await h.mount();
-  h.render().changeMode("exa"); edit(h, "limit", "6");
+  const data = initial();
+  data.namespaces[0].value = { searchProvider: "tavily", fetchProvider: "http" };
+  const h = setup(data); await h.mount();
+  h.render().changeMode("api"); edit(h, "limit", "6");
   h.failNamespace("web"); await h.render().save();
   assert.ok(h.render().error);
   h.failNamespace(undefined); const count = writes(h).length;
@@ -179,7 +181,7 @@ test("独立引用重名且配置只读时，不写模型凭据或无法绑定�
   const data = initial(), shared = fields.SEARCH_SERVICES.api.independentRef;
   data.writable = false;
   data.namespaces[1].value.apiKeyEnv = shared;
-  data.namespaces[3].value.apiKeyEnv = shared;
+  data.namespaces[2].value.apiKeyEnv = shared;
   const h = setup(data); await h.mount();
   edit(h, "keySource", "independent"); edit(h, "apiKeyDraft", "fixture-search-value");
   assert.equal(h.render().keyWritable, false);
@@ -260,7 +262,7 @@ test("旧版搜索搭配自定义抓取时不自动迁移，按外部配置展�
 test("旧版命名空间缺失时不迁移凭据绑定，保持新版继承模型引用", async () => {
   const data = initial();
   data.namespaces[0].value = { searchProvider: "deepseek-official", fetchProvider: "http" };
-  data.namespaces[3].value = { apiKeyEnv: "MY_MODEL_KEY" };
+  data.namespaces[2].value = { apiKeyEnv: "MY_MODEL_KEY" };
   const h = setup(data); await h.mount();
   assert.equal(writes(h).some((c) => c.args.ns === "web-deepseek-api"), false);
   assert.equal(h.render().mode, "api");
@@ -268,7 +270,7 @@ test("旧版命名空间缺失时不迁移凭据绑定，保持新版继承模�
 
 test("模型密钥引用与 Exa 重名时拒绝保存 Exa 密钥", async () => {
   const data = initial();
-  data.namespaces[3].value = { apiKeyEnv: "EXA_API_KEY" };
+  data.namespaces[2].value = { apiKeyEnv: "EXA_API_KEY" };
   const h = setup(data); await h.mount();
   h.render().changeMode("exa");
   edit(h, "apiKeyDraft", "fixture-exa-value");
@@ -328,81 +330,20 @@ test("Exa 只有独立密钥：未配置时保存被拒绝且不产生任何写�
   assert.equal(writes(h).length, 0);
 });
 
-test("Exa 密钥走凭据通道并触发插件重建写入", async () => {
+test("Exa 密钥走凭据通道，保存即切换服务并提示重启生效", async () => {
   const h = setup(); await h.mount();
   h.render().changeMode("exa");
   edit(h, "apiKeyDraft", "fixture-exa-value");
   await h.render().save();
   assert.equal(h.calls.find((c) => c.endpoint === "credentials/set").args.ref, "EXA_API_KEY");
-  const exaWrite = writes(h).find((c) => c.args.ns === "web-search-exa");
-  assert.deepEqual(exaWrite.args.ops, [{ op: "set", path: ["numResults"], value: 10 }]);
   assert.deepEqual(writes(h).find((c) => c.args.ns === "web").args.ops, [
     { op: "set", path: ["searchProvider"], value: "exa" },
     { op: "set", path: ["fetchProvider"], value: "http" },
   ]);
+  assert.equal(writes(h).some((c) => c.args.ns === "web-search-exa"), false);
   assert.equal(h.render().mode, "exa");
   assert.equal(h.render().hasKey, true);
-});
-
-test("Exa 换密钥后重建写入失败，重试不重输密钥仍补做插件重建", async () => {
-  const h = setup();
-  h.credentialStore.EXA_API_KEY = { configured: true, writable: true, source: "stored" };
-  await h.mount();
-  h.snapshot().namespaces[0].value = { searchProvider: "exa", fetchProvider: "http" };
-  await h.render().refresh();
-  assert.equal(h.render().mode, "exa");
-  edit(h, "apiKeyDraft", "fixture-new-exa");
-  h.failNamespace("web-search-exa");
-  await h.render().save();
-  assert.ok(h.render().error);
-  assert.equal(h.render().apiKeyDraft, "");
-  assert.equal(h.mod.exaReloadPending(), true);
-  h.failNamespace(undefined);
-  await h.render().save();
-  assert.equal(h.render().error, null);
-  assert.equal(h.mod.exaReloadPending(), false);
-  const exaWrites = writes(h).filter((c) => c.args.ns === "web-search-exa");
-  assert.deepEqual(exaWrites[exaWrites.length - 1].args.ops, [
-    { op: "set", path: ["numResults"], value: 10 },
-  ]);
-});
-
-test("DeepSeek 密钥保存不清除 Exa 待重建状态，切回后仍补做重建", async () => {
-  const h = setup();
-  h.credentialStore.EXA_API_KEY = { configured: true, writable: true, source: "stored" };
-  await h.mount();
-  h.snapshot().namespaces[0].value = { searchProvider: "exa", fetchProvider: "http" };
-  await h.render().refresh();
-  edit(h, "apiKeyDraft", "fixture-new-exa");
-  h.failNamespace("web-search-exa");
-  await h.render().save();
-  assert.ok(h.render().error);
-  h.failNamespace(undefined);
-  h.render().changeMode("api");
-  edit(h, "keySource", "independent");
-  edit(h, "apiKeyDraft", "fixture-ds-value");
-  await h.render().save();
-  assert.equal(h.render().error, null);
-  h.render().changeMode("exa");
-  await h.render().save();
-  assert.equal(h.render().error, null);
-  const exaWrites = writes(h).filter((c) => c.args.ns === "web-search-exa");
-  assert.deepEqual(exaWrites[exaWrites.length - 1].args.ops, [
-    { op: "set", path: ["numResults"], value: 10 },
-  ]);
-});
-
-test("Exa 结果条数可修改与清空，清空不携带重建写入", async () => {
-  const h = setup();
-  h.credentialStore.EXA_API_KEY = { configured: true, writable: true, source: "stored" };
-  await h.mount();
-  h.render().changeMode("exa");
-  edit(h, "limit", "20"); await h.render().save();
-  assert.deepEqual(writes(h)[0].args.ops, [{ op: "set", path: ["numResults"], value: 20 }]);
-  edit(h, "limit", ""); await h.render().save();
-  const exaWrites = writes(h).filter((c) => c.args.ns === "web-search-exa");
-  assert.deepEqual(exaWrites[exaWrites.length - 1].args.ops, [{ op: "unset", path: ["numResults"] }]);
-  assert.equal(h.render().limit, "10");
+  assert.equal(h.render().message, "settings.webSearch.exaSavedRestart");
 });
 
 test("刷新和翻译变化保留未保存字段；新的默认值仍能更新未编辑字段", async () => {
@@ -517,10 +458,8 @@ test("凭据回读未配置时保存失败，不启用服务，也不清除待�
 });
 
 test("结果条数范围遵循 1–50，非法输入拒绝", () => {
-  for (const service of ["api", "exa"]) {
-    for (const limit of ["0", "51", "1.5", "bad"]) {
-      assert.equal(fields.validateDraft(service, { limit, keySource: "independent", apiKeyDraft: "" }), "invalidLimit");
-    }
-    assert.equal(fields.validateDraft(service, { limit: "50", keySource: "independent", apiKeyDraft: "" }), null);
+  for (const limit of ["0", "51", "1.5", "bad"]) {
+    assert.equal(fields.validateDraft({ limit, keySource: "model", apiKeyDraft: "" }), "invalidLimit");
   }
+  assert.equal(fields.validateDraft({ limit: "50", keySource: "model", apiKeyDraft: "" }), null);
 });

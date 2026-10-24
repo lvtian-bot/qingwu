@@ -64,6 +64,7 @@ export const settings: typeof zhSettings = {
     save: "Save settings",
     saving: "Saving…",
     savedSuccess: "Web search settings saved",
+    exaSavedRestart: "Exa key saved. Restart the app to apply it.",
     saveFailed: "Saving failed. Check the current settings and retry; any saved changes are retained.",
     loadFailed: "Unable to load search settings. Reopen settings or reconnect and retry.",
     readOnly: "Settings are currently read-only.",
