@@ -2,47 +2,38 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { shell } from "electron";
+import { parse as parseYaml } from "yaml";
 import { resolveDshHome } from "./dsh-paths";
 import type {
   ProjectSkillGroup,
   SkillDisplayInfo,
+  SkillFolderGroup,
   SkillsSnapshot,
 } from "../shared/types";
 
 /**
  * 设置页技能分区：主进程直接枚举技能目录，不依赖引擎进程与会话上下文。
- *
- * 与引擎 dsh-skill-filesystem 的发现语义对齐（差异范围见模块文档）：
- * - 根目录：用户级 $DSH_HOME/skills、$DSH_AGENTS_HOME/skills（默认 ~/.agents/skills）；
- *   项目级 <项目>/.dsh/skills、<项目>/.agents/skills（项目即青梧工作区）。
- * - 技能形态：子目录/SKILL.md，或技能根下单个 .md 文件。
- * - 同名技能 rank 小者胜：项目 .dsh/skills → 项目 .agents/skills →
- *   用户 .dsh/skills → 用户 .agents/skills，列表只显示生效的一份。
- * - frontmatter 缺 name/description、name 非法或解析失败的文件跳过（引擎同样跳过）。
- * 展示层只解析 name/description/whenToUse 三个标量字段，复杂 YAML（嵌套、
- * 锚点等罕见写法）可能被跳过，此时列表与引擎运行时视图存在该类差异。
+ * 与引擎 dsh-skill-filesystem 的发现语义对齐：
+ * - 技能根目录：用户级 $DSH_HOME/skills、$DSH_AGENTS_HOME/skills；项目级 <项目>/.dsh/skills、<项目>/.agents/skills。
+ * - 技能形态：子目录/SKILL.md 或技能根下单个 .md 文件。
+ * - frontmatter 经 yaml 解析（与引擎同一依赖），name/description 必填、name 须为
+ *   kebab-case；缺字段、名称非法或解析失败的文件跳过（引擎同样跳过）。
+ * 各文件夹独立列出、不做跨文件夹去重（引擎的同名裁决发生在加载期，目录视图
+ * 保留文件夹来源）；项目级固定返回已打开工作区（无技能时为空列表），让用户
+ * 确认项目已被识别。
  */
 
 const SKILL_NAME_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+/** 共享 agent 配置根：优先 DSH_AGENTS_HOME，否则用户主目录下的 .agents（对齐引擎 resolveAgentsHome）。 */
+function resolveAgentsHome(): string {
+  return process.env.DSH_AGENTS_HOME || path.join(os.homedir(), ".agents");
+}
 
 export interface WorkspaceRef {
   workspaceId: string;
   title: string;
   path: string;
-}
-
-interface SkillCandidate extends SkillDisplayInfo {
-  rank: number;
-}
-
-/** 引擎同名裁决顺序：数值小者优先（对齐 dsh-skill-filesystem 的 rank 常量）。 */
-const RANK_PROJECT_DSH = 100;
-const RANK_PROJECT_AGENTS = 200;
-const RANK_USER_DSH = 400;
-const RANK_USER_AGENTS = 500;
-
-function resolveAgentsHome(): string {
-  return process.env.DSH_AGENTS_HOME || path.join(os.homedir(), ".agents");
 }
 
 /** 从单个技能文件提取展示字段；返回 undefined 表示按引擎规则跳过。 */
@@ -53,98 +44,51 @@ function parseSkillDisplayFields(filePath: string): SkillDisplayInfo | undefined
   } catch {
     return undefined;
   }
-  const fields = parseDisplayFrontmatter(raw);
-  if (!fields) return undefined;
-  return fields;
-}
-
-/**
- * 轻量 frontmatter 解析：只提取 name/description/whenToUse 三个标量字段。
- * 支持 `---` 起止块、顶层单行标量（含单双引号剥离）与 | / > 多行块；
- * 结构不满足时返回 undefined，调用方按引擎行为跳过该技能。
- */
-function parseDisplayFrontmatter(
-  raw: string,
-): SkillDisplayInfo | undefined {
-  const lines = raw.split(/\r?\n/);
-  if (lines[0]?.trimEnd() !== "---") return undefined;
-  const blockLines: string[] = [];
-  let closed = false;
-  for (let i = 1; i < lines.length; i += 1) {
-    if (lines[i].trimEnd() === "---") {
-      closed = true;
-      break;
-    }
-    blockLines.push(lines[i]);
+  const block = splitFrontmatterBlock(raw);
+  if (block === undefined) return undefined;
+  let data: unknown;
+  try {
+    data = parseYaml(block);
+  } catch {
+    return undefined;
   }
-  if (!closed) return undefined;
-
-  const scalars = new Map<string, string>();
-  let currentKey: string | null = null;
-  let blockStyle = "";
-  let blockParts: string[] = [];
-  const flush = () => {
-    if (currentKey && !scalars.has(currentKey) && blockParts.length) {
-      scalars.set(currentKey, blockParts.join(blockStyle === ">" ? " " : "\n"));
-    }
-    currentKey = null;
-    blockParts = [];
-  };
-  for (const line of blockLines) {
-    const topMatch = /^([A-Za-z][\w-]*)\s*:(.*)$/.exec(line);
-    if (topMatch) {
-      flush();
-      const key = topMatch[1];
-      const rest = topMatch[2].trim();
-      if (rest === "" || rest === "|" || rest === ">" || rest === "|-" || rest === ">-") {
-        currentKey = key;
-        blockStyle = rest.startsWith(">") ? ">" : "|";
-      } else {
-        scalars.set(key, unquoteScalar(rest));
-      }
-      continue;
-    }
-    if (currentKey) {
-      const indentPart = line.replace(/^\s+/, "");
-      if (indentPart && !indentPart.startsWith("#") && !/^-\s/.test(indentPart)) {
-        blockParts.push(indentPart.trim());
-      }
-    }
+  if (typeof data !== "object" || data === null || Array.isArray(data)) {
+    return undefined;
   }
-  flush();
-
-  const name = scalars.get("name");
-  const description = scalars.get("description");
+  const fields = data as Record<string, unknown>;
+  const name = nonEmptyString(fields.name);
+  const description = nonEmptyString(fields.description);
   if (!name || !description) return undefined;
   if (!SKILL_NAME_PATTERN.test(name)) return undefined;
-  const whenToUse = scalars.get("whenToUse");
-  return {
-    name,
-    description,
-    ...(whenToUse ? { whenToUse } : {}),
-  };
+  const whenToUse = nonEmptyString(fields.whenToUse);
+  return { name, description, ...(whenToUse ? { whenToUse } : {}) };
 }
 
-function unquoteScalar(value: string): string {
-  const trimmed = value.trim();
-  if (
-    (trimmed.startsWith('"') && trimmed.endsWith('"') && trimmed.length >= 2) ||
-    (trimmed.startsWith("'") && trimmed.endsWith("'") && trimmed.length >= 2)
-  ) {
-    return trimmed.slice(1, -1);
+/** 提取 `---` 起止的 frontmatter 块；无起始或无闭合行均视为无有效 frontmatter。 */
+function splitFrontmatterBlock(raw: string): string | undefined {
+  const lines = raw.split(/\r?\n/);
+  if (lines[0]?.replace(/\r$/, "") !== "---") return undefined;
+  for (let i = 1; i < lines.length; i += 1) {
+    if (lines[i].replace(/\r$/, "") === "---") {
+      return lines.slice(1, i).join("\n");
+    }
   }
-  return trimmed;
+  return undefined;
+}
+
+function nonEmptyString(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
 /** 枚举一个技能根：子目录读 SKILL.md，单个 .md 文件读自身；缺失根视为空。 */
-function listRootSkills(rootPath: string, rank: number): SkillCandidate[] {
+function listRootSkills(rootPath: string): SkillDisplayInfo[] {
   let entries: fs.Dirent[];
   try {
     entries = fs.readdirSync(rootPath, { withFileTypes: true });
   } catch {
     return [];
   }
-  const candidates: SkillCandidate[] = [];
+  const skills: SkillDisplayInfo[] = [];
   const ordered = entries
     .filter((entry) => entry.name !== ".system")
     .sort((a, b) => a.name.localeCompare(b.name));
@@ -157,39 +101,37 @@ function listRootSkills(rootPath: string, rank: number): SkillCandidate[] {
     }
     if (!filePath) continue;
     const info = parseSkillDisplayFields(filePath);
-    if (info) candidates.push({ ...info, rank });
+    if (info) skills.push(info);
   }
-  return candidates;
+  return skills;
 }
 
-/** 同名技能取 rank 最小的一份；最终按名称排序。 */
-function mergeCandidates(groups: SkillCandidate[][]): SkillDisplayInfo[] {
-  const byName = new Map<string, SkillCandidate>();
-  for (const group of groups) {
-    for (const candidate of group) {
-      const existing = byName.get(candidate.name);
-      if (!existing || candidate.rank < existing.rank) {
-        byName.set(candidate.name, candidate);
-      }
-    }
+/** 显示路径：用户主目录前缀缩写为 ~，分隔符统一为 /。 */
+function displayPath(absolute: string): string {
+  const normalized = absolute.split(path.sep).join("/");
+  const home = os.homedir().split(path.sep).join("/").replace(/\/+$/, "");
+  if (home && normalized.startsWith(`${home}/`)) {
+    return `~${normalized.slice(home.length)}`;
   }
-  return [...byName.values()]
-    .sort((a, b) => a.name.localeCompare(b.name))
-    .map(({ name, description, whenToUse }) => ({
-      name,
-      description,
-      ...(whenToUse !== undefined ? { whenToUse } : {}),
-    }));
+  return normalized;
+}
+
+function folderGroup(rootPath: string, label?: string): SkillFolderGroup {
+  return {
+    path: rootPath,
+    label: label ?? displayPath(rootPath),
+    skills: listRootSkills(rootPath),
+  };
 }
 
 /** 枚举用户级与各项目技能目录，供设置页技能分区展示。 */
 export function listLocalSkills(workspaces: WorkspaceRef[]): SkillsSnapshot {
   const dshHome = resolveDshHome();
   const agentsHome = resolveAgentsHome();
-  const user = mergeCandidates([
-    listRootSkills(path.join(dshHome, "skills"), RANK_USER_DSH),
-    listRootSkills(path.join(agentsHome, "skills"), RANK_USER_AGENTS),
-  ]);
+  const user = [
+    folderGroup(path.join(agentsHome, "skills")),
+    folderGroup(path.join(dshHome, "skills")),
+  ];
 
   const projects: ProjectSkillGroup[] = [];
   const seenWorkspace = new Set<string>();
@@ -198,16 +140,14 @@ export function listLocalSkills(workspaces: WorkspaceRef[]): SkillsSnapshot {
     const key = typeof workspace.workspaceId === "string" ? workspace.workspaceId : workspace.path;
     if (seenWorkspace.has(key)) continue;
     seenWorkspace.add(key);
-    const skills = mergeCandidates([
-      listRootSkills(path.join(workspace.path, ".dsh", "skills"), RANK_PROJECT_DSH),
-      listRootSkills(path.join(workspace.path, ".agents", "skills"), RANK_PROJECT_AGENTS),
-    ]);
-    if (!skills.length) continue;
     projects.push({
       workspaceId: key,
       title: typeof workspace.title === "string" && workspace.title ? workspace.title : workspace.path,
       path: workspace.path,
-      skills,
+      folders: [
+        folderGroup(path.join(workspace.path, ".dsh", "skills"), ".dsh/skills"),
+        folderGroup(path.join(workspace.path, ".agents", "skills"), ".agents/skills"),
+      ],
     });
   }
 

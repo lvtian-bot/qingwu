@@ -25,12 +25,10 @@ export const settings: typeof zhSettings = {
     openFolder: "Open Skills Folder",
     refresh: "Refresh",
     userGroup: "User skills",
-    userGroupDesc:
-      "Apply to all Qingwu sessions, stored in ~/.agents/skills and ~/.dsh/skills.",
+    userGroupDesc: "Apply to all Qingwu sessions.",
     projectGroup: "Project skills",
-    empty: "No skills yet",
-    emptyDesc:
-      "Put skill files into the skills folder and they will show up here.",
+    projectGroupDesc: "Apply to sessions opened in the corresponding project.",
+    emptyFolder: "No skills",
     loadFailed: "Failed to load skills",
     retry: "Retry",
   },

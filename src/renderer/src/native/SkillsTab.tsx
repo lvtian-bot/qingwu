@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { SkillDisplayInfo, SkillsSnapshot } from "../../../shared/types";
+import type {
+  SkillDisplayInfo,
+  SkillFolderGroup,
+  SkillsSnapshot,
+} from "../../../shared/types";
 import type { WorkspaceView } from "./protocol";
 import { useT } from "../i18n";
 
@@ -13,7 +17,7 @@ export interface SkillsTabProps {
   visible: boolean;
 }
 
-/** 技能分区：主进程目录视图，分用户级与项目级列出技能名称与说明。 */
+/** 技能分区：主进程目录视图，按技能文件夹分别列出名称与说明。 */
 export function SkillsTab({ workspaces, visible }: SkillsTabProps) {
   const t = useT();
   const [snapshot, setSnapshot] = useState<SkillsSnapshot | null>(null);
@@ -48,9 +52,6 @@ export function SkillsTab({ workspaces, visible }: SkillsTabProps) {
   const handleOpenFolder = () => {
     void window.qingwu.openSkillsFolder();
   };
-
-  const hasAnySkills =
-    (snapshot?.user.length ?? 0) > 0 || (snapshot?.projects.length ?? 0) > 0;
 
   return (
     <>
@@ -94,15 +95,6 @@ export function SkillsTab({ workspaces, visible }: SkillsTabProps) {
         </div>
       )}
 
-      {!error && snapshot && !hasAnySkills && !loading && (
-        <div className="native-settings-skills-empty">
-          <div className="native-settings-skills-empty-title">
-            {t("settings.skills.empty")}
-          </div>
-          <p>{t("settings.skills.emptyDesc")}</p>
-        </div>
-      )}
-
       {!error && snapshot && (
         <>
           <div className="native-settings-skill-group">
@@ -112,11 +104,9 @@ export function SkillsTab({ workspaces, visible }: SkillsTabProps) {
             <p className="native-settings-skill-group-desc">
               {t("settings.skills.userGroupDesc")}
             </p>
-            {snapshot.user.length > 0 && (
-              <div className="native-settings-card">
-                <SkillRows skills={snapshot.user} />
-              </div>
-            )}
+            {snapshot.user.map((folder) => (
+              <FolderSection key={folder.path} folder={folder} />
+            ))}
           </div>
 
           {snapshot.projects.length > 0 && (
@@ -124,14 +114,20 @@ export function SkillsTab({ workspaces, visible }: SkillsTabProps) {
               <div className="native-settings-skill-group-title">
                 {t("settings.skills.projectGroup")}
               </div>
+              <p className="native-settings-skill-group-desc">
+                {t("settings.skills.projectGroupDesc")}
+              </p>
               {snapshot.projects.map((project) => (
                 <div key={project.workspaceId} className="native-settings-skill-project">
-                  <div className="native-settings-skill-project-title" title={project.path}>
+                  <div
+                    className="native-settings-skill-project-title"
+                    title={project.path}
+                  >
                     {project.title}
                   </div>
-                  <div className="native-settings-card">
-                    <SkillRows skills={project.skills} />
-                  </div>
+                  {project.folders.map((folder) => (
+                    <FolderSection key={folder.path} folder={folder} />
+                  ))}
                 </div>
               ))}
             </div>
@@ -142,15 +138,34 @@ export function SkillsTab({ workspaces, visible }: SkillsTabProps) {
   );
 }
 
+/** 一个技能文件夹的小节：标题为显示路径，空文件夹显示占位说明。 */
+function FolderSection({ folder }: { folder: SkillFolderGroup }) {
+  const t = useT();
+  return (
+    <div className="native-settings-skill-folder">
+      <div className="native-settings-skill-folder-label" title={folder.path}>
+        {folder.label}
+      </div>
+      {folder.skills.length > 0 ? (
+        <div className="native-settings-card">
+          <SkillRows skills={folder.skills} />
+        </div>
+      ) : (
+        <div className="native-settings-skill-folder-empty">
+          {t("settings.skills.emptyFolder")}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SkillRows({ skills }: { skills: SkillDisplayInfo[] }) {
   return (
     <>
       {skills.map((skill, index) => (
         <div
           key={skill.name}
-          className={`native-settings-skill-row${
-            index > 0 ? " bordered" : ""
-          }`}
+          className={`native-settings-skill-row${index > 0 ? " bordered" : ""}`}
         >
           <span className="native-settings-skill-name" title={skill.name}>
             {skill.name}
