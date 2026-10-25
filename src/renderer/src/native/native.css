@@ -6546,3 +6546,12 @@ body.native-resizing {
   line-height: 1.7;
   color: var(--settings-muted);
 }
+
+/* 详情打开期间任务被外部修改的提示（区别于操作错误） */
+.native-schedule-external {
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--settings-muted) 14%, transparent);
+  color: var(--settings-muted);
+  font-size: 12px;
+}

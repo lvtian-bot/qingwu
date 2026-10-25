@@ -5,12 +5,15 @@
  * 每次操作成功后重拉」保持新鲜；重连后由边沿触发刷新。
  */
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useT } from "../i18n";
 import type {
   ScheduleCatalogEntry,
+  ScheduleDeleteResult,
   ScheduleDeliveryHistoryResult,
   ScheduleRecord,
   ScheduleTimingChange,
   ScheduleUpdateRequest,
+  ScheduleUpdateResult,
 } from "./protocol";
 import { Endpoints } from "./protocol";
 import { rpc } from "./rpc";
@@ -22,15 +25,17 @@ export interface ScheduleTasksState {
   /** 重新拉取目录；操作成功与重连后调用。 */
   refresh: () => Promise<void>;
   /**
-   * 编辑任务（compare-and-set）：携带编辑前记录，冲突（schedule_conflict）
-   * 时引擎不写入，由调用方提示并重读。
+   * 编辑任务（compare-and-set）：expected 必须是编辑开始时的基线记录，而非
+   * 最新目录项——否则外部改动会被新基线吸收，比较失去保护。冲突与校验失败
+   * 以 code 抛出（引擎把失败作为返回值而不是 RPC 错误），由调用方提示并重读。
    */
   updateTask: (
-    entry: ScheduleCatalogEntry,
+    sessionId: string,
+    expected: ScheduleRecord,
     patch: { title?: string; prompt?: string; change?: ScheduleTimingChange },
   ) => Promise<void>;
   /** 删除任务；目录随后重拉。 */
-  deleteTask: (entry: ScheduleCatalogEntry) => Promise<void>;
+  deleteTask: (sessionId: string, id: string) => Promise<void>;
   /** 拉取运行历史（最近一页）。 */
   loadHistory: (
     entry: ScheduleCatalogEntry,
@@ -41,6 +46,7 @@ export function useScheduleTasks(
   active: boolean,
   dshConnected: boolean | undefined,
 ): ScheduleTasksState {
+  const t = useT();
   const [entries, setEntries] = useState<ScheduleCatalogEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -74,33 +80,46 @@ export function useScheduleTasks(
 
   const updateTask = useCallback(
     async (
-      entry: ScheduleCatalogEntry,
+      sessionId: string,
+      expected: ScheduleRecord,
       patch: { title?: string; prompt?: string; change?: ScheduleTimingChange },
     ) => {
-      // 目录项含会话归属与状态等扩展字段，expected 须回退为纯记录
-      const { sessionId, status, lastDelivery, ...record } = entry;
-      void status;
-      void lastDelivery;
       const request: ScheduleUpdateRequest = {
         sessionId,
-        id: entry.id,
-        expected: record as ScheduleRecord,
+        id: expected.id,
+        expected,
         ...patch,
       };
-      await rpc(Endpoints.scheduleUpdate, { request });
+      // 引擎把未命中/冲突/校验失败作为正常返回值（{code}），RPC 信封仍是成功；
+      // 不检查会把未生效的保存当成功
+      const result = await rpc<ScheduleUpdateResult>(
+        Endpoints.scheduleUpdate,
+        { request },
+      );
+      if (!("updated" in result) || result.updated !== true) {
+        const code = "code" in result ? result.code : "unknown";
+        throw new Error(t("schedule.errors.updateRejected", { code }));
+      }
       await refresh();
     },
-    [refresh],
+    [refresh, t],
   );
 
   const deleteTask = useCallback(
-    async (entry: ScheduleCatalogEntry) => {
-      await rpc(Endpoints.scheduleDelete, {
-        request: { sessionId: entry.sessionId, id: entry.id },
-      });
+    async (sessionId: string, id: string) => {
+      const result = await rpc<ScheduleDeleteResult>(
+        Endpoints.scheduleDelete,
+        { request: { sessionId, id } },
+      );
+      // deleted:false 仅在任务已不存在时出现，对删除语义视为收敛成功
+      if (!("deleted" in result) || result.deleted !== true) {
+        if (!("code" in result) || result.code !== "schedule_not_found") {
+          throw new Error(t("schedule.errors.deleteRejected"));
+        }
+      }
       await refresh();
     },
-    [refresh],
+    [refresh, t],
   );
 
   const loadHistory = useCallback(

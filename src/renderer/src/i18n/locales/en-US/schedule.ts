@@ -33,6 +33,8 @@ export const schedule = {
     cancel: "Cancel",
     deleteConfirm:
       "The task will stop triggering and its run history will be deleted; the session and its messages are kept.",
+    externalChanged:
+      "This task was modified elsewhere; saving may conflict. Reopen the detail to load the latest content.",
   },
   history: {
     show: "Run history",
@@ -66,5 +68,7 @@ export const schedule = {
     "every-invalid": "Invalid interval in minutes",
     "time-invalid": "Invalid time",
     "weekdays-required": "Pick at least one weekday",
+    updateRejected: "Save not applied ({code}); the task may have changed. Retry",
+    deleteRejected: "Delete failed, please retry",
   },
 };

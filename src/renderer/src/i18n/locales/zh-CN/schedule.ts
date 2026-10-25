@@ -37,6 +37,8 @@ export const schedule = {
     cancel: "取消",
     deleteConfirm:
       "任务将停止触发，并连同运行记录一并删除；原会话及其消息仍保留。",
+    externalChanged:
+      "任务已被其他途径修改，保存可能冲突；重新打开详情可加载最新内容。",
   },
   /** 运行历史（投递记录） */
   history: {
@@ -74,5 +76,7 @@ export const schedule = {
     "every-invalid": "间隔分钟数无效",
     "time-invalid": "时间格式无效",
     "weekdays-required": "请至少选择一个星期",
+    updateRejected: "保存未生效（{code}），任务可能已被修改，请重试",
+    deleteRejected: "删除失败，请重试",
   },
 };

@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useT } from "../i18n";
 import type {
   ScheduleCatalogEntry,
   ScheduleDeliveryRecord,
   ScheduleDeliveryHistoryResult,
+  ScheduleRecord,
   ScheduleTimingChange,
   SessionSummary,
 } from "./protocol";
@@ -56,12 +57,13 @@ function formatDateTime(iso: string): string {
   return Number.isNaN(date.getTime()) ? iso : date.toLocaleString();
 }
 
-/** 可编辑的时间草稿；after 与 cron 第一版只读（仍可改标题与指令）。 */
+/** 可编辑的时间草稿；daily/weekly 保留任务原时区，避免编辑把它迁到系统时区；
+ * after 与 cron 第一版只读（仍可改标题与指令）。 */
 type TimingDraft =
   | { kind: "at"; localDateTime: string }
   | { kind: "every"; minutes: string }
-  | { kind: "daily"; time: string }
-  | { kind: "weekly"; time: string; weekdays: number[] }
+  | { kind: "daily"; time: string; timeZone: string }
+  | { kind: "weekly"; time: string; timeZone: string; weekdays: number[] }
   | { kind: "readonly" };
 
 function localDateTimeOf(iso: string): string {
@@ -81,14 +83,13 @@ function initialTiming(entry: ScheduleCatalogEntry): TimingDraft {
     case "every":
       return { kind: "every", minutes: String(Math.max(1, Math.round(entry.everySeconds / 60))) };
     case "daily":
-      return { kind: "daily", time: entry.time.slice(0, 5) };
+      return { kind: "daily", time: entry.time.slice(0, 5), timeZone: entry.timeZone };
     case "weekly":
-      return { kind: "weekly", time: entry.time.slice(0, 5), weekdays: entry.weekdays.slice() };
+      return { kind: "weekly", time: entry.time.slice(0, 5), timeZone: entry.timeZone, weekdays: entry.weekdays.slice() };
   }
 }
 
 function buildTimingChange(draft: TimingDraft): ScheduleTimingChange | { error: string } {
-  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   switch (draft.kind) {
     case "readonly":
       return { error: "readonly" };
@@ -105,17 +106,26 @@ function buildTimingChange(draft: TimingDraft): ScheduleTimingChange | { error: 
     }
     case "daily": {
       if (!/^\d{2}:\d{2}$/.test(draft.time)) return { error: "time-invalid" };
-      return { kind: "daily", daily: { time: `${draft.time}:00`, time_zone: timeZone } };
+      return { kind: "daily", daily: { time: `${draft.time}:00`, time_zone: draft.timeZone } };
     }
     case "weekly": {
       if (!/^\d{2}:\d{2}$/.test(draft.time)) return { error: "time-invalid" };
       if (draft.weekdays.length === 0) return { error: "weekdays-required" };
       return {
         kind: "weekly",
-        weekly: { time: `${draft.time}:00`, time_zone: timeZone, weekdays: draft.weekdays.slice().sort((a, b) => a - b) },
+        weekly: { time: `${draft.time}:00`, time_zone: draft.timeZone, weekdays: draft.weekdays.slice().sort((a, b) => a - b) },
       };
     }
   }
+}
+
+/** 目录项剔除会话归属与状态扩展字段，得到可作 compare-and-set 基线的纯记录。 */
+function toRecord(entry: ScheduleCatalogEntry): ScheduleRecord {
+  const { sessionId, status, lastDelivery, ...record } = entry;
+  void sessionId;
+  void status;
+  void lastDelivery;
+  return record as ScheduleRecord;
 }
 
 const WEEKDAY_KEYS = [1, 2, 3, 4, 5, 6, 7] as const;
@@ -347,6 +357,28 @@ function ScheduleTaskDetail({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [history, setHistory] = useState<ScheduleDeliveryRecord[] | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
+  /** compare-and-set 基线：编辑开始时的记录。保存必须用它而不是最新目录项，
+   * 否则详情打开期间的外部改动会被新基线吸收、比较失去保护。 */
+  const [baseline, setBaseline] = useState<ScheduleRecord>(() => toRecord(entry));
+  const [externalChange, setExternalChange] = useState(false);
+  /** 保存成功标记：等目录刷新到达后推进基线（区别于外部改动）。 */
+  const saveSyncRef = useRef(false);
+
+  // 详情打开期间目录项变化：自己保存成功的刷新推进基线；外部改动只提示，基线保持原值
+  //（保存时与引擎比较必然冲突，由用户重开详情重新加载）。
+  useEffect(() => {
+    if (saveSyncRef.current) {
+      saveSyncRef.current = false;
+      setBaseline(toRecord(entry));
+      setExternalChange(false);
+      return;
+    }
+    if (JSON.stringify(toRecord(entry)) !== JSON.stringify(baseline)) {
+      setExternalChange(true);
+    }
+    // baseline 有意不入依赖：仅响应目录项引用变化
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entry]);
 
   const save = async () => {
     setSaving(true);
@@ -355,8 +387,8 @@ function ScheduleTaskDetail({
       const patch: { title?: string; prompt?: string; change?: ScheduleTimingChange } = {};
       const nextTitle = title.trim();
       if (!nextTitle) throw new Error(t("schedule.errors.titleRequired"));
-      if (nextTitle !== entry.title) patch.title = nextTitle;
-      if (prompt.trim() !== entry.prompt) patch.prompt = prompt.trim();
+      if (nextTitle !== baseline.title) patch.title = nextTitle;
+      if (prompt.trim() !== baseline.prompt) patch.prompt = prompt.trim();
       if (timingTouched && timing.kind !== "readonly") {
         const change = buildTimingChange(timing);
         if ("error" in change) throw new Error(t(`schedule.errors.${change.error}`));
@@ -365,7 +397,8 @@ function ScheduleTaskDetail({
       if (patch.title === undefined && patch.prompt === undefined && patch.change === undefined) {
         return;
       }
-      await tasks.updateTask(entry, patch);
+      await tasks.updateTask(entry.sessionId, baseline, patch);
+      saveSyncRef.current = true;
     } catch (err) {
       setActionError(err instanceof Error ? err.message : String(err));
       // compare-and-set 冲突或任务被外部改动：重读目录，让列表回到真实状态
@@ -380,7 +413,7 @@ function ScheduleTaskDetail({
     setSaving(true);
     setActionError(null);
     try {
-      await tasks.deleteTask(entry);
+      await tasks.deleteTask(entry.sessionId, entry.id);
       onDeleted();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : String(err));
@@ -552,6 +585,11 @@ function ScheduleTaskDetail({
         )}
       </div>
 
+      {externalChange && !actionError && (
+        <div className="native-schedule-external">
+          {t("schedule.task.externalChanged")}
+        </div>
+      )}
       {actionError && <div className="native-schedule-error">{actionError}</div>}
 
       <div className="native-schedule-actions">

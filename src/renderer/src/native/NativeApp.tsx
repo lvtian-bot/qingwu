@@ -850,9 +850,10 @@ export function NativeApp({
 
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      // 呼出/关闭设置面板：Ctrl+, 或 Meta+,
+      // 呼出/关闭设置面板：Ctrl+, 或 Meta+,（与定时任务页互斥，后渲染页会盖住前者）
       if ((e.ctrlKey || e.metaKey) && e.key === ",") {
         e.preventDefault();
+        setScheduleOpen(false);
         setSettingsOpen((prev) => !prev);
         return;
       }

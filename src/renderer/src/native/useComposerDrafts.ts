@@ -483,8 +483,9 @@ export function useComposerDrafts({
   const loadForSession = useCallback((sessionId: string | null) => {
     const key = sessionId ?? "";
     const pending = pendingPrefillRef.current;
-    if (pending && pending.sessionId === key) {
-      // 新建会话的定向预填：优先于空草稿，且一次性消费
+    const existing = composerDraftsRef.current.get(key);
+    if (pending && pending.sessionId === key && !existing?.trim()) {
+      // 定向预填只落到空草稿会话；复用的空白会话若已有未发送输入则保留用户内容
       pendingPrefillRef.current = null;
       composerDraftsRef.current.set(key, pending.text);
       touch(key);
@@ -492,7 +493,8 @@ export function useComposerDrafts({
       setDraftImages([]);
       return;
     }
-    setInput(composerDraftsRef.current.get(key) ?? "");
+    if (pending && pending.sessionId === key) pendingPrefillRef.current = null;
+    setInput(existing ?? "");
     setDraftImages(composerImagesRef.current.get(key) ?? []);
   }, [touch]);
 
