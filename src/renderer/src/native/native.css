@@ -6555,3 +6555,40 @@ body.native-resizing {
   color: var(--settings-muted);
   font-size: 12px;
 }
+
+/* 目录刷新失败横幅：与缓存列表并存，提供重试 */
+.native-schedule-refresh-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  max-width: 720px;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 20px auto 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--native-warn) 12%, transparent);
+  color: var(--native-warn);
+  font-size: 12px;
+}
+
+.native-schedule-refresh-error-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.native-schedule-refresh-retry {
+  flex-shrink: 0;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}

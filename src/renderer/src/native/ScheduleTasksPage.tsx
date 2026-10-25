@@ -216,15 +216,26 @@ export function ScheduleTasksPage({
       />
 
       <main className="native-chat native-settings-content">
-        {tasks.loading && tasks.entries.length === 0 ? (
-          <div className="native-schedule-loading">{t("schedule.list.loading")}</div>
-        ) : tasks.loadError && tasks.entries.length === 0 ? (
-          <div className="native-schedule-empty">
-            <p>{tasks.loadError}</p>
-            <button type="button" className="native-btn" onClick={() => void tasks.refresh()}>
+        {/* 刷新失败随时可见（含仍有缓存列表时），附重试；避免静默停留在过期数据上 */}
+        {tasks.loadError && (
+          <div className="native-schedule-refresh-error" role="alert">
+            <span className="native-schedule-refresh-error-text">
+              {tasks.loadError}
+            </span>
+            <button
+              type="button"
+              className="native-schedule-refresh-retry"
+              onClick={() => void tasks.refresh()}
+            >
               {t("schedule.list.retry")}
             </button>
           </div>
+        )}
+        {tasks.loading && tasks.entries.length === 0 ? (
+          <div className="native-schedule-loading">{t("schedule.list.loading")}</div>
+        ) : tasks.loadError && tasks.entries.length === 0 ? (
+          /* 仅剩错误横幅：加载失败且无缓存时不显示空态引导，避免误导为没有任务 */
+          null
         ) : sorted.length === 0 ? (
           <div className="native-schedule-empty">
             <div className="native-schedule-empty-icon">
