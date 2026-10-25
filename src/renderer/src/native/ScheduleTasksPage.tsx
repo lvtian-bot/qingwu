@@ -9,13 +9,11 @@ import type {
   SessionSummary,
 } from "./protocol";
 import { sessionTitle } from "./sidebar-data";
-import type { PanelWidth } from "./usePanelWidth";
 import { useScheduleTasks } from "./useScheduleTasks";
 
 export interface ScheduleTasksPageProps {
-  onBack: () => void;
-  /** 侧栏宽度控制器：与主界面侧栏共用同一实例，宽度与拖拽互相联动。 */
-  sidebarPanel: PanelWidth;
+  /** 退出任务视图（Esc）：主内容区切回会话视图，不是覆盖层。 */
+  onExit: () => void;
   dshConnected?: boolean;
   /** 会话列表快照：用于解析任务所属会话标题。 */
   sessions?: SessionSummary[];
@@ -131,8 +129,7 @@ function toRecord(entry: ScheduleCatalogEntry): ScheduleRecord {
 const WEEKDAY_KEYS = [1, 2, 3, 4, 5, 6, 7] as const;
 
 export function ScheduleTasksPage({
-  onBack,
-  sidebarPanel,
+  onExit,
   dshConnected,
   sessions,
   onOpenSession,
@@ -154,14 +151,14 @@ export function ScheduleTasksPage({
     [sorted, selectedId],
   );
 
-  // Esc 返回主界面（与设置页一致）
+  // Esc 退出任务视图，主内容区切回会话
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onBack();
+      if (e.key === "Escape") onExit();
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onBack]);
+  }, [onExit]);
 
   const sessionName = (sessionId: string): string => {
     const summary = sessions?.find((s) => s.sessionId === sessionId);
@@ -169,53 +166,14 @@ export function ScheduleTasksPage({
   };
 
   return (
-    <div className="native-settings-page native-schedule-page" aria-label={t("schedule.page.ariaLabel")}>
-      <aside
-        className="native-sidebar native-settings-rail"
-        style={{ width: sidebarPanel.width }}
-      >
-        <button
-          type="button"
-          className="native-settings-back-btn"
-          onClick={onBack}
-          title={t("settings.page.backTitle")}
-        >
-          <span className="native-settings-nav-icon">
-            <svg
-              viewBox="0 0 16 16"
-              width="16"
-              height="16"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.4"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M14 8H2M6.5 3.5L2 8l4.5 4.5" />
-            </svg>
-          </span>
-          <span>{t("settings.page.back")}</span>
-        </button>
-        <div className="native-sidebar-section">
-          <div className="native-sidebar-section-header">
-            <span className="native-sidebar-section-title">
-              {t("schedule.page.title")}
-            </span>
-          </div>
-          <p className="native-schedule-note">{t("schedule.page.note")}</p>
+    <div className="native-schedule-view" aria-label={t("schedule.page.ariaLabel")}>
+      <div className="native-schedule-header">
+        <div className="native-schedule-header-title">
+          {t("schedule.page.title")}
         </div>
-      </aside>
-
-      <div
-        className="native-resizer"
-        role="separator"
-        aria-orientation="vertical"
-        title={t("settings.page.resizeHint")}
-        onPointerDown={(e) => sidebarPanel.startDrag(e, 1)}
-        onDoubleClick={sidebarPanel.reset}
-      />
-
-      <main className="native-chat native-settings-content">
+        <p className="native-schedule-note">{t("schedule.page.note")}</p>
+      </div>
+      <div className="native-schedule-body">
         {/* 刷新失败随时可见（含仍有缓存列表时），附重试；避免静默停留在过期数据上 */}
         {tasks.loadError && (
           <div className="native-schedule-refresh-error" role="alert">
@@ -286,7 +244,7 @@ export function ScheduleTasksPage({
             )}
           </div>
         )}
-      </main>
+      </div>
     </div>
   );
 }

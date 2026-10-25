@@ -6239,14 +6239,6 @@ body.native-resizing {
 
 /* ---------- 定时任务页（侧栏「新会话」下方入口） ---------- */
 
-/* 侧栏 rail 内的运行说明：弱化呈现，随分区宽度换行 */
-.native-schedule-note {
-  margin: 4px 10px 10px;
-  font-size: 12px;
-  line-height: 1.6;
-  color: var(--settings-muted);
-}
-
 .native-schedule-loading {
   padding: 40px 24px;
   font-size: 14px;
@@ -6591,4 +6583,54 @@ body.native-resizing {
   color: inherit;
   font-size: 12px;
   cursor: pointer;
+}
+
+/* ---------- 定时任务视图（主内容区切换，非覆盖层） ---------- */
+
+/* 侧栏导航项激活态（定时任务视图打开时） */
+.native-nav-item.active {
+  background: var(--native-sidebar-hover);
+  color: var(--native-fg);
+}
+
+.native-schedule-view {
+  /* 与设置页同源的令牌：列表/详情样式沿用 --settings-* 命名，脱离设置页壳后需自带 */
+  --settings-bg: var(--native-bg);
+  --settings-border: var(--native-border);
+  --settings-fg: var(--native-fg);
+  --settings-muted: var(--native-muted);
+
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.native-schedule-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 18px 24px 8px;
+}
+
+.native-schedule-header-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--native-fg);
+}
+
+/* 页头运行说明：弱化呈现 */
+.native-schedule-note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--native-muted);
+}
+
+.native-schedule-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }

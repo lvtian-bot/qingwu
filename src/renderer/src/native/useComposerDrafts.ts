@@ -484,7 +484,10 @@ export function useComposerDrafts({
     const key = sessionId ?? "";
     const pending = pendingPrefillRef.current;
     const existing = composerDraftsRef.current.get(key);
-    if (pending && pending.sessionId === key && !existing?.trim()) {
+    const existingImages = composerImagesRef.current.get(key);
+    // 文字与图片任一存在都算非空草稿：只贴图未打字的会话同样不能预填覆盖
+    const hasDraft = Boolean(existing?.trim()) || (existingImages?.length ?? 0) > 0;
+    if (pending && pending.sessionId === key && !hasDraft) {
       // 定向预填只落到空草稿会话；复用的空白会话若已有未发送输入则保留用户内容
       pendingPrefillRef.current = null;
       composerDraftsRef.current.set(key, pending.text);
@@ -495,7 +498,7 @@ export function useComposerDrafts({
     }
     if (pending && pending.sessionId === key) pendingPrefillRef.current = null;
     setInput(existing ?? "");
-    setDraftImages(composerImagesRef.current.get(key) ?? []);
+    setDraftImages(existingImages ?? []);
   }, [touch]);
 
   /**

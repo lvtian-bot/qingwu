@@ -908,10 +908,12 @@ export function NativeApp({
     };
   }, [settingsOpen, scheduleOpen, lightboxUrl, running, currentId, currentCwd, activeWorkspace]);
 
-  // 主进程点击系统桌面通知经 IPC 调度进入对应会话
+  // 主进程点击系统桌面通知经 IPC 调度进入对应会话（退出任务/设置等全屏视图）
   useEffect(() => {
     const unsub = window.qingwu?.onNotificationNavigate?.((targetSessionId) => {
       if (targetSessionId) {
+        setScheduleOpen(false);
+        setSettingsOpen(false);
         openSession(targetSessionId);
       }
     });
@@ -920,20 +922,45 @@ export function NativeApp({
     };
   }, [openSession]);
 
-  /** 定时任务页：侧栏入口打开（与设置页互斥）。 */
+  /** 定时任务视图：侧栏入口切换（再点一次切回会话视图；与设置页互斥）。 */
   const handleOpenScheduleTasks = useCallback(() => {
-    setScheduleOpen(true);
-    setSettingsOpen(false);
+    setScheduleOpen((prev) => {
+      setSettingsOpen(false);
+      return !prev;
+    });
   }, []);
-  /** 任务页跳回所属会话：关闭任务页并打开该会话查看投递结果。 */
+  /** 任务视图跳回所属会话：已归档会话先恢复再打开，保证能看到投递结果。 */
   const handleScheduleOpenSession = useCallback(
+    (sessionId: string) => {
+      setScheduleOpen(false);
+      if (archivedSet.has(sessionId)) {
+        void handleRestoreAndOpenSession(sessionId);
+      } else {
+        openSession(sessionId);
+      }
+    },
+    [archivedSet, openSession, handleRestoreAndOpenSession],
+  );
+  /** 侧栏会话选择类动作统一退出任务视图（主内容区切回会话）。 */
+  const openSessionExitTasks = useCallback(
     (sessionId: string) => {
       setScheduleOpen(false);
       openSession(sessionId);
     },
     [openSession],
   );
-  /** 空态引导：关任务页，新开会话并预填示例指令（定时任务由 AI 在会话内创建）。 */
+  const createSessionExitTasks = useCallback(
+    async (workspaceId: string) => {
+      setScheduleOpen(false);
+      return createSessionIn(workspaceId);
+    },
+    [createSessionIn],
+  );
+  const newSessionExitTasks = useCallback(async () => {
+    setScheduleOpen(false);
+    return handleNewSession();
+  }, [handleNewSession]);
+  /** 空态引导：新开会话并预填示例指令（定时任务由 AI 在会话内创建）。 */
   const handleScheduleCreateInChat = useCallback(async () => {
     setScheduleOpen(false);
     const sessionId = await handleNewSession();
@@ -1000,9 +1027,9 @@ export function NativeApp({
         currentId={currentId}
         pendingKindBySession={pendingKindBySession}
         unreadFinishedSessionIds={unreadFinishedSessionIds}
-        openSession={openSession}
-        createSessionIn={createSessionIn}
-        handleNewSession={handleNewSession}
+        openSession={openSessionExitTasks}
+        createSessionIn={createSessionExitTasks}
+        handleNewSession={newSessionExitTasks}
         handleAddWorkspace={handleAddWorkspace}
         handleWorkspaceRename={handleWorkspaceRename}
         handleWorkspaceDelete={handleWorkspaceDelete}
@@ -1015,6 +1042,7 @@ export function NativeApp({
           setScheduleOpen(false);
         }}
         onOpenScheduleTasks={handleOpenScheduleTasks}
+        scheduleTasksOpen={scheduleOpen}
       />
 
       <main
@@ -1028,7 +1056,15 @@ export function NativeApp({
             onReconnect={() => void handleManualReconnect()}
           />
         )}
-        {showGreeting ? (
+        {scheduleOpen ? (
+          <ScheduleTasksPage
+            onExit={() => setScheduleOpen(false)}
+            dshConnected={dshConnected}
+            sessions={sessions}
+            onOpenSession={handleScheduleOpenSession}
+            onCreateInChat={() => void handleScheduleCreateInChat()}
+          />
+        ) : showGreeting ? (
           <>
             <div className="native-chat-header">
               {/* 侧栏开关已上移标题栏菜单栏；左端留空占位，右端面板按钮才有落点 */}
@@ -1324,17 +1360,6 @@ export function NativeApp({
           archivedSessionIds={archivedSessionIds}
           onUnarchiveSession={handleSessionUnarchive}
           onOpenSession={handleRestoreAndOpenSession}
-        />
-      )}
-
-      {scheduleOpen && (
-        <ScheduleTasksPage
-          onBack={() => setScheduleOpen(false)}
-          sidebarPanel={sidebarPanel}
-          dshConnected={dshConnected}
-          sessions={sessions}
-          onOpenSession={handleScheduleOpenSession}
-          onCreateInChat={() => void handleScheduleCreateInChat()}
         />
       )}
     </div>

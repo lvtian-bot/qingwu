@@ -356,6 +356,8 @@ interface SessionSidebarProps {
   setError: (message: string) => void;
   onOpenSettings: () => void;
   onOpenScheduleTasks: () => void;
+  /** 定时任务视图激活态：入口高亮，再点一次切回会话视图。 */
+  scheduleTasksOpen: boolean;
 }
 
 export function SessionSidebar({
@@ -377,6 +379,7 @@ export function SessionSidebar({
   setError,
   onOpenSettings,
   onOpenScheduleTasks,
+  scheduleTasksOpen,
 }: SessionSidebarProps) {
   const {
     pinnedSessionSet,
@@ -694,8 +697,9 @@ export function SessionSidebar({
           {t("sidebar.newChat")}
         </button>
         <button
-          className="native-nav-item"
+          className={`native-nav-item${scheduleTasksOpen ? " active" : ""}`}
           onClick={onOpenScheduleTasks}
+          aria-pressed={scheduleTasksOpen}
         >
           <svg
             viewBox="0 0 24 24"
