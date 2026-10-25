@@ -960,6 +960,11 @@ export function NativeApp({
     setScheduleOpen(false);
     return handleNewSession();
   }, [handleNewSession]);
+  // 任务视图卸载了消息容器：切回时按会话切换同款机制沉底到最新消息，
+  // 避免 DOM 重建后停留在历史顶部且「回到底部」按钮不出现
+  useEffect(() => {
+    if (!scheduleOpen) resetForSessionSwitch();
+  }, [scheduleOpen, resetForSessionSwitch]);
   /** 空态引导：新开会话并预填示例指令（定时任务由 AI 在会话内创建）。 */
   const handleScheduleCreateInChat = useCallback(async () => {
     setScheduleOpen(false);

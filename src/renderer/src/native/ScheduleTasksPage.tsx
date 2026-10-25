@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useT } from "../i18n";
 import type {
   ScheduleCatalogEntry,
@@ -146,11 +146,6 @@ export function ScheduleTasksPage({
     });
   }, [tasks.entries]);
 
-  const selected = useMemo(
-    () => sorted.find((e) => e.id === selectedId) ?? null,
-    [sorted, selectedId],
-  );
-
   // Esc 退出任务视图，主内容区切回会话
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -220,28 +215,29 @@ export function ScheduleTasksPage({
         ) : (
           <div className="native-schedule-list">
             {sorted.map((entry) => (
-              <ScheduleTaskRow
-                key={entry.id}
-                entry={entry}
-                expanded={entry.id === selectedId}
-                sessionLabel={sessionName(entry.sessionId)}
-                frequency={frequencyLabel(entry, t)}
-                onToggle={() =>
-                  setSelectedId((prev) => (prev === entry.id ? null : entry.id))
-                }
-                onOpenSession={() => onOpenSession(entry.sessionId)}
-              />
+              <Fragment key={entry.id}>
+                <ScheduleTaskRow
+                  entry={entry}
+                  expanded={entry.id === selectedId}
+                  sessionLabel={sessionName(entry.sessionId)}
+                  frequency={frequencyLabel(entry, t)}
+                  onToggle={() =>
+                    setSelectedId((prev) => (prev === entry.id ? null : entry.id))
+                  }
+                  onOpenSession={() => onOpenSession(entry.sessionId)}
+                />
+                {/* 详情紧跟所属行展开：列表超出一屏时编辑区不会落在视野外 */}
+                {entry.id === selectedId && (
+                  <ScheduleTaskDetail
+                    entry={entry}
+                    tasks={tasks}
+                    sessionLabel={sessionName(entry.sessionId)}
+                    onOpenSession={() => onOpenSession(entry.sessionId)}
+                    onDeleted={() => setSelectedId(null)}
+                  />
+                )}
+              </Fragment>
             ))}
-            {selected && (
-              <ScheduleTaskDetail
-                key={selected.id}
-                entry={selected}
-                tasks={tasks}
-                sessionLabel={sessionName(selected.sessionId)}
-                onOpenSession={() => onOpenSession(selected.sessionId)}
-                onDeleted={() => setSelectedId(null)}
-              />
-            )}
           </div>
         )}
       </div>
