@@ -99,6 +99,8 @@ textarea {
   /* 官方对齐品牌蓝与链接蓝（--dsw-static-deepseek-500: #4176e6） */
   --native-link: #4176e6;
   --native-link-hover: #2563eb;
+  /* 输入框聚焦边线：浅蓝（亮色手动取浅蓝保证白底可见，暗色对齐链接蓝的浅色） */
+  --native-focus: #85b6ff;
   --native-send: #3A83F7;
   --native-send-fg: #ffffff;
   --native-card-border: #dcdce0;
@@ -147,6 +149,7 @@ textarea {
     /* 暗色对齐品牌蓝与链接蓝（--dsw-static-deepseek-400: #7aaaff） */
     --native-link: #7aaaff;
     --native-link-hover: #93c5fd;
+    --native-focus: #7aaaff;
     --native-send: #3A83F7;
     --native-send-fg: #ffffff;
     --native-card-border: #2e2e33;
@@ -5532,7 +5535,7 @@ body.native-resizing {
 }
 
 .native-settings-textarea:focus {
-  border-color: var(--settings-fg);
+  border-color: var(--native-focus);
 }
 
 .native-settings-textarea::placeholder {
