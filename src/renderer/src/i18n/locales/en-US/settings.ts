@@ -15,7 +15,40 @@ export const settings: typeof zhSettings = {
     models: "Model",
     webSearch: "Web Search",
     permissions: "Permissions",
+    skills: "Skills",
+    instructions: "User Instructions",
     archivedSessions: "Archived sessions",
+  },
+  skills: {
+    title: "Skills",
+    desc: "Skills available to Qingwu. They come from skill files in the skills folder and can be added or edited there.",
+    openFolder: "Open Skills Folder",
+    refresh: "Refresh",
+    userGroup: "User skills",
+    userGroupDesc:
+      "Apply to all Qingwu sessions, stored in ~/.agents/skills and ~/.dsh/skills.",
+    projectGroup: "Project skills",
+    empty: "No skills yet",
+    emptyDesc:
+      "Put skill files into the skills folder and they will show up here.",
+    loadFailed: "Failed to load skills",
+    retry: "Retry",
+  },
+  instructions: {
+    title: "User Instructions",
+    desc: "Write down preferences and conventions the AI should follow in every new session, such as output formats, naming or working habits.",
+    badge: "(DSH engine settings)",
+    badgeTitle:
+      "Instructions are saved to ~/.dsh/AGENTS.md; new sessions of other clients sharing this engine follow them too.",
+    placeholder:
+      "e.g. Always reply in Chinese; keep two decimals in tables; deliver documents as PDF…",
+    save: "Save",
+    saving: "Saving…",
+    saved: "Saved. Takes effect in new sessions.",
+    loadFailed: "Failed to load instructions: {message}",
+    saveFailed: "Save failed: {message}",
+    usage: "{used} / {total} used",
+    overLimit: "Over the 64 KB limit; shorten the content and try again",
   },
   connection: {
     lost: "Connection to the DeepSeek Harness engine was lost. Reconnecting…",

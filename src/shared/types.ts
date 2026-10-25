@@ -68,6 +68,35 @@ export interface RendererErrorReport {
   column?: number;
 }
 
+/** 技能列表条目：与技能文件 frontmatter 的 name/description/whenToUse 对齐。 */
+export interface SkillDisplayInfo {
+  /** kebab-case 技能标识（会话内以 /name 引用）。 */
+  name: string;
+  description: string;
+  whenToUse?: string;
+}
+
+/** 一个项目的技能列表（项目即青梧工作区，扫描其 .dsh/skills 与 .agents/skills）。 */
+export interface ProjectSkillGroup {
+  workspaceId: string;
+  title: string;
+  path: string;
+  skills: SkillDisplayInfo[];
+}
+
+/** 设置页技能分区的目录视图快照（主进程枚举，不依赖引擎在线）。 */
+export interface SkillsSnapshot {
+  user: SkillDisplayInfo[];
+  projects: ProjectSkillGroup[];
+}
+
+/** 用户级指令文件快照（$DSH_HOME/AGENTS.md 的当前内容与字节占用）。 */
+export interface UserInstructionsSnapshot {
+  content: string;
+  sizeBytes: number;
+  maxBytes: number;
+}
+
 /**
  * preload 暴露给渲染层的桥接 API。
  * 主进程、preload、渲染层共同以此为准，避免 IPC 契约漂移。
@@ -209,4 +238,17 @@ export interface QingwuApi {
   >;
   /** 把 Exa 搜索密钥写入 dsh 用户环境层（$DSH_HOME/.env）；Exa 插件从启动环境读取该密钥。 */
   setExaSearchKey: (value: string) => Promise<void>;
+
+  /** 枚举用户级与各项目技能目录（设置页技能分区视图；主进程直读，不依赖引擎在线）。 */
+  listLocalSkills: (workspaces: {
+    workspaceId: string;
+    title: string;
+    path: string;
+  }[]) => Promise<SkillsSnapshot>;
+  /** 打开用户级技能文件夹（$DSH_AGENTS_HOME/skills，默认 ~/.agents/skills），不存在时先创建。 */
+  openSkillsFolder: () => Promise<string>;
+  /** 读取用户级指令文件（$DSH_HOME/AGENTS.md）；文件不存在时返回空内容。 */
+  getUserInstructions: () => Promise<UserInstructionsSnapshot>;
+  /** 保存用户级指令文件并返回保存后的快照；超限或写入失败时抛错。 */
+  saveUserInstructions: (content: string) => Promise<UserInstructionsSnapshot>;
 }

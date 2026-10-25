@@ -12,6 +12,8 @@ import { GeneralTab } from "./GeneralTab";
 import { ArchivedSessionsTab } from "./ArchivedSessionsTab";
 import { PermissionsTab } from "./PermissionsTab";
 import { WebSearchTab } from "./WebSearchTab";
+import { SkillsTab } from "./SkillsTab";
+import { InstructionsTab } from "./InstructionsTab";
 import { useWebSearchSettings } from "./useWebSearchSettings";
 
 export interface SettingsPageProps {
@@ -36,7 +38,14 @@ export interface SettingsPageProps {
   onOpenSession?: (sessionId: string) => void | Promise<void>;
 }
 
-type TabKey = "models" | "general" | "webSearch" | "archivedSessions" | "permissions";
+type TabKey =
+  | "models"
+  | "general"
+  | "webSearch"
+  | "archivedSessions"
+  | "permissions"
+  | "skills"
+  | "instructions";
 
 // 导航文案存词条 key，渲染处经 t() 取词
 const NAV_GROUPS: {
@@ -102,6 +111,45 @@ const NAV_GROUPS: {
               fill="currentColor"
               stroke="none"
             />
+          </svg>
+        ),
+      },
+      {
+        key: "skills",
+        labelKey: "settings.nav.skills",
+        icon: (
+          <svg
+            viewBox="0 0 16 16"
+            width="16"
+            height="16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M2.5 13.5L9 7" />
+            <path d="M11.5 2.5v3.5M9.75 4.25h3.5" />
+            <path d="M13 9.5v2.5M11.75 10.75h2.5" />
+          </svg>
+        ),
+      },
+      {
+        key: "instructions",
+        labelKey: "settings.nav.instructions",
+        icon: (
+          <svg
+            viewBox="0 0 16 16"
+            width="16"
+            height="16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M11.1 2.4a1.9 1.9 0 0 1 2.7 2.7L5.4 13.5l-3.5.7.7-3.5z" />
+            <path d="M9.6 3.9l2.7 2.7" />
           </svg>
         ),
       },
@@ -331,6 +379,19 @@ export function SettingsPage({
           style={panelStyle("permissions")}
         >
           <PermissionsTab dsh={dsh} />
+        </div>
+
+        {/* 技能 */}
+        <div className="native-settings-panel" style={panelStyle("skills")}>
+          <SkillsTab workspaces={workspaces} visible={activeTab === "skills"} />
+        </div>
+
+        {/* 用户级指令 */}
+        <div
+          className="native-settings-panel"
+          style={panelStyle("instructions")}
+        >
+          <InstructionsTab />
         </div>
       </main>
     </div>
