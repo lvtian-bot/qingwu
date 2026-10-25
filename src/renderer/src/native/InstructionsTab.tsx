@@ -88,7 +88,7 @@ export function InstructionsTab({ visible }: { visible: boolean }) {
         </p>
       </div>
 
-      <div className="native-settings-card native-settings-instructions">
+      <div className="native-settings-instructions">
         {loadError ? (
           <div className="native-settings-instructions-error" role="alert">
             {`${t("settings.instructions.loadFailed", {

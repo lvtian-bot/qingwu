@@ -5506,12 +5506,11 @@ body.native-resizing {
   color: var(--settings-fg);
 }
 
-/* 用户级指令分区：编辑器与用量行 */
+/* 用户级指令分区：编辑器与用量行（框线只保留编辑框自身一层） */
 .native-settings-instructions {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 16px;
 }
 
 .native-settings-textarea {
