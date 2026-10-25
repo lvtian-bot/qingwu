@@ -57,14 +57,23 @@ export function SkillsTab({ workspaces, visible }: SkillsTabProps) {
     void window.qingwu.openSkillsFolder();
   };
 
+  // 空技能的来源不出 Tab：用户级按文件夹过滤，项目按两个文件夹合计过滤
   const tabs: { id: SkillTabId; label: string }[] = snapshot
     ? [
-        { id: "user-agents", label: t("settings.skills.tabPersonal") },
-        { id: "user-dsh", label: t("settings.skills.tabQingwu") },
-        ...snapshot.projects.map((project) => ({
-          id: `project:${project.workspaceId}`,
-          label: project.title,
-        })),
+        ...(snapshot.user[0]?.skills.length
+          ? [{ id: "user-agents", label: t("settings.skills.tabPersonal") }]
+          : []),
+        ...(snapshot.user[1]?.skills.length
+          ? [{ id: "user-dsh", label: t("settings.skills.tabQingwu") }]
+          : []),
+        ...snapshot.projects
+          .filter((project) =>
+            project.folders.some((folder) => folder.skills.length > 0),
+          )
+          .map((project) => ({
+            id: `project:${project.workspaceId}`,
+            label: project.title,
+          })),
       ]
     : [];
   const currentId = tabs.some((tab) => tab.id === activeTab)
@@ -131,6 +140,7 @@ export function SkillsTab({ workspaces, visible }: SkillsTabProps) {
         </div>
       )}
 
+      {snapshot && !currentId && !error && <EmptyPanel />}
       {snapshot && currentId && !error && (
         <>
           {(currentId === "user-agents" || currentId === "user-dsh") && (
