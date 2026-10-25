@@ -191,6 +191,13 @@ const api: QingwuApi = {
   },
   readClipboardFilePaths: () => ipcRenderer.invoke('clipboard:readFilePaths'),
   setExaSearchKey: (value: string) => ipcRenderer.invoke('exa-key:set', { value }),
+
+  listLocalSkills: (workspaces) =>
+    ipcRenderer.invoke('skills:listLocal', workspaces),
+  openSkillsFolder: () => ipcRenderer.invoke('skills:openFolder'),
+  getUserInstructions: () => ipcRenderer.invoke('userInstructions:get'),
+  saveUserInstructions: (content: string) =>
+    ipcRenderer.invoke('userInstructions:save', content),
 };
 
 contextBridge.exposeInMainWorld('qingwu', api);

@@ -29,6 +29,9 @@ import { renderDocumentPreview } from "./document-preview";
 import { exportSessionArchive } from "./session-export";
 import { setupApplicationDiagnostics } from "./diagnostics";
 import { setExaSearchKey } from "./user-env";
+import { getUserInstructions, saveUserInstructions } from "./user-instructions";
+import { listLocalSkills, openUserSkillsFolder } from "./skills";
+import type { WorkspaceRef } from "./skills";
 import { NotificationManager } from "./notification";
 import type { RendererErrorReport } from "../shared/types";
 import { formatMessage } from "../shared/i18n-core";
@@ -183,6 +186,24 @@ if (!gotTheLock) {
   );
   ipcMain.handle("exa-key:set", (_event, { value }: { value: string }) =>
     setExaSearchKey(value),
+  );
+  ipcMain.handle(
+    "skills:listLocal",
+    (_event, workspaces: WorkspaceRef[]) => {
+      const refs = Array.isArray(workspaces)
+        ? workspaces.filter(
+            (item): item is WorkspaceRef =>
+              !!item && typeof item === "object" && typeof item.path === "string",
+          )
+        : [];
+      return listLocalSkills(refs);
+    },
+  );
+  ipcMain.handle("skills:openFolder", () => openUserSkillsFolder());
+  ipcMain.handle("userInstructions:get", () => getUserInstructions());
+  ipcMain.handle(
+    "userInstructions:save",
+    (_event, content: string) => saveUserInstructions(content),
   );
   ipcMain.handle("dsh:stream-open", (_event, { endpoint, payload }) =>
     dshBridge.openStream(endpoint, payload),

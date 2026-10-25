@@ -68,6 +68,47 @@ export interface RendererErrorReport {
   column?: number;
 }
 
+/** 技能列表条目：与技能文件 frontmatter 的 name/description/whenToUse 对齐。 */
+export interface SkillDisplayInfo {
+  /** kebab-case 技能标识（会话内以 /name 引用）。 */
+  name: string;
+  description: string;
+  whenToUse?: string;
+}
+
+/** 一个技能文件夹（引擎的一个扫描根）的列表：分别按文件夹展示，不做跨文件夹去重。 */
+export interface SkillFolderGroup {
+  /** 文件夹绝对路径（悬停提示用）。 */
+  path: string;
+  /** 显示标签：用户级为主目录缩写形式（如 ~/.agents/skills），项目级为项目内相对目录。 */
+  label: string;
+  skills: SkillDisplayInfo[];
+}
+
+/** 一个项目（工作区）的项目级技能文件夹组。 */
+export interface ProjectSkillGroup {
+  workspaceId: string;
+  title: string;
+  path: string;
+  /** 该项目的 .dsh/skills 与 .agents/skills，固定返回（无技能时 skills 为空数组）。 */
+  folders: SkillFolderGroup[];
+}
+
+/** 设置页技能分区的目录视图快照（主进程枚举，不依赖引擎在线）。 */
+export interface SkillsSnapshot {
+  /** 用户级技能文件夹：~/.agents/skills 与 ~/.dsh/skills，固定返回。 */
+  user: SkillFolderGroup[];
+  /** 已打开工作区的项目级技能，按工作区列出。 */
+  projects: ProjectSkillGroup[];
+}
+
+/** 用户级指令文件快照（$DSH_HOME/AGENTS.md 的当前内容与字节占用）。 */
+export interface UserInstructionsSnapshot {
+  content: string;
+  sizeBytes: number;
+  maxBytes: number;
+}
+
 /**
  * preload 暴露给渲染层的桥接 API。
  * 主进程、preload、渲染层共同以此为准，避免 IPC 契约漂移。
@@ -209,4 +250,17 @@ export interface QingwuApi {
   >;
   /** 把 Exa 搜索密钥写入 dsh 用户环境层（$DSH_HOME/.env）；Exa 插件从启动环境读取该密钥。 */
   setExaSearchKey: (value: string) => Promise<void>;
+
+  /** 枚举用户级与各项目技能目录（设置页技能分区视图；主进程直读，不依赖引擎在线）。 */
+  listLocalSkills: (workspaces: {
+    workspaceId: string;
+    title: string;
+    path: string;
+  }[]) => Promise<SkillsSnapshot>;
+  /** 打开用户级技能文件夹（$DSH_AGENTS_HOME/skills，默认 ~/.agents/skills），不存在时先创建。 */
+  openSkillsFolder: () => Promise<string>;
+  /** 读取用户级指令文件（$DSH_HOME/AGENTS.md）；文件不存在时返回空内容。 */
+  getUserInstructions: () => Promise<UserInstructionsSnapshot>;
+  /** 保存用户级指令文件并返回保存后的快照；超限或写入失败时抛错。 */
+  saveUserInstructions: (content: string) => Promise<UserInstructionsSnapshot>;
 }
