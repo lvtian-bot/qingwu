@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useT } from "../i18n";
 import type {
   ScheduleCatalogEntry,
@@ -71,19 +71,19 @@ function localDateTimeOf(iso: string): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
-function initialTiming(entry: ScheduleCatalogEntry): TimingDraft {
-  switch (entry.kind) {
+function initialTiming(record: ScheduleRecord): TimingDraft {
+  switch (record.kind) {
     case "after":
     case "cron":
       return { kind: "readonly" };
     case "at":
-      return { kind: "at", localDateTime: localDateTimeOf(entry.scheduledAt) };
+      return { kind: "at", localDateTime: localDateTimeOf(record.scheduledAt) };
     case "every":
-      return { kind: "every", minutes: String(Math.max(1, Math.round(entry.everySeconds / 60))) };
+      return { kind: "every", minutes: String(Math.max(1, Math.round(record.everySeconds / 60))) };
     case "daily":
-      return { kind: "daily", time: entry.time.slice(0, 5), timeZone: entry.timeZone };
+      return { kind: "daily", time: record.time.slice(0, 5), timeZone: record.timeZone };
     case "weekly":
-      return { kind: "weekly", time: entry.time.slice(0, 5), timeZone: entry.timeZone, weekdays: entry.weekdays.slice() };
+      return { kind: "weekly", time: record.time.slice(0, 5), timeZone: record.timeZone, weekdays: record.weekdays.slice() };
   }
 }
 
@@ -316,7 +316,20 @@ function ScheduleTaskDetail({
   const [title, setTitle] = useState(entry.title);
   const [prompt, setPrompt] = useState(entry.prompt);
   const [timing, setTiming] = useState<TimingDraft>(() => initialTiming(entry));
+  /** timing 的最新值镜像：保存成功后判断请求期间用户是否又编辑过时间。 */
+  const timingRef = useRef(timing);
   const [timingTouched, setTimingTouched] = useState(false);
+  const updateTiming = useCallback(
+    (next: TimingDraft | ((prev: TimingDraft) => TimingDraft)) => {
+      setTiming((prev) => {
+        const value = typeof next === "function" ? next(prev) : next;
+        timingRef.current = value;
+        return value;
+      });
+      setTimingTouched(true);
+    },
+    [],
+  );
   const [saving, setSaving] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -354,10 +367,18 @@ function ScheduleTaskDetail({
       if (patch.title === undefined && patch.prompt === undefined && patch.change === undefined) {
         return;
       }
+      const submittedTiming = timingRef.current;
       // 以引擎落库记录推进基线：这是本次保存的确凿结果，与目录刷新成败无关
       const committed = await tasks.updateTask(entry.sessionId, baseline, patch);
       setBaseline(committed);
       setExternalChange(false);
+      // 已提交的时间变更不再重发（重复提交会让周期任务重新起算）；请求期间又编辑过则保留待下次提交
+      if (timingRef.current === submittedTiming) {
+        const settled = initialTiming(committed);
+        timingRef.current = settled;
+        setTiming(settled);
+        setTimingTouched(false);
+      }
     } catch (err) {
       setActionError(err instanceof Error ? err.message : String(err));
       // compare-and-set 冲突或任务被外部改动：重读目录，让列表回到真实状态
@@ -481,8 +502,7 @@ function ScheduleTaskDetail({
             type="datetime-local"
             value={timing.localDateTime}
             onChange={(e) => {
-              setTiming({ kind: "at", localDateTime: e.target.value });
-              setTimingTouched(true);
+              updateTiming({ kind: "at", localDateTime: e.target.value });
             }}
           />
         ) : timing.kind === "every" ? (
@@ -493,8 +513,7 @@ function ScheduleTaskDetail({
               min={1}
               value={timing.minutes}
               onChange={(e) => {
-                setTiming({ kind: "every", minutes: e.target.value });
-                setTimingTouched(true);
+                updateTiming({ kind: "every", minutes: e.target.value });
               }}
             />
             <span>{t("schedule.task.minutesUnit")}</span>
@@ -506,12 +525,11 @@ function ScheduleTaskDetail({
               type="time"
               value={timing.time}
               onChange={(e) => {
-                setTiming((prev) =>
+                updateTiming((prev) =>
                   prev.kind === "daily" || prev.kind === "weekly"
                     ? { ...prev, time: e.target.value }
                     : prev,
                 );
-                setTimingTouched(true);
               }}
             />
             {timing.kind === "weekly" && (
@@ -524,14 +542,13 @@ function ScheduleTaskDetail({
                       type="button"
                       className={`native-schedule-weekday${on ? " on" : ""}`}
                       onClick={() => {
-                        setTiming((prev) => {
+                        updateTiming((prev) => {
                           if (prev.kind !== "weekly") return prev;
                           const next = prev.weekdays.includes(day)
                             ? prev.weekdays.filter((d) => d !== day)
                             : [...prev.weekdays, day];
                           return { ...prev, weekdays: next };
                         });
-                        setTimingTouched(true);
                       }}
                     >
                       {t(`schedule.weekday.${day}`)}
