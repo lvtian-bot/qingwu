@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { useT } from "../i18n";
 import type {
   ScheduleCatalogEntry,
@@ -322,22 +322,14 @@ function ScheduleTaskDetail({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [history, setHistory] = useState<ScheduleDeliveryRecord[] | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
-  /** compare-and-set 基线：编辑开始时的记录。保存必须用它而不是最新目录项，
-   * 否则详情打开期间的外部改动会被新基线吸收、比较失去保护。 */
+  /** compare-and-set 基线：编辑开始时的记录，保存成功后以引擎返回的落库记录推进。
+   * 不能等目录刷新再推进：刷新可能失败或混入外部改动，会把别人的修改当自己的结果。 */
   const [baseline, setBaseline] = useState<ScheduleRecord>(() => toRecord(entry));
   const [externalChange, setExternalChange] = useState(false);
-  /** 保存成功标记：等目录刷新到达后推进基线（区别于外部改动）。 */
-  const saveSyncRef = useRef(false);
 
-  // 详情打开期间目录项变化：自己保存成功的刷新推进基线；外部改动只提示，基线保持原值
+  // 详情打开期间目录项变化：与基线不同即为外部改动，只提示，基线保持原值
   //（保存时与引擎比较必然冲突，由用户重开详情重新加载）。
   useEffect(() => {
-    if (saveSyncRef.current) {
-      saveSyncRef.current = false;
-      setBaseline(toRecord(entry));
-      setExternalChange(false);
-      return;
-    }
     if (JSON.stringify(toRecord(entry)) !== JSON.stringify(baseline)) {
       setExternalChange(true);
     }
@@ -362,8 +354,10 @@ function ScheduleTaskDetail({
       if (patch.title === undefined && patch.prompt === undefined && patch.change === undefined) {
         return;
       }
-      await tasks.updateTask(entry.sessionId, baseline, patch);
-      saveSyncRef.current = true;
+      // 以引擎落库记录推进基线：这是本次保存的确凿结果，与目录刷新成败无关
+      const committed = await tasks.updateTask(entry.sessionId, baseline, patch);
+      setBaseline(committed);
+      setExternalChange(false);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : String(err));
       // compare-and-set 冲突或任务被外部改动：重读目录，让列表回到真实状态

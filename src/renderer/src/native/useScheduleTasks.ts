@@ -28,12 +28,14 @@ export interface ScheduleTasksState {
    * 编辑任务（compare-and-set）：expected 必须是编辑开始时的基线记录，而非
    * 最新目录项——否则外部改动会被新基线吸收，比较失去保护。冲突与校验失败
    * 以 code 抛出（引擎把失败作为返回值而不是 RPC 错误），由调用方提示并重读。
+   * 成功返回引擎落库后的记录，调用方应以其为新基线（不能等目录刷新，
+   * 刷新可能失败或混入外部改动）。
    */
   updateTask: (
     sessionId: string,
     expected: ScheduleRecord,
     patch: { title?: string; prompt?: string; change?: ScheduleTimingChange },
-  ) => Promise<void>;
+  ) => Promise<ScheduleRecord>;
   /** 删除任务；目录随后重拉。 */
   deleteTask: (sessionId: string, id: string) => Promise<void>;
   /** 拉取运行历史（最近一页）。 */
@@ -100,7 +102,8 @@ export function useScheduleTasks(
         const code = "code" in result ? result.code : "unknown";
         throw new Error(t("schedule.errors.updateRejected", { code }));
       }
-      await refresh();
+      void refresh();
+      return result.record;
     },
     [refresh, t],
   );
