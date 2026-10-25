@@ -391,7 +391,7 @@ export function SettingsPage({
           className="native-settings-panel"
           style={panelStyle("instructions")}
         >
-          <InstructionsTab />
+          <InstructionsTab visible={activeTab === "instructions"} />
         </div>
       </main>
     </div>

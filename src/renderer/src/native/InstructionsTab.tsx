@@ -10,7 +10,7 @@ import { useT } from "../i18n";
 /** 编辑框自动增高的封顶高度：超出后转入框内滚动，避免把设置页拉得过长。 */
 const TEXTAREA_MAX_HEIGHT = 760;
 
-export function InstructionsTab() {
+export function InstructionsTab({ visible }: { visible: boolean }) {
   const t = useT();
   const [content, setContent] = useState("");
   const [savedContent, setSavedContent] = useState("");
@@ -43,14 +43,16 @@ export function InstructionsTab() {
   const overLimit = bytes > maxBytes;
   const dirty = content !== savedContent;
 
-  // 编辑框随内容自动增高（封顶后框内滚动），避免小框里翻长文
+  // 编辑框随内容自动增高（封顶后框内滚动），避免小框里翻长文；
+  // 面板 display:none 时测量无效，切入分区可见时重新测量
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   useLayoutEffect(() => {
+    if (!visible) return;
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, TEXTAREA_MAX_HEIGHT)}px`;
-  }, [content, loading]);
+  }, [content, loading, visible]);
 
   const handleSave = async () => {
     if (overLimit || saving || loading) return;
