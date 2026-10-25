@@ -8,6 +8,8 @@ export const sidebar = {
   },
   /** 新会话按钮 */
   newChat: "新会话",
+  /** 侧栏「新会话」下方的定时任务入口 */
+  scheduleTasks: "定时任务",
   /** 侧栏分区标题、添加入口与空态 */
   sections: {
     pinned: "置顶",

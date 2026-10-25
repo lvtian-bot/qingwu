@@ -102,12 +102,14 @@ export function useSessionActions({
 
   /**
    * 新会话：落在当前/最近活跃项目（或无工作区），并优先复用空白会话。
+   * 返回新会话 id；失败时返回 null（已就地报错）。
    */
-  const handleNewSession = async () => {
+  const handleNewSession = async (): Promise<string | null> => {
     try {
-      await createSessionIn(activeWorkspaceId);
+      return await createSessionIn(activeWorkspaceId);
     } catch (err) {
       setError(toErrMsg(err));
+      return null;
     }
   };
 

@@ -346,7 +346,7 @@ interface SessionSidebarProps {
   unreadFinishedSessionIds: Set<string>;
   openSession: (id: string) => void;
   createSessionIn: (id: string) => Promise<string>;
-  handleNewSession: () => Promise<void>;
+  handleNewSession: () => Promise<string | null>;
   handleAddWorkspace: () => Promise<string | null>;
   handleWorkspaceRename: (id: string, title: string) => void;
   handleWorkspaceDelete: (id: string) => Promise<boolean>;
@@ -355,6 +355,7 @@ interface SessionSidebarProps {
   handleSessionArchive: (id: string) => Promise<void>;
   setError: (message: string) => void;
   onOpenSettings: () => void;
+  onOpenScheduleTasks: () => void;
 }
 
 export function SessionSidebar({
@@ -375,6 +376,7 @@ export function SessionSidebar({
   handleSessionArchive,
   setError,
   onOpenSettings,
+  onOpenScheduleTasks,
 }: SessionSidebarProps) {
   const {
     pinnedSessionSet,
@@ -690,6 +692,26 @@ export function SessionSidebar({
             <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" />
           </svg>
           {t("sidebar.newChat")}
+        </button>
+        <button
+          className="native-nav-item"
+          onClick={onOpenScheduleTasks}
+        >
+          <svg
+            viewBox="0 0 24 24"
+            width="16"
+            height="16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <circle cx="12" cy="12" r="9" />
+            <path d="M12 7v5l3 2" />
+          </svg>
+          {t("sidebar.scheduleTasks")}
         </button>
         <div className="native-session-list">
           {/* 1. 置顶区间 */}

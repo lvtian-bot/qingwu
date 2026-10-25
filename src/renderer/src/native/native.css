@@ -6236,3 +6236,313 @@ body.native-resizing {
   border-radius: 6px !important;
   white-space: nowrap;
 }
+
+/* ---------- 定时任务页（侧栏「新会话」下方入口） ---------- */
+
+/* 侧栏 rail 内的运行说明：弱化呈现，随分区宽度换行 */
+.native-schedule-note {
+  margin: 4px 10px 10px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--settings-muted);
+}
+
+.native-schedule-loading {
+  padding: 40px 24px;
+  font-size: 14px;
+  color: var(--settings-muted);
+}
+
+/* 列表与行 */
+.native-schedule-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 720px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 20px 24px 48px;
+}
+
+.native-schedule-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px 14px;
+  border: 1px solid var(--settings-border);
+  border-radius: 10px;
+  background: var(--settings-bg);
+  text-align: left;
+  cursor: pointer;
+}
+
+.native-schedule-row:hover {
+  border-color: var(--native-muted);
+}
+
+.native-schedule-row.expanded {
+  border-color: var(--native-muted);
+}
+
+.native-schedule-row.ended .native-schedule-row-title,
+.native-schedule-row.ended .native-schedule-row-meta {
+  opacity: 0.55;
+}
+
+.native-schedule-row-main {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.native-schedule-row-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--settings-fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.native-schedule-row-freq {
+  font-size: 12px;
+  color: var(--settings-muted);
+  flex-shrink: 0;
+}
+
+.native-schedule-row-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--settings-muted);
+}
+
+.native-schedule-row-status {
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 18px;
+  background: color-mix(in srgb, var(--native-accent) 10%, transparent);
+  color: var(--settings-fg);
+}
+
+.native-schedule-row-status.ended {
+  background: var(--native-border);
+}
+
+.native-schedule-row-session {
+  margin-left: auto;
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.native-schedule-row-session:hover {
+  color: var(--settings-fg);
+}
+
+/* 详情（行下展开） */
+.native-schedule-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--settings-border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--native-muted) 6%, var(--settings-bg));
+}
+
+.native-schedule-detail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--settings-muted);
+}
+
+.native-schedule-detail-session {
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+}
+
+.native-schedule-detail-session:hover {
+  color: var(--settings-fg);
+}
+
+.native-schedule-history-toggle {
+  border: none;
+  background: transparent;
+  padding: 0;
+  font-size: 12px;
+  color: var(--settings-muted);
+  cursor: pointer;
+}
+
+.native-schedule-history-toggle:hover {
+  color: var(--settings-fg);
+}
+
+.native-schedule-history ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--settings-fg);
+}
+
+.native-schedule-history li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.native-schedule-history-planned {
+  color: var(--settings-muted);
+}
+
+/* 编辑表单 */
+.native-schedule-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--settings-muted);
+}
+
+.native-schedule-prompt {
+  font-family: inherit;
+  resize: vertical;
+  min-height: 64px;
+  line-height: 1.5;
+}
+
+.native-schedule-timing-input {
+  width: 200px;
+}
+
+.native-schedule-timing-inline {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--settings-fg);
+}
+
+.native-schedule-timing-readonly {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+  color: var(--settings-fg);
+}
+
+.native-schedule-timing-hint {
+  font-size: 12px;
+  color: var(--settings-muted);
+}
+
+.native-schedule-weekdays {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.native-schedule-weekday {
+  min-width: 30px;
+  height: 26px;
+  padding: 0 6px;
+  border: 1px solid var(--settings-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--settings-muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.native-schedule-weekday.on {
+  background: var(--native-accent);
+  border-color: var(--native-accent);
+  color: var(--native-accent-fg);
+}
+
+/* 操作区与删除确认 */
+.native-schedule-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.native-schedule-delete-btn {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--settings-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--native-warn);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.native-schedule-delete-btn:hover {
+  border-color: var(--native-warn);
+}
+
+.native-schedule-confirm {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.native-schedule-confirm-text {
+  font-size: 12px;
+  color: var(--settings-muted);
+}
+
+.native-schedule-error {
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--native-warn) 12%, transparent);
+  color: var(--native-warn);
+  font-size: 12px;
+}
+
+/* 空态 */
+.native-schedule-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 72px 24px;
+  text-align: center;
+}
+
+.native-schedule-empty-icon {
+  color: var(--settings-muted);
+}
+
+.native-schedule-empty-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--settings-fg);
+}
+
+.native-schedule-empty-desc {
+  margin: 0 0 8px;
+  max-width: 420px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--settings-muted);
+}

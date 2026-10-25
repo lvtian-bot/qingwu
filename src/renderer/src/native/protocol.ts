@@ -50,6 +50,10 @@ export const Endpoints = {
   workspaceFilesRead: 'workspaceFiles/read',
   /** 流模式 Remote：按目标路径监听文件/直接子项变化（经 remote.mux 逻辑流）。 */
   workspaceFilesChanges: 'workspaceFiles/changes',
+  scheduleCatalog: 'schedule/catalog',
+  scheduleUpdate: 'schedule/update',
+  scheduleDelete: 'schedule/delete',
+  scheduleHistory: 'schedule/history',
   eventsResult: '$events/result',
 } as const;
 
@@ -660,6 +664,66 @@ export interface WorkspaceFollowFrame {
   workspaceId?: string;
   workspaceIds?: string[];
   archivedSessionIds?: string[];
+}
+
+// ---------- schedule 定时任务（schedule/catalog 等） ----------
+
+/** 定时任务记录（wire 契约按 kind 判别；scheduledAt 均为四位年份 RFC3339 UTC）。 */
+export type ScheduleRecord =
+  | { id: string; kind: 'after'; title: string; prompt: string; afterSeconds: number; scheduledAt: string }
+  | { id: string; kind: 'at'; title: string; prompt: string; scheduledAt: string }
+  | { id: string; kind: 'every'; title: string; prompt: string; everySeconds: number; scheduledAt: string }
+  | { id: string; kind: 'daily'; title: string; prompt: string; time: string; timeZone: string; scheduledAt: string }
+  | { id: string; kind: 'weekly'; title: string; prompt: string; time: string; timeZone: string; weekdays: number[]; scheduledAt: string }
+  | { id: string; kind: 'cron'; title: string; prompt: string; expression: string; timeZone: string; scheduledAt: string };
+
+/** 目录项：记录 + 会话归属与状态（inactive 不再触发，仅可见）。 */
+export type ScheduleCatalogEntry = ScheduleRecord & {
+  sessionId: string;
+  status: 'active' | 'inactive';
+  lastDelivery?: { scheduledAt: string; deliveredAt: string; messageId: string };
+};
+
+/** schedule/update 的计时变更（蛇形字段为引擎 wire 契约；at 接受 RFC3339 字符串）。 */
+export type ScheduleTimingChange =
+  | { kind: 'at'; at: string }
+  | { kind: 'every'; every_seconds: number }
+  | { kind: 'daily'; daily: { time: string; time_zone: string } }
+  | { kind: 'weekly'; weekly: { time: string; time_zone: string; weekdays: number[] } }
+  | { kind: 'cron'; cron: { expression: string; time_zone: string } };
+
+/** update 成功提交新记录；未命中/冲突/校验失败统一以 code 呈现（schedule_conflict 需重读再编辑）。 */
+export interface ScheduleUpdateRequest {
+  sessionId: string;
+  id: string;
+  expected: ScheduleRecord;
+  title?: string;
+  prompt?: string;
+  change?: ScheduleTimingChange;
+}
+
+export type ScheduleUpdateResult =
+  | { id: string; updated: true; record: ScheduleRecord }
+  | { code: string; message?: string };
+
+export type ScheduleDeleteResult =
+  | { id: string; deleted: true }
+  | { id: string; deleted: false; code: 'schedule_not_found' };
+
+export interface ScheduleDeliveryRecord {
+  scheduledAt: string;
+  deliveredAt: string;
+  messageId: string;
+  prompt?: string;
+}
+
+export interface ScheduleDeliveryHistoryResult {
+  id: string;
+  records: ScheduleDeliveryRecord[];
+  earlierRecordsUnavailable: boolean;
+  earlierRecordsPruned: boolean;
+  retention: { deliveryHistoryDays?: number; deliveryHistoryRecords?: number };
+  nextBefore?: string;
 }
 
 // ---------- $events 转发事件流 ----------

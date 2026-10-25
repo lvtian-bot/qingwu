@@ -4,6 +4,7 @@ import { composer } from "./composer";
 import { menu } from "./menu";
 import { panel } from "./panel";
 import { pending } from "./pending";
+import { schedule } from "./schedule";
 import { settings } from "./settings";
 import { sidebar } from "./sidebar";
 import { tools } from "./tools";
@@ -16,6 +17,7 @@ export default {
   menu,
   panel,
   pending,
+  schedule,
   settings,
   sidebar,
   tools,

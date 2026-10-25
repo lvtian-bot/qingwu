@@ -44,6 +44,7 @@ import { sessionTitle } from "./sidebar-data";
 import { TurnItems, UserMessageBody } from "./TurnItems";
 import { WorkspaceChip } from "./WorkspaceChip";
 import { SettingsPage } from "./SettingsPage";
+import { ScheduleTasksPage } from "./ScheduleTasksPage";
 import { useChatScroll, useChatScrollFollow } from "./useChatScroll";
 import { useComposerDrafts } from "./useComposerDrafts";
 import { useEngineConnection } from "./useEngineConnection";
@@ -69,6 +70,8 @@ export function NativeApp({
   const t = useT();
   /** 设置面板显隐状态 */
   const [settingsOpen, setSettingsOpen] = useState(false);
+  /** 定时任务页显隐状态（与设置页互斥：同一时间只打开一个全页面板） */
+  const [scheduleOpen, setScheduleOpen] = useState(false);
   /** 是否折叠回合执行过程与工具调用（应用设置项，默认 false：平铺展开） */
   const [collapseProcess, setCollapseProcess] = useState(false);
   /** 聊天区内容列宽档位（应用设置项，默认紧凑） */
@@ -154,6 +157,7 @@ export function NativeApp({
     clearTextDraft,
     restoreAfterFailure,
     loadForSession,
+    prefillForSession,
     discardFor,
   } = drafts;
 
@@ -869,8 +873,8 @@ export function NativeApp({
 
       // 连按两次 Esc 中断当前会话（对齐 Codex 等工具的快捷叫停与防误触机制）
       if (e.key === "Escape") {
-        // 若事件已被内层浮层或弹层消费（如 @ 补全下拉、/ 命令菜单、大图预览或设置页），重置计数并忽略
-        if (e.defaultPrevented || settingsOpen || lightboxUrl) {
+        // 若事件已被内层浮层或弹层消费（如 @ 补全下拉、/ 命令菜单、大图预览或设置页/任务页），重置计数并忽略
+        if (e.defaultPrevented || settingsOpen || scheduleOpen || lightboxUrl) {
           lastEscTimeRef.current = 0;
           return;
         }
@@ -894,13 +898,14 @@ export function NativeApp({
     // 主进程菜单动作「设置」经 IPC 通知打开设置页
     const unsubOpenSettings = window.qingwu?.onOpenSettings?.(() => {
       setSettingsOpen(true);
+      setScheduleOpen(false);
     });
     window.addEventListener("keydown", handleGlobalKeyDown);
     return () => {
       unsubOpenSettings?.();
       window.removeEventListener("keydown", handleGlobalKeyDown);
     };
-  }, [settingsOpen, lightboxUrl, running, currentId, currentCwd, activeWorkspace]);
+  }, [settingsOpen, scheduleOpen, lightboxUrl, running, currentId, currentCwd, activeWorkspace]);
 
   // 主进程点击系统桌面通知经 IPC 调度进入对应会话
   useEffect(() => {
@@ -913,6 +918,29 @@ export function NativeApp({
       unsub?.();
     };
   }, [openSession]);
+
+  /** 定时任务页：侧栏入口打开（与设置页互斥）。 */
+  const handleOpenScheduleTasks = useCallback(() => {
+    setScheduleOpen(true);
+    setSettingsOpen(false);
+  }, []);
+  /** 任务页跳回所属会话：关闭任务页并打开该会话查看投递结果。 */
+  const handleScheduleOpenSession = useCallback(
+    (sessionId: string) => {
+      setScheduleOpen(false);
+      openSession(sessionId);
+    },
+    [openSession],
+  );
+  /** 空态引导：关任务页，新开会话并预填示例指令（定时任务由 AI 在会话内创建）。 */
+  const handleScheduleCreateInChat = useCallback(async () => {
+    setScheduleOpen(false);
+    const sessionId = await handleNewSession();
+    if (sessionId) {
+      prefillForSession(sessionId, t("schedule.empty.examplePrompt"));
+      textareaRef.current?.focus();
+    }
+  }, [handleNewSession, prefillForSession, t]);
 
   /** 查询当前会话或活跃工作区关联的文件/目录引用候选。 */
   const handleQueryFileReferences = useCallback(
@@ -981,7 +1009,11 @@ export function NativeApp({
         handleSessionRename={handleSessionRename}
         handleSessionArchive={handleSessionArchive}
         setError={setError}
-        onOpenSettings={() => setSettingsOpen(true)}
+        onOpenSettings={() => {
+          setSettingsOpen(true);
+          setScheduleOpen(false);
+        }}
+        onOpenScheduleTasks={handleOpenScheduleTasks}
       />
 
       <main
@@ -1291,6 +1323,17 @@ export function NativeApp({
           archivedSessionIds={archivedSessionIds}
           onUnarchiveSession={handleSessionUnarchive}
           onOpenSession={handleRestoreAndOpenSession}
+        />
+      )}
+
+      {scheduleOpen && (
+        <ScheduleTasksPage
+          onBack={() => setScheduleOpen(false)}
+          sidebarPanel={sidebarPanel}
+          dshConnected={dshConnected}
+          sessions={sessions}
+          onOpenSession={handleScheduleOpenSession}
+          onCreateInChat={() => void handleScheduleCreateInChat()}
         />
       )}
     </div>
