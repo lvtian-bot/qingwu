@@ -5516,8 +5516,8 @@ body.native-resizing {
 
 .native-settings-textarea {
   width: 100%;
-  min-height: 220px;
-  max-height: 480px;
+  min-height: 420px;
+  max-height: 760px;
   resize: vertical;
   padding: 12px;
   border: 1px solid var(--settings-border);
@@ -5528,6 +5528,7 @@ body.native-resizing {
   line-height: 1.6;
   outline: none;
   font-family: inherit;
+  overflow-y: auto;
   transition: border-color 0.12s ease;
 }
 

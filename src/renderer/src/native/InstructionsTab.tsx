@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useT } from "../i18n";
 
 /**
@@ -6,6 +6,10 @@ import { useT } from "../i18n";
  * 手动保存，草稿保留在分区挂载内；引擎在会话创建时读取该文件，
  * 保存后新会话生效。
  */
+
+/** 编辑框自动增高的封顶高度：超出后转入框内滚动，避免把设置页拉得过长。 */
+const TEXTAREA_MAX_HEIGHT = 760;
+
 export function InstructionsTab() {
   const t = useT();
   const [content, setContent] = useState("");
@@ -38,6 +42,15 @@ export function InstructionsTab() {
   );
   const overLimit = bytes > maxBytes;
   const dirty = content !== savedContent;
+
+  // 编辑框随内容自动增高（封顶后框内滚动），避免小框里翻长文
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  useLayoutEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, TEXTAREA_MAX_HEIGHT)}px`;
+  }, [content, loading]);
 
   const handleSave = async () => {
     if (overLimit || saving || loading) return;
@@ -83,6 +96,7 @@ export function InstructionsTab() {
         ) : (
           <>
             <textarea
+              ref={textareaRef}
               className="native-settings-textarea"
               value={content}
               placeholder={t("settings.instructions.placeholder")}
