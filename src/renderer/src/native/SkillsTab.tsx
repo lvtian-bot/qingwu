@@ -17,12 +17,16 @@ export interface SkillsTabProps {
   visible: boolean;
 }
 
-/** 技能分区：主进程目录视图，按技能文件夹分别列出名称与说明。 */
+/** 技能来源 Tab：两个用户级文件夹固定在前，已打开项目按顺序跟随。 */
+type SkillTabId = string;
+
+/** 技能分区：按技能来源 Tab 切换展示，主进程目录视图，不依赖引擎在线。 */
 export function SkillsTab({ workspaces, visible }: SkillsTabProps) {
   const t = useT();
   const [snapshot, setSnapshot] = useState<SkillsSnapshot | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<SkillTabId>("user-agents");
 
   // 工作区快照引用频繁变化，读取时取最新值即可，不作为刷新触发条件
   const workspacesRef = useRef<WorkspaceRef[]>([]);
@@ -53,6 +57,20 @@ export function SkillsTab({ workspaces, visible }: SkillsTabProps) {
     void window.qingwu.openSkillsFolder();
   };
 
+  const tabs: { id: SkillTabId; label: string }[] = snapshot
+    ? [
+        { id: "user-agents", label: t("settings.skills.tabPersonal") },
+        { id: "user-dsh", label: t("settings.skills.tabQingwu") },
+        ...snapshot.projects.map((project) => ({
+          id: `project:${project.workspaceId}`,
+          label: project.title,
+        })),
+      ]
+    : [];
+  const currentId = tabs.some((tab) => tab.id === activeTab)
+    ? activeTab
+    : tabs[0]?.id;
+
   return (
     <>
       <div className="native-settings-panel-header">
@@ -60,23 +78,41 @@ export function SkillsTab({ workspaces, visible }: SkillsTabProps) {
         <p>{t("settings.skills.desc")}</p>
       </div>
 
-      <div className="native-settings-toolbar">
-        <button
-          type="button"
-          className="native-btn native-btn-secondary"
-          onClick={handleOpenFolder}
-        >
-          {t("settings.skills.openFolder")}
-        </button>
-        <button
-          type="button"
-          className="native-btn native-btn-secondary"
-          disabled={loading}
-          onClick={() => void load()}
-          title={t("settings.skills.refresh")}
-        >
-          {t("settings.skills.refresh")}
-        </button>
+      <div className="native-settings-skill-tabbar">
+        <div className="native-settings-skill-tabs" role="tablist">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={tab.id === currentId}
+              className={`native-settings-skill-tab${
+                tab.id === currentId ? " active" : ""
+              }`}
+              onClick={() => setActiveTab(tab.id)}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+        <div className="native-settings-toolbar">
+          <button
+            type="button"
+            className="native-btn native-btn-secondary"
+            onClick={handleOpenFolder}
+          >
+            {t("settings.skills.openFolder")}
+          </button>
+          <button
+            type="button"
+            className="native-btn native-btn-secondary"
+            disabled={loading}
+            onClick={() => void load()}
+            title={t("settings.skills.refresh")}
+          >
+            {t("settings.skills.refresh")}
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -95,86 +131,101 @@ export function SkillsTab({ workspaces, visible }: SkillsTabProps) {
         </div>
       )}
 
-      {!error && snapshot && (
+      {snapshot && currentId && !error && (
         <>
-          <div className="native-settings-skill-group">
-            <div className="native-settings-skill-group-title">
-              {t("settings.skills.userGroup")}
-            </div>
-            <p className="native-settings-skill-group-desc">
-              {t("settings.skills.userGroupDesc")}
-            </p>
-            {snapshot.user.map((folder) => (
-              <FolderSection key={folder.path} folder={folder} />
-            ))}
-          </div>
-
-          {snapshot.projects.length > 0 && (
-            <div className="native-settings-skill-group">
-              <div className="native-settings-skill-group-title">
-                {t("settings.skills.projectGroup")}
-              </div>
-              <p className="native-settings-skill-group-desc">
-                {t("settings.skills.projectGroupDesc")}
-              </p>
-              {snapshot.projects.map((project) => (
-                <div key={project.workspaceId} className="native-settings-skill-project">
+          {(currentId === "user-agents" || currentId === "user-dsh") && (
+            <FolderPanel
+              folder={snapshot.user[currentId === "user-agents" ? 0 : 1]}
+            />
+          )}
+          {currentId.startsWith("project:") &&
+            (() => {
+              const project = snapshot.projects.find(
+                (item) => `project:${item.workspaceId}` === currentId,
+              );
+              if (!project) return null;
+              const filled = project.folders.filter(
+                (folder) => folder.skills.length > 0,
+              );
+              return (
+                <div className="native-settings-skill-project-panel">
                   <div
-                    className="native-settings-skill-project-title"
+                    className="native-settings-skill-folder-label"
                     title={project.path}
                   >
-                    {project.title}
+                    {project.path}
                   </div>
-                  {project.folders.map((folder) => (
-                    <FolderSection key={folder.path} folder={folder} />
-                  ))}
+                  {filled.length > 0 ? (
+                    filled.map((folder) => (
+                      <div
+                        key={folder.path}
+                        className="native-settings-skill-folder"
+                      >
+                        <div
+                          className="native-settings-skill-folder-label"
+                          title={folder.path}
+                        >
+                          {folder.label}
+                        </div>
+                        <SkillGrid skills={folder.skills} />
+                      </div>
+                    ))
+                  ) : (
+                    <EmptyPanel />
+                  )}
                 </div>
-              ))}
-            </div>
-          )}
+              );
+            })()}
         </>
       )}
     </>
   );
 }
 
-/** 一个技能文件夹的小节：标题为显示路径，空文件夹显示占位说明。 */
-function FolderSection({ folder }: { folder: SkillFolderGroup }) {
-  const t = useT();
+/** 单个技能文件夹面板：标题为显示路径，内容为卡片网格或空态。 */
+function FolderPanel({ folder }: { folder: SkillFolderGroup }) {
   return (
     <div className="native-settings-skill-folder">
       <div className="native-settings-skill-folder-label" title={folder.path}>
         {folder.label}
       </div>
       {folder.skills.length > 0 ? (
-        <div className="native-settings-card">
-          <SkillRows skills={folder.skills} />
-        </div>
+        <SkillGrid skills={folder.skills} />
       ) : (
-        <div className="native-settings-skill-folder-empty">
-          {t("settings.skills.emptyFolder")}
-        </div>
+        <EmptyPanel />
       )}
     </div>
   );
 }
 
-function SkillRows({ skills }: { skills: SkillDisplayInfo[] }) {
+function EmptyPanel() {
+  const t = useT();
   return (
-    <>
-      {skills.map((skill, index) => (
+    <div className="native-settings-skills-empty">
+      <div className="native-settings-skills-empty-title">
+        {t("settings.skills.emptyFolder")}
+      </div>
+      <p>{t("settings.skills.emptyHint")}</p>
+    </div>
+  );
+}
+
+/** 技能卡片网格：名称与说明，双列自适应。 */
+function SkillGrid({ skills }: { skills: SkillDisplayInfo[] }) {
+  return (
+    <div className="native-settings-skill-grid">
+      {skills.map((skill) => (
         <div
           key={skill.name}
-          className={`native-settings-skill-row${index > 0 ? " bordered" : ""}`}
+          className="native-settings-skill-card"
+          title={skill.description}
         >
-          <span className="native-settings-skill-name" title={skill.name}>
-            {skill.name}
-          </span>
-          <span className="native-settings-skill-desc" title={skill.description}>
+          <span className="native-settings-skill-card-name">{skill.name}</span>
+          <span className="native-settings-skill-card-desc">
             {skill.description}
           </span>
         </div>
       ))}
-    </>
+    </div>
   );
 }
