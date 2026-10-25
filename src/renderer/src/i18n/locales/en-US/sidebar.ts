@@ -7,6 +7,7 @@ export const sidebar: typeof zhSidebar = {
     placeholder: "Search sessions",
   },
   newChat: "New chat",
+  scheduleTasks: "Scheduled tasks",
   sections: {
     pinned: "Pinned",
     projects: "Projects",

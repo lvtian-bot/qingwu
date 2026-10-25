@@ -44,6 +44,7 @@ import { sessionTitle } from "./sidebar-data";
 import { TurnItems, UserMessageBody } from "./TurnItems";
 import { WorkspaceChip } from "./WorkspaceChip";
 import { SettingsPage } from "./SettingsPage";
+import { ScheduleTasksPage } from "./ScheduleTasksPage";
 import { useChatScroll, useChatScrollFollow } from "./useChatScroll";
 import { useComposerDrafts } from "./useComposerDrafts";
 import { useEngineConnection } from "./useEngineConnection";
@@ -69,6 +70,8 @@ export function NativeApp({
   const t = useT();
   /** 设置面板显隐状态 */
   const [settingsOpen, setSettingsOpen] = useState(false);
+  /** 定时任务页显隐状态（与设置页互斥：同一时间只打开一个全页面板） */
+  const [scheduleOpen, setScheduleOpen] = useState(false);
   /** 是否折叠回合执行过程与工具调用（应用设置项，默认 false：平铺展开） */
   const [collapseProcess, setCollapseProcess] = useState(false);
   /** 聊天区内容列宽档位（应用设置项，默认紧凑） */
@@ -154,6 +157,7 @@ export function NativeApp({
     clearTextDraft,
     restoreAfterFailure,
     loadForSession,
+    prefillForSession,
     discardFor,
   } = drafts;
 
@@ -846,9 +850,10 @@ export function NativeApp({
 
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      // 呼出/关闭设置面板：Ctrl+, 或 Meta+,
+      // 呼出/关闭设置面板：Ctrl+, 或 Meta+,（与定时任务页互斥，后渲染页会盖住前者）
       if ((e.ctrlKey || e.metaKey) && e.key === ",") {
         e.preventDefault();
+        setScheduleOpen(false);
         setSettingsOpen((prev) => !prev);
         return;
       }
@@ -869,8 +874,8 @@ export function NativeApp({
 
       // 连按两次 Esc 中断当前会话（对齐 Codex 等工具的快捷叫停与防误触机制）
       if (e.key === "Escape") {
-        // 若事件已被内层浮层或弹层消费（如 @ 补全下拉、/ 命令菜单、大图预览或设置页），重置计数并忽略
-        if (e.defaultPrevented || settingsOpen || lightboxUrl) {
+        // 若事件已被内层浮层或弹层消费（如 @ 补全下拉、/ 命令菜单、大图预览或设置页/任务页），重置计数并忽略
+        if (e.defaultPrevented || settingsOpen || scheduleOpen || lightboxUrl) {
           lastEscTimeRef.current = 0;
           return;
         }
@@ -894,18 +899,21 @@ export function NativeApp({
     // 主进程菜单动作「设置」经 IPC 通知打开设置页
     const unsubOpenSettings = window.qingwu?.onOpenSettings?.(() => {
       setSettingsOpen(true);
+      setScheduleOpen(false);
     });
     window.addEventListener("keydown", handleGlobalKeyDown);
     return () => {
       unsubOpenSettings?.();
       window.removeEventListener("keydown", handleGlobalKeyDown);
     };
-  }, [settingsOpen, lightboxUrl, running, currentId, currentCwd, activeWorkspace]);
+  }, [settingsOpen, scheduleOpen, lightboxUrl, running, currentId, currentCwd, activeWorkspace]);
 
-  // 主进程点击系统桌面通知经 IPC 调度进入对应会话
+  // 主进程点击系统桌面通知经 IPC 调度进入对应会话（退出任务/设置等全屏视图）
   useEffect(() => {
     const unsub = window.qingwu?.onNotificationNavigate?.((targetSessionId) => {
       if (targetSessionId) {
+        setScheduleOpen(false);
+        setSettingsOpen(false);
         openSession(targetSessionId);
       }
     });
@@ -913,6 +921,59 @@ export function NativeApp({
       unsub?.();
     };
   }, [openSession]);
+
+  /** 定时任务视图：侧栏入口切换（再点一次切回会话视图；与设置页互斥）。 */
+  const handleOpenScheduleTasks = useCallback(() => {
+    setScheduleOpen((prev) => {
+      setSettingsOpen(false);
+      return !prev;
+    });
+  }, []);
+  /** 任务视图跳回所属会话：已归档会话先恢复再打开，保证能看到投递结果。 */
+  const handleScheduleOpenSession = useCallback(
+    (sessionId: string) => {
+      setScheduleOpen(false);
+      if (archivedSet.has(sessionId)) {
+        void handleRestoreAndOpenSession(sessionId);
+      } else {
+        openSession(sessionId);
+      }
+    },
+    [archivedSet, openSession, handleRestoreAndOpenSession],
+  );
+  /** 侧栏会话选择类动作统一退出任务视图（主内容区切回会话）。 */
+  const openSessionExitTasks = useCallback(
+    (sessionId: string) => {
+      setScheduleOpen(false);
+      openSession(sessionId);
+    },
+    [openSession],
+  );
+  const createSessionExitTasks = useCallback(
+    async (workspaceId: string) => {
+      setScheduleOpen(false);
+      return createSessionIn(workspaceId);
+    },
+    [createSessionIn],
+  );
+  const newSessionExitTasks = useCallback(async () => {
+    setScheduleOpen(false);
+    return handleNewSession();
+  }, [handleNewSession]);
+  // 任务视图卸载了消息容器：切回时按会话切换同款机制沉底到最新消息，
+  // 避免 DOM 重建后停留在历史顶部且「回到底部」按钮不出现
+  useEffect(() => {
+    if (!scheduleOpen) resetForSessionSwitch();
+  }, [scheduleOpen, resetForSessionSwitch]);
+  /** 空态引导：新开会话并预填示例指令（定时任务由 AI 在会话内创建）。 */
+  const handleScheduleCreateInChat = useCallback(async () => {
+    setScheduleOpen(false);
+    const sessionId = await handleNewSession();
+    if (sessionId) {
+      prefillForSession(sessionId, t("schedule.empty.examplePrompt"));
+      textareaRef.current?.focus();
+    }
+  }, [handleNewSession, prefillForSession, t]);
 
   /** 查询当前会话或活跃工作区关联的文件/目录引用候选。 */
   const handleQueryFileReferences = useCallback(
@@ -971,9 +1032,9 @@ export function NativeApp({
         currentId={currentId}
         pendingKindBySession={pendingKindBySession}
         unreadFinishedSessionIds={unreadFinishedSessionIds}
-        openSession={openSession}
-        createSessionIn={createSessionIn}
-        handleNewSession={handleNewSession}
+        openSession={openSessionExitTasks}
+        createSessionIn={createSessionExitTasks}
+        handleNewSession={newSessionExitTasks}
         handleAddWorkspace={handleAddWorkspace}
         handleWorkspaceRename={handleWorkspaceRename}
         handleWorkspaceDelete={handleWorkspaceDelete}
@@ -981,7 +1042,12 @@ export function NativeApp({
         handleSessionRename={handleSessionRename}
         handleSessionArchive={handleSessionArchive}
         setError={setError}
-        onOpenSettings={() => setSettingsOpen(true)}
+        onOpenSettings={() => {
+          setSettingsOpen(true);
+          setScheduleOpen(false);
+        }}
+        onOpenScheduleTasks={handleOpenScheduleTasks}
+        scheduleTasksOpen={scheduleOpen}
       />
 
       <main
@@ -995,7 +1061,15 @@ export function NativeApp({
             onReconnect={() => void handleManualReconnect()}
           />
         )}
-        {showGreeting ? (
+        {scheduleOpen ? (
+          <ScheduleTasksPage
+            onExit={() => setScheduleOpen(false)}
+            dshConnected={dshConnected}
+            sessions={sessions}
+            onOpenSession={handleScheduleOpenSession}
+            onCreateInChat={() => void handleScheduleCreateInChat()}
+          />
+        ) : showGreeting ? (
           <>
             <div className="native-chat-header">
               {/* 侧栏开关已上移标题栏菜单栏；左端留空占位，右端面板按钮才有落点 */}

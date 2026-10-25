@@ -43,6 +43,10 @@ export function useComposerDrafts({
    */
   const composerDraftsRef = useRef<Map<string, string>>(new Map());
   const composerImagesRef = useRef<Map<string, DraftImage[]>>(new Map());
+  /** 定向预填（如定时任务创建引导）：等目标会话载入草稿时消费一次。 */
+  const pendingPrefillRef = useRef<{ sessionId: string; text: string } | null>(
+    null,
+  );
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const revisionsRef = useRef(new Map<string, number>());
   /** 记录草稿提交清空/废弃的世代号，仅在草稿被发送或删除时递增，普通打字不改变它 */
@@ -477,9 +481,40 @@ export function useComposerDrafts({
 
   /** 切换会话：载入目标会话自己的草稿（上一个会话的草稿已在输入时写进各自的桶）。 */
   const loadForSession = useCallback((sessionId: string | null) => {
-    setInput(composerDraftsRef.current.get(sessionId ?? "") ?? "");
-    setDraftImages(composerImagesRef.current.get(sessionId ?? "") ?? []);
-  }, []);
+    const key = sessionId ?? "";
+    const pending = pendingPrefillRef.current;
+    const existing = composerDraftsRef.current.get(key);
+    const existingImages = composerImagesRef.current.get(key);
+    // 文字与图片任一存在都算非空草稿：只贴图未打字的会话同样不能预填覆盖
+    const hasDraft = Boolean(existing?.trim()) || (existingImages?.length ?? 0) > 0;
+    if (pending && pending.sessionId === key && !hasDraft) {
+      // 定向预填只落到空草稿会话；复用的空白会话若已有未发送输入则保留用户内容
+      pendingPrefillRef.current = null;
+      composerDraftsRef.current.set(key, pending.text);
+      touch(key);
+      setInput(pending.text);
+      setDraftImages([]);
+      return;
+    }
+    if (pending && pending.sessionId === key) pendingPrefillRef.current = null;
+    setInput(existing ?? "");
+    setDraftImages(existingImages ?? []);
+  }, [touch]);
+
+  /**
+   * 定向预填：为（通常是即将打开的）会话写入初始输入。
+   * 会话尚未成为当前会话时挂起，待 loadForSession 切到它时生效，
+   * 避免与新建会话后的空草稿载入相互覆盖。
+   */
+  const prefillForSession = useCallback(
+    (sessionId: string, text: string) => {
+      pendingPrefillRef.current = { sessionId, text };
+      if ((currentIdRef.current ?? "") === sessionId) {
+        loadForSession(sessionId);
+      }
+    },
+    [currentIdRef, loadForSession],
+  );
 
   /** 会话已删除：草稿桶与图片一并清理（内存态，避免残留）。 */
   const discardFor = useCallback(
@@ -566,6 +601,7 @@ export function useComposerDrafts({
     clearTextDraft,
     restoreAfterFailure,
     loadForSession,
+    prefillForSession,
     discardFor,
   };
 }
