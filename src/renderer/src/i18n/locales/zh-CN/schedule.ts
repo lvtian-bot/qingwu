@@ -20,11 +20,17 @@ export const schedule = {
   },
   /** 任务行与详情字段 */
   task: {
-    active: "进行中",
-    ended: "已结束",
+    /** 状态文案与官方界面一致：active 已开启 / paused 已暂停 / ended 已结束 */
+    status: {
+      active: "已开启",
+      paused: "已暂停",
+      ended: "已结束",
+    },
     nextRun: "下次运行",
     sourceSession: "所属会话",
     openSession: "打开所属会话",
+    /** 每次新建会话的任务首次运行前还没有目标会话 */
+    sessionAfterFirstRun: "待创建",
     titleLabel: "标题",
     promptLabel: "指令",
     timingLabel: "执行时间",
@@ -32,6 +38,8 @@ export const schedule = {
     minutesUnit: "分钟",
     save: "保存",
     saving: "保存中…",
+    pause: "暂停任务",
+    resume: "恢复任务",
     delete: "删除",
     confirmDelete: "删除",
     cancel: "取消",
@@ -39,6 +47,17 @@ export const schedule = {
       "任务将停止触发，并连同运行记录一并删除；原会话及其消息仍保留。",
     externalChanged:
       "任务已被其他途径修改，保存可能冲突；重新打开详情可加载最新内容。",
+  },
+  /** 批量清理已结束任务（与官方界面对齐） */
+  clear: {
+    action: "清除全部已结束任务",
+    title: "清除 {count} 个已结束任务？",
+    description:
+      "这些任务及其运行记录将被永久删除，已开启或已暂停的任务、原会话和已排队消息等不受影响。",
+    confirm: "确认清除",
+    pending: "正在清理…",
+    success: "已清除 {count} 个已结束任务",
+    close: "关闭清理确认",
   },
   /** 运行历史（投递记录） */
   history: {
@@ -77,6 +96,6 @@ export const schedule = {
     "time-invalid": "时间格式无效",
     "weekdays-required": "请至少选择一个星期",
     updateRejected: "保存未生效（{code}），任务可能已被修改，请重试",
-    deleteRejected: "删除失败，请重试",
+    deleteRejected: "删除失败（{code}），请重试",
   },
 };

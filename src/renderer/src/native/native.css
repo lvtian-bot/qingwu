@@ -6838,3 +6838,82 @@ body.native-resizing {
   min-height: 0;
   overflow-y: auto;
 }
+
+/* 定时任务批量清理的确认弹窗：复用 model-picker 的遮罩与动效风格，
+   保证破坏性操作有独立遮罩且居中，而不是堆在列表下方。 */
+.native-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.native-dialog {
+  width: 420px;
+  max-width: 90vw;
+  /* 弹窗渲染在会话区，不在设置页作用域内；--settings-* 在该作用域才定义，
+     用它会退回浅色底，而标题继承深色主题的浅色文字，形成白底白字。 */
+  background: var(--native-bg);
+  border: 1px solid var(--native-border);
+  border-radius: 12px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.35);
+  padding: 20px;
+  animation: nativeModalIn 0.15s ease-out;
+}
+
+.native-dialog-title {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.native-dialog-desc {
+  margin: 0 0 18px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--native-muted);
+}
+
+.native-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+/* 已结束任务数入口：与列表保持一致的横向留白 */
+.native-schedule-list-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding: 8px 12px 0;
+}
+
+.native-schedule-clear-ended {
+  background: transparent;
+  border: 1px solid var(--native-border);
+  border-radius: 6px;
+  padding: 5px 12px;
+  font-size: 12px;
+  color: var(--native-muted);
+  cursor: pointer;
+}
+
+.native-schedule-clear-result {
+  padding: 8px 12px;
+  color: var(--native-muted);
+  font-size: 13px;
+}
+
+.native-schedule-clear-ended:hover:not(:disabled) {
+  border-color: var(--native-error);
+  color: var(--native-error);
+}
+
+.native-schedule-clear-ended:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
