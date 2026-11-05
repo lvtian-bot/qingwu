@@ -147,10 +147,17 @@ export function ScheduleTasksPage({
   const clearEnded = async () => {
     setClearingEnded(true);
     setClearError(null);
+    // 以清理前的状态判断：本次只删除已结束任务，其余任务的详情须保留。
+    // 详情草稿只存在于组件状态中，无条件关闭会连带丢弃正在编辑的
+    // 已开启/已暂停任务的未保存内容。
+    const selectedBefore =
+      selectedId === null
+        ? undefined
+        : tasks.entries.find((entry) => entry.id === selectedId);
     try {
       await tasks.deleteInactive();
       setConfirmClearEnded(false);
-      setSelectedId(null);
+      if (!selectedBefore || selectedBefore.status === "ended") setSelectedId(null);
     } catch (err) {
       setConfirmClearEnded(false);
       setClearError(err instanceof Error ? err.message : String(err));

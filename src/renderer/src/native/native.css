@@ -6856,8 +6856,10 @@ body.native-resizing {
 .native-dialog {
   width: 420px;
   max-width: 90vw;
-  background: var(--settings-bg, #ffffff);
-  border: 1px solid var(--settings-border);
+  /* 弹窗渲染在会话区，不在设置页作用域内；--settings-* 在该作用域才定义，
+     用它会退回浅色底，而标题继承深色主题的浅色文字，形成白底白字。 */
+  background: var(--native-bg);
+  border: 1px solid var(--native-border);
   border-radius: 12px;
   box-shadow: 0 12px 36px rgba(0, 0, 0, 0.35);
   padding: 20px;
@@ -6892,7 +6894,7 @@ body.native-resizing {
 
 .native-schedule-clear-ended {
   background: transparent;
-  border: 1px solid var(--settings-border);
+  border: 1px solid var(--native-border);
   border-radius: 6px;
   padding: 5px 12px;
   font-size: 12px;
