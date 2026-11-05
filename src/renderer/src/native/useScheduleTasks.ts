@@ -39,7 +39,11 @@ export interface ScheduleTasksState {
     id: string,
   ) => Promise<ScheduleCatalogEntry>;
   /** 暂停（active=false）或恢复（active=true）任务，规则同官方界面。 */
-  setActive: (entry: ScheduleCatalogEntry, active: boolean) => Promise<ScheduleCatalogEntry>;
+  setActive: (
+    id: string,
+    expectedUpdatedAt: string | null,
+    active: boolean,
+  ) => Promise<ScheduleCatalogEntry>;
   /** 删除任务；目录随后重拉。 */
   deleteTask: (id: string, expectedUpdatedAt: string | null) => Promise<void>;
   /** 清除全部已结束任务，返回实际清除数量。 */
@@ -128,9 +132,8 @@ export function useScheduleTasks(
   );
 
   const setActive = useCallback(
-    (entry: ScheduleCatalogEntry, nextActive: boolean) =>
-      // 版本号取目录项的 updatedAt：暂停/恢复通常不在编辑详情里进行
-      updateTask(entry.updatedAt ?? null, { active: nextActive }, entry.id),
+    (id: string, expectedUpdatedAt: string | null, nextActive: boolean) =>
+      updateTask(expectedUpdatedAt, { active: nextActive }, id),
     [updateTask],
   );
 

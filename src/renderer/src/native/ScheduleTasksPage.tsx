@@ -519,12 +519,24 @@ function ScheduleTaskDetail({
     }
   };
 
-  /** 暂停与恢复共用一个入口，目标状态由当前状态取反（规则同官方界面）。 */
+  /**
+   * 暂停与恢复共用一个入口，目标状态由当前状态取反（规则同官方界面）。
+   *
+   * 版本校验用编辑基线而非目录项：详情打开期间目录可能被外部改动刷新，
+   * 这会更新 entry.updatedAt 但按设计不更新表单草稿与基线。若拿目录项的
+   * 新版本号提交并推进基线，草稿仍是外部改动前的内容，此后保存会把旧值
+   * 当作主动编辑，静默覆盖外部修改。用基线版本号提交则外部改动会得到
+   * schedule_conflict，保护不被绕过。
+   */
   const toggleActive = async () => {
     setSaving(true);
     setActionError(null);
     try {
-      const committed = await tasks.setActive(entry, entry.status !== "active");
+      const committed = await tasks.setActive(
+        entry.id,
+        baseline.updatedAt ?? null,
+        entry.status !== "active",
+      );
       setBaseline(committed);
       setExternalChange(false);
     } catch (err) {
