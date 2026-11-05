@@ -49,6 +49,7 @@ export const schedule = {
       "These tasks and their run history are permanently deleted. Enabled or paused tasks, the original sessions and queued messages are unaffected.",
     confirm: "Confirm clear",
     pending: "Clearing…",
+    success: "Cleared {count} ended tasks",
     close: "Close clear confirmation",
   },
   history: {

@@ -677,7 +677,8 @@ export type ScheduleRecord =
   | { id: string; kind: 'every'; title: string; prompt: string; everySeconds: number; scheduledAt: string }
   | { id: string; kind: 'daily'; title: string; prompt: string; time: string; timeZone: string; scheduledAt: string }
   | { id: string; kind: 'weekly'; title: string; prompt: string; time: string; timeZone: string; weekdays: number[]; scheduledAt: string }
-  | { id: string; kind: 'cron'; title: string; prompt: string; expression: string; timeZone: string; scheduledAt: string };
+  | { id: string; kind: 'cron'; title: string; prompt: string; expression: string; timeZone: string; scheduledAt: string }
+  | { id: string; kind: 'rrule'; title: string; prompt: string; rrule: string; scheduledAt: string };
 
 /**
  * 投递目标（引擎 0.2.2 起，任务不再必然属于某个已有会话）。
@@ -735,7 +736,7 @@ export type ScheduleEditRequest =
 export type ScheduleEditResult =
   | ScheduleCatalogEntry
   | { id: string; deleted: true }
-  | { id: string; deleted: false; code: 'schedule_not_found' }
+  | { id: string; code: 'schedule_not_found' }
   | { id: string; code: 'schedule_conflict' };
 
 /** 清除全部已结束任务的结果（宿主判定，未指定 id）。 */
@@ -747,17 +748,23 @@ export interface ScheduleDeliveryRecord {
   scheduledAt: string;
   deliveredAt: string;
   messageId: string;
+  targetSessionId: string;
   prompt?: string;
 }
 
-export interface ScheduleDeliveryHistoryResult {
+export interface ScheduleDeliveryHistoryPage {
   id: string;
   records: ScheduleDeliveryRecord[];
   earlierRecordsUnavailable: boolean;
   earlierRecordsPruned: boolean;
-  retention: { deliveryHistoryDays?: number; deliveryHistoryRecords?: number };
+  retention: { days: number; records: number };
   nextBefore?: string;
 }
+
+export type ScheduleDeliveryHistoryResult = ScheduleDeliveryHistoryPage | {
+  id: string;
+  code: 'schedule_not_found' | 'delivery_cursor_not_found';
+};
 
 // ---------- $events 转发事件流 ----------
 

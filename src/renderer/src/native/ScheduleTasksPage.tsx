@@ -48,6 +48,8 @@ function frequencyLabel(entry: ScheduleCatalogEntry, t: ReturnType<typeof useT>)
       });
     case "cron":
       return t("schedule.frequency.cron", { expression: entry.expression });
+    case "rrule":
+      return entry.rrule;
   }
 }
 
@@ -76,6 +78,7 @@ function initialTiming(record: ScheduleRecord): TimingDraft {
   switch (record.kind) {
     case "after":
     case "cron":
+    case "rrule":
       return { kind: "readonly" };
     case "at":
       return { kind: "at", localDateTime: localDateTimeOf(record.scheduledAt) };
@@ -120,9 +123,10 @@ function buildTimingChange(draft: TimingDraft): ScheduleTimingChange | { error: 
 
 /**
  * 任务实际投递到的会话（规则同官方界面）：每次新建会话的任务指向最近一次
- * 投递生成的会话；其余目标自带确定的会话 id。
+ * 投递生成的会话；new_once 的预留 id 在首次投递前还不是实际会话。
  */
 function targetSessionId(entry: ScheduleCatalogEntry): string | undefined {
+  if (entry.target.kind === "new_once") return undefined;
   return entry.target.kind === "new"
     ? entry.lastDelivery?.targetSessionId
     : entry.target.sessionId;
@@ -143,10 +147,12 @@ export function ScheduleTasksPage({
   const [confirmClearEnded, setConfirmClearEnded] = useState(false);
   const [clearingEnded, setClearingEnded] = useState(false);
   const [clearError, setClearError] = useState<string | null>(null);
+  const [clearedCount, setClearedCount] = useState<number | null>(null);
 
   const clearEnded = async () => {
     setClearingEnded(true);
     setClearError(null);
+    setClearedCount(null);
     // 以清理前的状态判断：本次只删除已结束任务，其余任务的详情须保留。
     // 详情草稿只存在于组件状态中，无条件关闭会连带丢弃正在编辑的
     // 已开启/已暂停任务的未保存内容。
@@ -155,7 +161,8 @@ export function ScheduleTasksPage({
         ? undefined
         : tasks.entries.find((entry) => entry.id === selectedId);
     try {
-      await tasks.deleteInactive();
+      const count = await tasks.deleteInactive();
+      setClearedCount(count);
       setConfirmClearEnded(false);
       if (!selectedBefore || selectedBefore.status === "ended") setSelectedId(null);
     } catch (err) {
@@ -180,14 +187,19 @@ export function ScheduleTasksPage({
     [tasks.entries],
   );
 
-  // Esc 退出任务视图，主内容区切回会话
+  // 弹窗优先处理 Esc，避免关闭任务页并丢失尚未保存的草稿。
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onExit();
+      if (e.key !== "Escape") return;
+      if (confirmClearEnded) {
+        if (!clearingEnded) setConfirmClearEnded(false);
+      } else {
+        onExit();
+      }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onExit]);
+  }, [onExit, confirmClearEnded, clearingEnded]);
 
   const sessionName = (entry: ScheduleCatalogEntry): string => {
     const sessionId = targetSessionId(entry);
@@ -226,6 +238,11 @@ export function ScheduleTasksPage({
         {clearError && (
           <div className="native-schedule-refresh-error" role="alert">
             <span className="native-schedule-refresh-error-text">{clearError}</span>
+          </div>
+        )}
+        {clearedCount !== null && (
+          <div className="native-schedule-clear-result" role="status">
+            {t("schedule.clear.success", { count: clearedCount })}
           </div>
         )}
         {tasks.loading && tasks.entries.length === 0 ? (
@@ -318,7 +335,7 @@ export function ScheduleTasksPage({
           cancelLabel={t("schedule.task.cancel")}
           closeLabel={t("schedule.clear.close")}
           onConfirm={() => void clearEnded()}
-          onCancel={() => setConfirmClearEnded(false)}
+          onCancel={() => { if (!clearingEnded) setConfirmClearEnded(false); }}
         />
       )}
     </div>
@@ -357,7 +374,7 @@ function ConfirmDialog({
         <div className="native-dialog-title">{title}</div>
         <p className="native-dialog-desc">{description}</p>
         <div className="native-dialog-actions">
-          <button type="button" className="native-btn" onClick={onCancel}>
+          <button type="button" className="native-btn" disabled={confirmDisabled} onClick={onCancel}>
             {cancelLabel}
           </button>
           <button
@@ -412,7 +429,9 @@ function ScheduleTaskRow({
         <span className="native-schedule-row-next">
           {ended
             ? t("schedule.task.status.ended")
-            : `${t("schedule.task.nextRun")} ${formatDateTime(entry.scheduledAt)}`}
+            : entry.status === "active"
+              ? `${t("schedule.task.nextRun")} ${formatDateTime(entry.scheduledAt)}`
+              : null}
         </span>
         <span
           className={`native-schedule-row-session${onOpenSession ? "" : " pending"}`}
@@ -573,6 +592,7 @@ function ScheduleTaskDetail({
     setHistoryLoading(true);
     try {
       const result: ScheduleDeliveryHistoryResult = await tasks.loadHistory(entry);
+      if ("code" in result) throw new Error(result.code);
       setHistory(result.records);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : String(err));
@@ -657,6 +677,8 @@ function ScheduleTaskDetail({
                 })
               : entry.kind === "cron"
                 ? t("schedule.frequency.cron", { expression: entry.expression })
+                : entry.kind === "rrule"
+                  ? entry.rrule
                 : "";
           return (
           <div className="native-schedule-timing-readonly">
@@ -670,6 +692,7 @@ function ScheduleTaskDetail({
           <input
             className="native-settings-input native-schedule-timing-input"
             type="datetime-local"
+            disabled={ended}
             value={timing.localDateTime}
             onChange={(e) => {
               updateTiming({ kind: "at", localDateTime: e.target.value });
@@ -680,6 +703,7 @@ function ScheduleTaskDetail({
             <input
               className="native-settings-input native-schedule-timing-input"
               type="number"
+              disabled={ended}
               min={1}
               value={timing.minutes}
               onChange={(e) => {
@@ -693,6 +717,7 @@ function ScheduleTaskDetail({
             <input
               className="native-settings-input native-schedule-timing-input"
               type="time"
+              disabled={ended}
               value={timing.time}
               onChange={(e) => {
                 updateTiming((prev) =>
@@ -710,6 +735,7 @@ function ScheduleTaskDetail({
                     <button
                       key={day}
                       type="button"
+                      disabled={ended}
                       className={`native-schedule-weekday${on ? " on" : ""}`}
                       onClick={() => {
                         updateTiming((prev) => {

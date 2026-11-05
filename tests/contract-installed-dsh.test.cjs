@@ -22,6 +22,7 @@ import type {} from '@deepseek-ai/dsh-permission-presets/remote';
 import type { TypertRemoteMap } from '@deepseek-ai/dsh-typert-protocol';
 import type * as S from '@deepseek-ai/dsh-api-session-controller/types';
 import type { ModelSelectionProjection } from '@deepseek-ai/dsh-agent/types';
+import type * as Schedule from '@deepseek-ai/dsh-schedule/client';
 import type * as W from '@deepseek-ai/dsh-api-workspace-controller/types';
 import type { SettingsDescribeValue } from '@deepseek-ai/dsh-settings/types';
 import type { ApprovalOutcome, ApprovalRequestEvent } from '@deepseek-ai/dsh-user-approval/types';
@@ -63,6 +64,9 @@ export type QuestionAnswer = Assert<Fits<{answers: UI.UserQuestionAnswer[]}, Ask
 export type Commands = Assert<Fits<Mutable<UpstreamCommandDescriptor>, UI.CommandDescriptor>>;
 export type CommandFields = Assert<Fits<keyof UI.CommandDescriptor, keyof UpstreamCommandDescriptor>>;
 export type Skills = Assert<Fits<Mutable<S.SkillListValue>, UI.SkillListResult>>;
+export type ScheduleEntry = Assert<Fits<Mutable<Schedule.ScheduleCatalogEntry>, UI.ScheduleCatalogEntry>>;
+export type ScheduleEdit = Assert<Fits<Mutable<Schedule.ScheduleEditResult>, UI.ScheduleEditResult>>;
+export type ScheduleHistory = Assert<Fits<Mutable<Schedule.ScheduleDeliveryHistoryResult>, UI.ScheduleDeliveryHistoryResult>>;
 `;
 
 function createContractProgram(source = contract) {

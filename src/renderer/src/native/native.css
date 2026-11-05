@@ -6902,6 +6902,12 @@ body.native-resizing {
   cursor: pointer;
 }
 
+.native-schedule-clear-result {
+  padding: 8px 12px;
+  color: var(--native-muted);
+  font-size: 13px;
+}
+
 .native-schedule-clear-ended:hover:not(:disabled) {
   border-color: var(--native-error);
   color: var(--native-error);
