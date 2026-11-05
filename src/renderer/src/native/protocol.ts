@@ -51,8 +51,10 @@ export const Endpoints = {
   /** 流模式 Remote：按目标路径监听文件/直接子项变化（经 remote.mux 逻辑流）。 */
   workspaceFilesChanges: 'workspaceFiles/changes',
   scheduleCatalog: 'schedule/catalog',
-  scheduleUpdate: 'schedule/update',
-  scheduleDelete: 'schedule/delete',
+  /** 修改与删除合一的闭环接口，以 action 区分（引擎 0.2.2 起）。 */
+  scheduleEdit: 'schedule/edit',
+  /** 清除全部已结束任务（宿主级，不指定 id）。 */
+  scheduleDeleteInactive: 'schedule/deleteInactive',
   scheduleHistory: 'schedule/history',
   eventsResult: '$events/result',
 } as const;
@@ -677,11 +679,32 @@ export type ScheduleRecord =
   | { id: string; kind: 'weekly'; title: string; prompt: string; time: string; timeZone: string; weekdays: number[]; scheduledAt: string }
   | { id: string; kind: 'cron'; title: string; prompt: string; expression: string; timeZone: string; scheduledAt: string };
 
-/** 目录项：记录 + 会话归属与状态（inactive 不再触发，仅可见）。 */
+/**
+ * 投递目标（引擎 0.2.2 起，任务不再必然属于某个已有会话）。
+ * session/new_once 带确定的会话 id；new 在每次运行时另建会话，回执另有 targetSessionId。
+ */
+export type ScheduleTarget =
+  | { kind: 'session'; sessionId: string }
+  | { kind: 'new_once'; sessionId: string }
+  | { kind: 'new' };
+
+/** 投递回执：targetSessionId 是实际接收投递的会话（每次新建会话时随运行变化）。 */
+export interface ScheduleDeliveryReceipt {
+  scheduledAt: string;
+  deliveredAt: string;
+  messageId: string;
+  targetSessionId: string;
+}
+
+/** 目录项：记录 + 投递目标与状态（paused 暂停待恢复，ended 不再触发）。 */
 export type ScheduleCatalogEntry = ScheduleRecord & {
-  sessionId: string;
-  status: 'active' | 'inactive';
-  lastDelivery?: { scheduledAt: string; deliveredAt: string; messageId: string };
+  target: ScheduleTarget;
+  involvedSessionIds: string[];
+  status: 'active' | 'paused' | 'ended';
+  createdAt?: string;
+  updatedAt?: string;
+  executionActive?: true;
+  lastDelivery?: ScheduleDeliveryReceipt;
 };
 
 /** schedule/update 的计时变更（蛇形字段为引擎 wire 契约；at 接受 RFC3339 字符串）。 */
@@ -692,23 +715,33 @@ export type ScheduleTimingChange =
   | { kind: 'weekly'; weekly: { time: string; time_zone: string; weekdays: number[] } }
   | { kind: 'cron'; cron: { expression: string; time_zone: string } };
 
-/** update 成功提交新记录；未命中/冲突/校验失败统一以 code 呈现（schedule_conflict 需重读再编辑）。 */
-export interface ScheduleUpdateRequest {
-  sessionId: string;
-  id: string;
-  expected: ScheduleRecord;
+/** schedule/edit 的 patch（active 切换暂停与恢复，规则同官方界面）。 */
+export interface SchedulePatch {
   title?: string;
   prompt?: string;
-  change?: ScheduleTimingChange;
+  timing?: ScheduleTimingChange;
+  active?: boolean;
 }
 
-export type ScheduleUpdateResult =
-  | { id: string; updated: true; record: ScheduleRecord }
-  | { code: string; message?: string };
+/**
+ * schedule/edit 请求：action 区分修改与删除。expectedUpdatedAt 是读取时的
+ * 版本号，不一致返回 schedule_conflict（替代旧版的整条记录 compare-and-set）。
+ */
+export type ScheduleEditRequest =
+  | { id: string; action: 'update'; patch: SchedulePatch; expectedUpdatedAt?: string | null }
+  | { id: string; action: 'delete'; expectedUpdatedAt?: string | null };
 
-export type ScheduleDeleteResult =
+/** 更新成功返回目录项；删除成功返回 deleted；未命中与冲突以 code 呈现。 */
+export type ScheduleEditResult =
+  | ScheduleCatalogEntry
   | { id: string; deleted: true }
-  | { id: string; deleted: false; code: 'schedule_not_found' };
+  | { id: string; deleted: false; code: 'schedule_not_found' }
+  | { id: string; code: 'schedule_conflict' };
+
+/** 清除全部已结束任务的结果（宿主判定，未指定 id）。 */
+export interface ScheduleDeleteInactiveResult {
+  deleted: number;
+}
 
 export interface ScheduleDeliveryRecord {
   scheduledAt: string;

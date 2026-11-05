@@ -16,11 +16,15 @@ export const schedule = {
       "Create a scheduled task for me: every workday at 9:00, summarize the recent changes and open follow-ups in this project.",
   },
   task: {
-    active: "Active",
-    ended: "Ended",
+    status: {
+      active: "Enabled",
+      paused: "Paused",
+      ended: "Ended",
+    },
     nextRun: "Next run",
     sourceSession: "Session",
     openSession: "Open the owning session",
+    sessionAfterFirstRun: "Created on first run",
     titleLabel: "Title",
     promptLabel: "Instruction",
     timingLabel: "Schedule",
@@ -28,6 +32,8 @@ export const schedule = {
     minutesUnit: "minutes",
     save: "Save",
     saving: "Saving…",
+    pause: "Pause task",
+    resume: "Resume task",
     delete: "Delete",
     confirmDelete: "Delete",
     cancel: "Cancel",
@@ -35,6 +41,15 @@ export const schedule = {
       "The task will stop triggering and its run history will be deleted; the session and its messages are kept.",
     externalChanged:
       "This task was modified elsewhere; saving may conflict. Reopen the detail to load the latest content.",
+  },
+  clear: {
+    action: "Clear all ended tasks",
+    title: "Clear {count} ended tasks?",
+    description:
+      "These tasks and their run history are permanently deleted. Enabled or paused tasks, the original sessions and queued messages are unaffected.",
+    confirm: "Confirm clear",
+    pending: "Clearing…",
+    close: "Close clear confirmation",
   },
   history: {
     show: "Run history",

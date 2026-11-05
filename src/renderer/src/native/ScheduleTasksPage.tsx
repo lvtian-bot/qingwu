@@ -4,6 +4,7 @@ import type {
   ScheduleCatalogEntry,
   ScheduleDeliveryRecord,
   ScheduleDeliveryHistoryResult,
+  SchedulePatch,
   ScheduleRecord,
   ScheduleTimingChange,
   SessionSummary,
@@ -117,13 +118,14 @@ function buildTimingChange(draft: TimingDraft): ScheduleTimingChange | { error: 
   }
 }
 
-/** 目录项剔除会话归属与状态扩展字段，得到可作 compare-and-set 基线的纯记录。 */
-function toRecord(entry: ScheduleCatalogEntry): ScheduleRecord {
-  const { sessionId, status, lastDelivery, ...record } = entry;
-  void sessionId;
-  void status;
-  void lastDelivery;
-  return record as ScheduleRecord;
+/**
+ * 任务实际投递到的会话（规则同官方界面）：每次新建会话的任务指向最近一次
+ * 投递生成的会话；其余目标自带确定的会话 id。
+ */
+function targetSessionId(entry: ScheduleCatalogEntry): string | undefined {
+  return entry.target.kind === "new"
+    ? entry.lastDelivery?.targetSessionId
+    : entry.target.sessionId;
 }
 
 const WEEKDAY_KEYS = [1, 2, 3, 4, 5, 6, 7] as const;
@@ -138,13 +140,38 @@ export function ScheduleTasksPage({
   const t = useT();
   const tasks = useScheduleTasks(true, dshConnected);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [confirmClearEnded, setConfirmClearEnded] = useState(false);
+  const [clearingEnded, setClearingEnded] = useState(false);
+  const [clearError, setClearError] = useState<string | null>(null);
+
+  const clearEnded = async () => {
+    setClearingEnded(true);
+    setClearError(null);
+    try {
+      await tasks.deleteInactive();
+      setConfirmClearEnded(false);
+      setSelectedId(null);
+    } catch (err) {
+      setConfirmClearEnded(false);
+      setClearError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setClearingEnded(false);
+    }
+  };
 
   const sorted = useMemo(() => {
+    const rank = { active: 0, paused: 1, ended: 2 } as const;
     return tasks.entries.slice().sort((a, b) => {
-      if (a.status !== b.status) return a.status === "active" ? -1 : 1;
+      if (rank[a.status] !== rank[b.status]) return rank[a.status] - rank[b.status];
       return a.scheduledAt.localeCompare(b.scheduledAt);
     });
   }, [tasks.entries]);
+
+  /** 已结束任务数：决定「清除全部已结束任务」是否可点。 */
+  const endedCount = useMemo(
+    () => tasks.entries.filter((entry) => entry.status === "ended").length,
+    [tasks.entries],
+  );
 
   // Esc 退出任务视图，主内容区切回会话
   useEffect(() => {
@@ -155,9 +182,13 @@ export function ScheduleTasksPage({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onExit]);
 
-  const sessionName = (sessionId: string): string => {
+  const sessionName = (entry: ScheduleCatalogEntry): string => {
+    const sessionId = targetSessionId(entry);
+    if (!sessionId) return t("schedule.task.sessionAfterFirstRun");
     const summary = sessions?.find((s) => s.sessionId === sessionId);
-    return summary ? sessionTitle(summary, t("sidebar.untitled")) : t("schedule.task.sourceSession");
+    return summary
+      ? sessionTitle(summary, t("sidebar.untitled"))
+      : t("schedule.task.sourceSession");
   };
 
   return (
@@ -182,6 +213,12 @@ export function ScheduleTasksPage({
             >
               {t("schedule.list.retry")}
             </button>
+          </div>
+        )}
+        {/* 批量清理失败的独立提示：与刷新错误分开，避免误引向重试刷新 */}
+        {clearError && (
+          <div className="native-schedule-refresh-error" role="alert">
+            <span className="native-schedule-refresh-error-text">{clearError}</span>
           </div>
         )}
         {tasks.loading && tasks.entries.length === 0 ? (
@@ -213,33 +250,118 @@ export function ScheduleTasksPage({
             </button>
           </div>
         ) : (
-          <div className="native-schedule-list">
-            {sorted.map((entry) => (
-              <Fragment key={entry.id}>
-                <ScheduleTaskRow
-                  entry={entry}
-                  expanded={entry.id === selectedId}
-                  sessionLabel={sessionName(entry.sessionId)}
-                  frequency={frequencyLabel(entry, t)}
-                  onToggle={() =>
-                    setSelectedId((prev) => (prev === entry.id ? null : entry.id))
-                  }
-                  onOpenSession={() => onOpenSession(entry.sessionId)}
-                />
-                {/* 详情紧跟所属行展开：列表超出一屏时编辑区不会落在视野外 */}
-                {entry.id === selectedId && (
-                  <ScheduleTaskDetail
-                    entry={entry}
-                    tasks={tasks}
-                    sessionLabel={sessionName(entry.sessionId)}
-                    onOpenSession={() => onOpenSession(entry.sessionId)}
-                    onDeleted={() => setSelectedId(null)}
-                  />
-                )}
-              </Fragment>
-            ))}
-          </div>
+          <>
+            {endedCount > 0 && (
+              <div className="native-schedule-list-actions">
+                <button
+                  type="button"
+                  className="native-schedule-clear-ended"
+                  disabled={clearingEnded}
+                  onClick={() => setConfirmClearEnded(true)}
+                >
+                  {t("schedule.clear.action")}
+                </button>
+              </div>
+            )}
+            <div className="native-schedule-list">
+              {sorted.map((entry) => {
+                const sessionId = targetSessionId(entry);
+                const sessionLabel = sessionName(entry);
+                return (
+                  <Fragment key={entry.id}>
+                    <ScheduleTaskRow
+                      entry={entry}
+                      expanded={entry.id === selectedId}
+                      sessionLabel={sessionLabel}
+                      frequency={frequencyLabel(entry, t)}
+                      onToggle={() =>
+                        setSelectedId((prev) => (prev === entry.id ? null : entry.id))
+                      }
+                      onOpenSession={
+                        sessionId ? () => onOpenSession(sessionId) : undefined
+                      }
+                    />
+                    {/* 详情紧跟所属行展开：列表超出一屏时编辑区不会落在视野外 */}
+                    {entry.id === selectedId && (
+                      <ScheduleTaskDetail
+                        entry={entry}
+                        tasks={tasks}
+                        sessionLabel={sessionLabel}
+                        onOpenSession={
+                          sessionId ? () => onOpenSession(sessionId) : undefined
+                        }
+                        onDeleted={() => setSelectedId(null)}
+                      />
+                    )}
+                  </Fragment>
+                );
+              })}
+            </div>
+          </>
         )}
+      </div>
+      {confirmClearEnded && (
+        <ConfirmDialog
+          title={t("schedule.clear.title", { count: endedCount })}
+          description={t("schedule.clear.description")}
+          confirmLabel={
+            clearingEnded ? t("schedule.clear.pending") : t("schedule.clear.confirm")
+          }
+          confirmDisabled={clearingEnded}
+          cancelLabel={t("schedule.task.cancel")}
+          closeLabel={t("schedule.clear.close")}
+          onConfirm={() => void clearEnded()}
+          onCancel={() => setConfirmClearEnded(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+/** 轻量确认弹窗：批量删除不可撤销，需一次明确确认。 */
+function ConfirmDialog({
+  title,
+  description,
+  confirmLabel,
+  cancelLabel,
+  closeLabel,
+  confirmDisabled,
+  onConfirm,
+  onCancel,
+}: {
+  title: string;
+  description: string;
+  confirmLabel: string;
+  cancelLabel: string;
+  closeLabel: string;
+  confirmDisabled?: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="native-dialog-backdrop" role="presentation" onClick={onCancel}>
+      <div
+        className="native-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-label={closeLabel}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="native-dialog-title">{title}</div>
+        <p className="native-dialog-desc">{description}</p>
+        <div className="native-dialog-actions">
+          <button type="button" className="native-btn" onClick={onCancel}>
+            {cancelLabel}
+          </button>
+          <button
+            type="button"
+            className="native-btn native-btn-danger"
+            disabled={confirmDisabled}
+            onClick={onConfirm}
+          >
+            {confirmLabel}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -258,14 +380,15 @@ function ScheduleTaskRow({
   frequency: string;
   sessionLabel: string;
   onToggle: () => void;
-  onOpenSession: () => void;
+  /** 无确定会话（每次新建会话且尚未运行）时不提供跳转。 */
+  onOpenSession?: () => void;
 }) {
   const t = useT();
-  const inactive = entry.status !== "active";
+  const ended = entry.status === "ended";
   return (
     <button
       type="button"
-      className={`native-schedule-row${expanded ? " expanded" : ""}${inactive ? " ended" : ""}`}
+      className={`native-schedule-row${expanded ? " expanded" : ""}${ended ? " ended" : ""}`}
       onClick={onToggle}
       aria-expanded={expanded}
     >
@@ -275,22 +398,22 @@ function ScheduleTaskRow({
       </div>
       <div className="native-schedule-row-meta">
         <span
-          className={`native-schedule-row-status${inactive ? " ended" : ""}`}
+          className={`native-schedule-row-status${ended ? " ended" : ""}`}
         >
-          {inactive ? t("schedule.task.ended") : t("schedule.task.active")}
+          {t(`schedule.task.status.${entry.status}`)}
         </span>
         <span className="native-schedule-row-next">
-          {inactive
-            ? t("schedule.task.ended")
+          {ended
+            ? t("schedule.task.status.ended")
             : `${t("schedule.task.nextRun")} ${formatDateTime(entry.scheduledAt)}`}
         </span>
         <span
-          className="native-schedule-row-session"
+          className={`native-schedule-row-session${onOpenSession ? "" : " pending"}`}
           onClick={(e) => {
             e.stopPropagation();
-            onOpenSession();
+            onOpenSession?.();
           }}
-          title={t("schedule.task.openSession")}
+          title={onOpenSession ? t("schedule.task.openSession") : undefined}
         >
           {sessionLabel}
         </span>
@@ -309,7 +432,8 @@ function ScheduleTaskDetail({
   entry: ScheduleCatalogEntry;
   tasks: ReturnType<typeof useScheduleTasks>;
   sessionLabel: string;
-  onOpenSession: () => void;
+  /** 无确定会话（每次新建会话且尚未运行）时不提供跳转。 */
+  onOpenSession?: () => void;
   onDeleted: () => void;
 }) {
   const t = useT();
@@ -335,15 +459,17 @@ function ScheduleTaskDetail({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [history, setHistory] = useState<ScheduleDeliveryRecord[] | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
-  /** compare-and-set 基线：编辑开始时的记录，保存成功后以引擎返回的落库记录推进。
-   * 不能等目录刷新再推进：刷新可能失败或混入外部改动，会把别人的修改当自己的结果。 */
-  const [baseline, setBaseline] = useState<ScheduleRecord>(() => toRecord(entry));
+  /** compare-and-set 基线：编辑开始时读到的版本号，保存成功后以引擎返回的
+   * 落库记录推进。不能等目录刷新再推进：刷新可能失败或混入外部改动。 */
+  const [baseline, setBaseline] = useState<ScheduleCatalogEntry>(entry);
   const [externalChange, setExternalChange] = useState(false);
+  /** 已结束任务不可编辑、暂停或恢复（规则同官方界面）。 */
+  const ended = entry.status === "ended";
 
-  // 详情打开期间目录项变化：与基线不同即为外部改动，只提示，基线保持原值
+  // 详情打开期间目录项变化：版本号不同即为外部改动，只提示，基线保持原值
   //（保存时与引擎比较必然冲突，由用户重开详情重新加载）。
   useEffect(() => {
-    if (JSON.stringify(toRecord(entry)) !== JSON.stringify(baseline)) {
+    if (entry.updatedAt !== baseline.updatedAt) {
       setExternalChange(true);
     }
     // baseline 有意不入依赖：仅响应目录项引用变化
@@ -354,7 +480,7 @@ function ScheduleTaskDetail({
     setSaving(true);
     setActionError(null);
     try {
-      const patch: { title?: string; prompt?: string; change?: ScheduleTimingChange } = {};
+      const patch: SchedulePatch = {};
       const nextTitle = title.trim();
       if (!nextTitle) throw new Error(t("schedule.errors.titleRequired"));
       if (nextTitle !== baseline.title) patch.title = nextTitle;
@@ -362,14 +488,18 @@ function ScheduleTaskDetail({
       if (timingTouched && timing.kind !== "readonly") {
         const change = buildTimingChange(timing);
         if ("error" in change) throw new Error(t(`schedule.errors.${change.error}`));
-        patch.change = change;
+        patch.timing = change;
       }
-      if (patch.title === undefined && patch.prompt === undefined && patch.change === undefined) {
+      if (patch.title === undefined && patch.prompt === undefined && patch.timing === undefined) {
         return;
       }
       const submittedTiming = timingRef.current;
       // 以引擎落库记录推进基线：这是本次保存的确凿结果，与目录刷新成败无关
-      const committed = await tasks.updateTask(entry.sessionId, baseline, patch);
+      const committed = await tasks.updateTask(
+        baseline.updatedAt ?? null,
+        patch,
+        entry.id,
+      );
       setBaseline(committed);
       setExternalChange(false);
       // 已提交的时间变更不再重发（重复提交会让周期任务重新起算）；请求期间又编辑过则保留待下次提交
@@ -381,9 +511,25 @@ function ScheduleTaskDetail({
       }
     } catch (err) {
       setActionError(err instanceof Error ? err.message : String(err));
-      // compare-and-set 冲突或任务被外部改动：重读目录，让列表回到真实状态
+      // 版本冲突或任务被外部改动：重读目录，让列表回到真实状态
       await tasks.refresh();
       return;
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  /** 暂停与恢复共用一个入口，目标状态由当前状态取反（规则同官方界面）。 */
+  const toggleActive = async () => {
+    setSaving(true);
+    setActionError(null);
+    try {
+      const committed = await tasks.setActive(entry, entry.status !== "active");
+      setBaseline(committed);
+      setExternalChange(false);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : String(err));
+      await tasks.refresh();
     } finally {
       setSaving(false);
     }
@@ -393,7 +539,7 @@ function ScheduleTaskDetail({
     setSaving(true);
     setActionError(null);
     try {
-      await tasks.deleteTask(entry.sessionId, entry.id);
+      await tasks.deleteTask(entry.id, baseline.updatedAt ?? null);
       onDeleted();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : String(err));
@@ -419,7 +565,10 @@ function ScheduleTaskDetail({
   return (
     <div className="native-schedule-detail">
       <div className="native-schedule-detail-head">
-        <span className="native-schedule-detail-session" onClick={onOpenSession}>
+        <span
+          className={`native-schedule-detail-session${onOpenSession ? "" : " pending"}`}
+          onClick={onOpenSession}
+        >
           {t("schedule.task.sourceSession")}：{sessionLabel}
         </span>
         <button
@@ -463,6 +612,7 @@ function ScheduleTaskDetail({
           className="native-settings-input"
           value={title}
           maxLength={120}
+          disabled={ended}
           onChange={(e) => setTitle(e.target.value)}
         />
       </label>
@@ -473,6 +623,7 @@ function ScheduleTaskDetail({
           className="native-settings-input native-schedule-prompt"
           value={prompt}
           rows={3}
+          disabled={ended}
           onChange={(e) => setPrompt(e.target.value)}
         />
       </label>
@@ -571,14 +722,29 @@ function ScheduleTaskDetail({
       <div className="native-schedule-actions">
         {!confirmDelete ? (
           <>
-            <button
-              type="button"
-              className="native-btn"
-              disabled={saving}
-              onClick={() => void save()}
-            >
-              {saving ? t("schedule.task.saving") : t("schedule.task.save")}
-            </button>
+            {/* 已结束任务不再触发，编辑与恢复都无意义，只保留删除 */}
+            {!ended && (
+              <>
+                <button
+                  type="button"
+                  className="native-btn"
+                  disabled={saving}
+                  onClick={() => void save()}
+                >
+                  {saving ? t("schedule.task.saving") : t("schedule.task.save")}
+                </button>
+                <button
+                  type="button"
+                  className="native-btn"
+                  disabled={saving}
+                  onClick={() => void toggleActive()}
+                >
+                  {entry.status === "active"
+                    ? t("schedule.task.pause")
+                    : t("schedule.task.resume")}
+                </button>
+              </>
+            )}
             <button
               type="button"
               className="native-schedule-delete-btn"
