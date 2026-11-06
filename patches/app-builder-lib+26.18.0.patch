@@ -53,14 +53,20 @@
  
      continue:
        FindNext $R1 $R2
-@@ -100,37 +108,42 @@
+@@ -99,40 +107,56 @@
+   Exch $R0
    Push $R1
    Push $R2
    Push $R3
++  Push $R4
++  StrCpy $R4 0
  
 -  StrCpy $R3 "$PLUGINSDIR\old-install$R0\*.*"
 +  StrCpy $R3 "\\?\$PLUGINSDIR\old-install$R0\*.*"
++  ClearErrors
    FindFirst $R1 $R2 $R3
++  IfErrors 0 +2
++  StrCpy $R4 $R3
  
    loop:
      StrCmp $R2 "" break
@@ -69,15 +75,21 @@
      StrCmp $R2 ".." continue
  
 -    IfFileExists "$INSTDIR$R0\$R2\*.*" isDir isNotDir
-+    IfFileExists "\\?\$INSTDIR$R0\$R2\*.*" isDir isNotDir
++    IfFileExists "\\?\$PLUGINSDIR\old-install$R0\$R2\*.*" isDir isNotDir
  
      isDir:
 -      CreateDirectory "$INSTDIR$R0\$R2"
++      ClearErrors
 +      CreateDirectory "\\?\$INSTDIR$R0\$R2"
++      IfErrors 0 +2
++      StrCpy $R4 "$INSTDIR$R0\$R2"
  
        Push "$R0\$R2"
        Call un.restoreFiles
        Pop $R3
++      ${if} $R3 != 0
++        StrCpy $R4 $R3
++      ${endif}
  
        Goto continue
  
@@ -85,22 +97,25 @@
 -      Rename "$PLUGINSDIR\old-install$R0\$R2" "$INSTDIR$R0\$R2"
 +      ClearErrors
 +      Rename "\\?\$PLUGINSDIR\old-install$R0\$R2" "\\?\$INSTDIR$R0\$R2"
-+      IfErrors 0 +3
-+      StrCpy $R0 "$INSTDIR$R0\$R2"
-+      Goto restore_done
++      # 记录错误后继续恢复其余文件，不能让一个占用扩大回滚损失。
++      IfErrors 0 +2
++      StrCpy $R4 "$INSTDIR$R0\$R2"
  
      continue:
        FindNext $R1 $R2
        Goto loop
  
    break:
-     StrCpy $R0 0
-+  restore_done:
+-    StrCpy $R0 0
++    StrCpy $R0 $R4
      FindClose $R1
  
++    Pop $R4
      Pop $R3
      Pop $R2
-@@ -161,9 +174,9 @@
+     Pop $R1
+     Exch $R0
+@@ -161,9 +185,9 @@
    !ifmacrodef customRemoveFiles
      !insertmacro customRemoveFiles
    !else
@@ -111,7 +126,19 @@
        Push ""
        Call un.atomicRMDir
        Pop $R0
-@@ -183,9 +196,9 @@
+@@ -174,8 +198,11 @@
+         # Attempt to restore previous directory
+         Push ""
+         Call un.restoreFiles
+         Pop $R0
++        ${if} $R0 != 0
++          DetailPrint $R0
++        ${endif}
+ 
+         Abort `Can't rename "$INSTDIR" to "$PLUGINSDIR\old-install".`
+       ${endif}
+ 
+@@ -183,9 +210,9 @@
  
      # Move out of $INSTDIR so it can be removed
      SetOutPath $TEMP

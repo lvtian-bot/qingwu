@@ -57,7 +57,7 @@ test('真实 NSIS 长路径迁移、回滚和旧安装兼容升级', { skip: pro
       .replaceAll('$PLUGINSDIR', '$backup');
   }
 
-  async function replay(name, text, destinationLength, locked = false) {
+  async function replay(name, text, destinationLength, locked = false, rollbackFile = '') {
     const installed = path.join(tmp, name);
     const relative = REPLAY_FILE.replaceAll('/', '\\');
     const backup = path.join(tmp, 'b-' + name);
@@ -65,6 +65,7 @@ test('真实 NSIS 长路径迁移、回滚和旧安装兼容升级', { skip: pro
     write(path.join(installed, REPLAY_FILE), '长路径文件内容');
     write(path.join(installed, 'a-first.txt'), '先移动，再回滚');
     if (locked) write(path.join(installed, 'z-locked.txt'), '锁定内容');
+    if (rollbackFile) write(path.join(installed, 'zz-after.txt'), '回滚错误后仍须恢复');
     const log = path.join(tmp, name + '.txt');
     const exe = compile(name, `
 !define UNINSTALL_FILENAME "Uninstall fixture.exe"
@@ -81,7 +82,8 @@ Call atomicRMDir
 Pop $R0
 FileOpen $log "${quoted(log)}" w
 FileWrite $log "$R0$\\r$\\n"
-${locked ? `Push ""\nCall restoreFiles\nPop $R0\nFileWrite $log "$R0$\\r$\\n"\nSystem::Call 'kernel32::CloseHandle(p r8)'` : ''}
+${rollbackFile ? `System::Call 'kernel32::CreateFileW(w "\\\\?\\$backup\\old-install\\${rollbackFile.replaceAll('/', '\\')}", i 0x80000000, i 1, p 0, i 3, i 0, p 0) p.r8'` : ''}
+${locked || rollbackFile ? `Push ""\nCall restoreFiles\nPop $R0\nFileWrite $log "$R0$\\r$\\n"\nSystem::Call 'kernel32::CloseHandle(p r8)'` : ''}
 FileClose $log
 SectionEnd`);
     const result = run(exe);
@@ -114,6 +116,17 @@ SectionEnd`);
     assert.equal(fs.readFileSync(path.join(result.installed, 'a-first.txt'), 'utf8'), '先移动，再回滚');
     assert.equal(fs.readFileSync(path.join(result.installed, 'z-locked.txt'), 'utf8'), '锁定内容');
   });
+
+  for (const [index, blocked] of ['a-first.txt', REPLAY_FILE].entries()) {
+    await t.test(`回滚文件被占用时继续恢复其他文件，并保留${index ? '嵌套' : '同层'}错误`, async () => {
+      const result = await replay('restore-' + index, source, 320 - '\\old-install'.length, false, blocked);
+      assert.equal(result.lines[0], '0');
+      assert.equal(result.lines[1], path.join(result.installed, blocked));
+      assert.equal(fs.readFileSync(path.join(result.installed, 'zz-after.txt'), 'utf8'), '回滚错误后仍须恢复');
+      const restored = blocked === REPLAY_FILE ? 'a-first.txt' : REPLAY_FILE;
+      assert.ok(fs.existsSync(path.join(result.installed, restored)));
+    });
+  }
 
   await t.test('UAC 插件固定后释放模块仍保留回调代码', async () => {
     const log = path.join(tmp, 'uac.txt');
