@@ -1,0 +1,251 @@
+--- a/node_modules/app-builder-lib/templates/nsis/uninstaller.nsh
++++ b/node_modules/app-builder-lib/templates/nsis/uninstaller.nsh
+@@ -40,21 +40,29 @@
+   Push $R1
+   Push $R2
+   Push $R3
+ 
+-  StrCpy $R3 "$INSTDIR$R0\*.*"
++  StrCpy $R3 "\\?\$INSTDIR$R0\*.*"
++  ClearErrors
+   FindFirst $R1 $R2 $R3
++  IfErrors 0 +3
++  StrCpy $R3 $R0
++  Goto done
+ 
+   loop:
+     StrCmp $R2 "" break
+ 
+     StrCmp $R2 "." continue
+     StrCmp $R2 ".." continue
+ 
+-    IfFileExists "$INSTDIR$R0\$R2\*.*" isDir isNotDir
++    IfFileExists "\\?\$INSTDIR$R0\$R2\*.*" isDir isNotDir
+ 
+     isDir:
+-      CreateDirectory "$PLUGINSDIR\old-install$R0\$R2"
++      ClearErrors
++      CreateDirectory "\\?\$PLUGINSDIR\old-install$R0\$R2"
++      IfErrors 0 +3
++      StrCpy $R3 "\\?\$PLUGINSDIR\old-install$R0\$R2"
++      Goto done
+ 
+       Push "$R0\$R2"
+       Call un.atomicRMDir
+       Pop $R3
+@@ -66,16 +74,16 @@
+       Goto continue
+ 
+     isNotDir:
+       ClearErrors
+-      Rename "$INSTDIR$R0\$R2" "$PLUGINSDIR\old-install$R0\$R2"
++      Rename "\\?\$INSTDIR$R0\$R2" "\\?\$PLUGINSDIR\old-install$R0\$R2"
+ 
+       # Ignore errors when renaming ourselves.
+-      StrCmp "$R0\$R2" "${UNINSTALL_FILENAME}" 0 +2
++      StrCmp "$INSTDIR$R0\$R2" "$EXEPATH" 0 +2
+       ClearErrors
+ 
+       IfErrors 0 +3
+-      StrCpy $R3 "$INSTDIR$R0\$R2"
++      StrCpy $R3 "\\?\$INSTDIR$R0\$R2"
+       Goto done
+ 
+     continue:
+       FindNext $R1 $R2
+@@ -99,40 +107,56 @@
+   Exch $R0
+   Push $R1
+   Push $R2
+   Push $R3
++  Push $R4
++  StrCpy $R4 0
+ 
+-  StrCpy $R3 "$PLUGINSDIR\old-install$R0\*.*"
++  StrCpy $R3 "\\?\$PLUGINSDIR\old-install$R0\*.*"
++  ClearErrors
+   FindFirst $R1 $R2 $R3
++  IfErrors 0 +2
++  StrCpy $R4 $R3
+ 
+   loop:
+     StrCmp $R2 "" break
+ 
+     StrCmp $R2 "." continue
+     StrCmp $R2 ".." continue
+ 
+-    IfFileExists "$INSTDIR$R0\$R2\*.*" isDir isNotDir
++    IfFileExists "\\?\$PLUGINSDIR\old-install$R0\$R2\*.*" isDir isNotDir
+ 
+     isDir:
+-      CreateDirectory "$INSTDIR$R0\$R2"
++      ClearErrors
++      CreateDirectory "\\?\$INSTDIR$R0\$R2"
++      IfErrors 0 +2
++      StrCpy $R4 "$INSTDIR$R0\$R2"
+ 
+       Push "$R0\$R2"
+       Call un.restoreFiles
+       Pop $R3
++      ${if} $R3 != 0
++        StrCpy $R4 $R3
++      ${endif}
+ 
+       Goto continue
+ 
+     isNotDir:
+-      Rename "$PLUGINSDIR\old-install$R0\$R2" "$INSTDIR$R0\$R2"
++      ClearErrors
++      Rename "\\?\$PLUGINSDIR\old-install$R0\$R2" "\\?\$INSTDIR$R0\$R2"
++      # 记录错误后继续恢复其余文件，不能让一个占用扩大回滚损失。
++      IfErrors 0 +2
++      StrCpy $R4 "$INSTDIR$R0\$R2"
+ 
+     continue:
+       FindNext $R1 $R2
+       Goto loop
+ 
+   break:
+-    StrCpy $R0 0
++    StrCpy $R0 $R4
+     FindClose $R1
+ 
++    Pop $R4
+     Pop $R3
+     Pop $R2
+     Pop $R1
+     Exch $R0
+@@ -161,9 +185,9 @@
+   !ifmacrodef customRemoveFiles
+     !insertmacro customRemoveFiles
+   !else
+     ${if} ${isUpdated}
+-      CreateDirectory "$PLUGINSDIR\old-install"
++      CreateDirectory "\\?\$PLUGINSDIR\old-install"
+ 
+       Push ""
+       Call un.atomicRMDir
+       Pop $R0
+@@ -174,8 +198,11 @@
+         # Attempt to restore previous directory
+         Push ""
+         Call un.restoreFiles
+         Pop $R0
++        ${if} $R0 != 0
++          DetailPrint $R0
++        ${endif}
+ 
+         Abort `Can't rename "$INSTDIR" to "$PLUGINSDIR\old-install".`
+       ${endif}
+ 
+@@ -183,9 +210,9 @@
+ 
+     # Move out of $INSTDIR so it can be removed
+     SetOutPath $TEMP
+     # Remove all files (or remaining shallow directories from the block above)
+-    RMDir /r $INSTDIR
++    RMDir /r "\\?\$INSTDIR"
+   !endif
+ 
+   ${ifNot} ${isKeepShortcuts}
+     WinShell::UninstAppUserModelId "${APP_ID}"
+--- a/node_modules/app-builder-lib/templates/nsis/include/installUtil.nsh
++++ b/node_modules/app-builder-lib/templates/nsis/include/installUtil.nsh
+@@ -120,11 +120,13 @@
+       Return
+     !endif
+   ${endif}
+ 
+-  IfErrors 0 +3
+-  DetailPrint `Uninstall was not successful. Not able to launch uninstaller!`
+-  Return
++  ${if} ${Errors}
++    DetailPrint `Uninstall was not successful. Not able to launch uninstaller!`
++    SetErrorLevel 2
++    Quit
++  ${endif}
+ 
+   ${if} $R0 != 0
+     MessageBox MB_OK|MB_ICONEXCLAMATION "$(uninstallFailed): $R0"
+     DetailPrint `Uninstall was not successful. Uninstaller error code: $R0.`
+@@ -206,39 +208,18 @@
+     StrCpy $0 "$0 --updated"
+   ${endif}
+ 
+   StrCpy $uninstallerFileNameTemp "$PLUGINSDIR\old-uninstaller.exe"
+-  !insertmacro copyFile "$uninstallerFileName" "$uninstallerFileNameTemp"
++  # 使用本次构建并签名的卸载器，兼容已部署的旧版路径迁移与 UAC 缺陷。
++  # _?= 仍指向原安装目录；不覆盖或执行原卸载器。
++  File /oname=$PLUGINSDIR\old-uninstaller.exe "${UNINSTALLER_OUT_FILE}"
+ 
+-  # Retry counter
+-  StrCpy $R5 0
++  # 子进程失败须原样返回，不能转而执行有已知缺陷的旧卸载器，
++  # 也不能把文件迁移失败误报为应用无法关闭。
++  ExecWait '"$uninstallerFileNameTemp" /S /KEEP_APP_DATA $0 _?=$installationDir' $R0
++  IfErrors DoesNotExist
++  Return
+ 
+-  UninstallLoop:
+-    IntOp $R5 $R5 + 1
+-
+-    ${if} $R5 > 5
+-      MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "$(appCannotBeClosed)" /SD IDCANCEL IDRETRY OneMoreAttempt
+-      Return
+-    ${endIf}
+-
+-  OneMoreAttempt:
+-    ExecWait '"$uninstallerFileNameTemp" /S /KEEP_APP_DATA $0 _?=$installationDir' $R0
+-    ifErrors TryInPlace CheckResult
+-
+-    TryInPlace:
+-      # the execution failed - might have been caused by some group policy restrictions
+-      # we try to execute the uninstaller in place
+-      ExecWait '"$uninstallerFileName" /S /KEEP_APP_DATA $0 _?=$installationDir' $R0
+-      ifErrors DoesNotExist
+-
+-    CheckResult:
+-      ${if} $R0 == 0
+-        Return
+-      ${endIf}
+-
+-    Sleep 1000
+-    Goto UninstallLoop
+-
+   DoesNotExist:
+     SetErrors
+ FunctionEnd
+ 
+--- a/node_modules/app-builder-lib/templates/nsis/include/UAC.nsh
++++ b/node_modules/app-builder-lib/templates/nsis/include/UAC.nsh
+@@ -47,12 +47,30 @@
+ **     3 You should call RunElevated again (This can happen if a user without admin priv. is used in the runas dialog)
+ ** $2: If $0==0 && $1==1: ExitCode of the elevated fork process (The NSIS errlvl is also set)
+ ** $3: If $0==0: 1 if the user is a member of the admin group or 0 otherwise
+ **/
++# 固定插件至本进程终止，避免 NSIS 清理 DLL 后窗口回调仍指向已卸载代码。
++# 先只查询状态以装载插件，不在固定前创建提权窗口。
++!macro QW_UAC_PinModule
++Push $0
++Push $1
++UAC::_ 3
++System::Call 'kernel32::GetModuleHandleExW(i 1, w "$PLUGINSDIR\UAC.dll", *p .r0) i.r1'
++${If} $1 == 0
++  System::Call 'kernel32::GetLastError() i.r0'
++  SetErrorLevel $0
++  Quit
++${EndIf}
++Pop $1
++Pop $0
++!macroend
++
+ !macro UAC_RunElevated
++!insertmacro QW_UAC_PinModule
+ UAC::_ 0
+ !macroend
+ !macro UAC_PageElevation_RunElevated
++!insertmacro QW_UAC_PinModule
+ UAC::_ 0
+ !macroend
+ /*!macro UAC_OnInitElevation_RunElevated
+ UAC::_ 0

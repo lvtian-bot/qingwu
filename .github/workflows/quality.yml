@@ -29,3 +29,6 @@ jobs:
 
       - name: Quality checks
         run: npm run check
+
+      - name: Windows installer regression
+        run: npm run test:installer
