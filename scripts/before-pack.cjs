@@ -1,6 +1,7 @@
 'use strict';
 
 const { ensureNodeRuntime } = require('./fetch-node-runtime.cjs');
+const { ensureNsisPatch } = require('./patch-nsis.cjs');
 
 /**
  * electron-builder 打包前钩子：确保随包发行的 Node 运行时已就绪。
@@ -10,6 +11,7 @@ const { ensureNodeRuntime } = require('./fetch-node-runtime.cjs');
  * QW_SKIP_NODE_RUNTIME=1（仅用于排查打包问题）。
  */
 module.exports = async function beforePack() {
+  ensureNsisPatch(true);
   if (process.env.QW_SKIP_NODE_RUNTIME === '1') {
     console.warn(
       '[before-pack] 已按 QW_SKIP_NODE_RUNTIME=1 跳过 Node 运行时准备：' +

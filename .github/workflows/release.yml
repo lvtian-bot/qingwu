@@ -32,6 +32,9 @@ jobs:
       - name: Build Windows installer
         run: npx electron-builder --win --publish never
 
+      - name: Windows installer regression
+        run: npm run test:installer
+
       - name: Install git-cliff
         run: |
           curl -sSL -o cliff.zip https://github.com/orhun/git-cliff/releases/download/v2.13.1/git-cliff-2.13.1-x86_64-pc-windows-msvc.zip
