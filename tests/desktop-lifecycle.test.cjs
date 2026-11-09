@@ -136,7 +136,10 @@ function harnessFixture(t, { respond = true } = {}) {
   });
   let killCallback;
   let killCalls = 0;
+  let markProbeStarted;
+  const probeStarted = new Promise((resolve) => { markProbeStarted = resolve; });
   const requests = [];
+  const launches = [];
   t.mock.method(process, "kill", () => true);
   const { HarnessManager } = loadTs("src/main/harness.ts", {
     electron: {
@@ -150,13 +153,16 @@ function harnessFixture(t, { respond = true } = {}) {
     "./config": {
       CONFIG: {
         defaultHost: "127.0.0.1",
-        defaultPort: 3080,
-        readinessTimeoutMs: 30,
+        defaultPort: 0,
+        readinessTimeoutMs: 200,
         readinessPollIntervalMs: 1,
       },
     },
     "node:child_process": {
-      spawn: () => child,
+      spawn: (_command, args) => {
+        launches.push(args);
+        return child;
+      },
       execFile: (command, args, options, callback) => {
         assert.equal(command, "taskkill.exe");
         assert.deepEqual(args, ["/pid", "24680", "/T", "/F"]);
@@ -169,6 +175,7 @@ function harnessFixture(t, { respond = true } = {}) {
     "node:http": {
       get: (url, callback) => {
         requests.push(url);
+        markProbeStarted();
         const request = new EventEmitter();
         request.setTimeout = () => request;
         request.destroy = () => {
@@ -187,25 +194,35 @@ function harnessFixture(t, { respond = true } = {}) {
     manager,
     child,
     logs,
+    launches,
     requests,
+    probeStarted,
+    announce: () => child.stdout.write("dsh web: http://127.0.0.1:53122/?token=fixture-secret\n"),
     finishKill: (err) => killCallback(err),
     killCalls: () => killCalls,
   };
 }
 
-test("引擎保留跨 chunk 鉴权地址，普通服务地址与日志不带凭据", async (t) => {
+test("引擎使用系统分配的端口，只探测本次启动报告的有效鉴权地址", async (t) => {
   const fixture = harnessFixture(t);
   const started = fixture.manager.start();
-  fixture.child.stdout.write("dsh web: http://127.0.0.1:3080/?tok");
+  await Promise.resolve();
+  const [args] = fixture.launches;
+  assert.equal(args[args.indexOf("--port") + 1], "0");
+  fixture.child.stdout.write("plugin: dsh web: http://127.0.0.1:53120/?token=fixture-secret\n");
+  fixture.child.stdout.write("dsh web: http://127.0.0.1:0/?token=fixture-secret\n");
+  fixture.child.stdout.write("dsh web: http://192.0.2.1:53120/?token=fixture-secret\n");
+  fixture.child.stdout.write("dsh web: http://127.0.0.1:53121/\n");
+  await tick();
+  assert.deepEqual(fixture.requests, []);
+  fixture.child.stdout.write("dsh web: http://127.0.0.1:53122/?tok");
   fixture.child.stdout.write("en=fixture-secret\n");
   fixture.child.stderr.end("failure ?token=fixture-error");
   await started;
   await tick();
-  assert.equal(fixture.manager.getServiceUrl(), "http://127.0.0.1:3080");
-  assert.equal(
-    new URL(fixture.manager.getWebUrl()).searchParams.has("token"),
-    true,
-  );
+  assert.equal(fixture.manager.getServiceUrl(), "http://127.0.0.1:53122");
+  assert.deepEqual(fixture.requests, [fixture.manager.getWebUrl()]);
+  assert.equal(new URL(fixture.requests[0]).searchParams.get("token"), "fixture-secret");
   assert.equal(
     fixture.logs.some((line) => /fixture-secret|fixture-error/.test(line)),
     false,
@@ -232,7 +249,9 @@ test(
     const fixture = harnessFixture(t, { respond: false });
     const started = fixture.manager.start();
     const rejected = assert.rejects(started, /启动已取消/);
-    await Promise.resolve(); // 初始化完成，进入待就绪的子进程阶段。
+    await Promise.resolve();
+    fixture.announce();
+    await fixture.probeStarted;
     const first = fixture.manager.stop();
     const second = fixture.manager.stop();
     assert.equal(first, second);
@@ -255,7 +274,10 @@ test(
   { skip: process.platform !== "win32" },
   async (t) => {
     const fixture = harnessFixture(t);
-    await fixture.manager.start();
+    const started = fixture.manager.start();
+    await Promise.resolve();
+    fixture.announce();
+    await started;
     const stopped = fixture.manager.stop();
     fixture.finishKill(new Error("access denied"));
     await assert.rejects(stopped, /停止引擎进程树失败/);
@@ -274,6 +296,8 @@ test(
     const started = fixture.manager.start();
     const rejected = assert.rejects(started, /启动已取消/);
     await Promise.resolve();
+    fixture.announce();
+    await fixture.probeStarted;
     const stop = fixture.manager.stop();
     fixture.finishKill(null);
     await Promise.all([stop, rejected]);
@@ -285,7 +309,10 @@ test(
   { skip: process.platform !== "win32" },
   async (t) => {
     const fixture = harnessFixture(t);
-    await fixture.manager.start();
+    const started = fixture.manager.start();
+    await Promise.resolve();
+    fixture.announce();
+    await started;
     process.kill.mock.mockImplementation(() => {
       throw Object.assign(new Error("denied"), { code: "EPERM" });
     });

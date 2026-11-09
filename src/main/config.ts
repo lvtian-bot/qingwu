@@ -3,7 +3,7 @@ export const CONFIG = {
   appId: 'com.qingwu.desktop',
   repositoryUrl: 'https://github.com/lvtian-bot/qingwu',
   defaultHost: '127.0.0.1',
-  defaultPort: 3080,
+  defaultPort: 0,
   window: {
     width: 1280,
     height: 860,
