@@ -53,22 +53,23 @@ export class HarnessManager {
   /** 启动期间收集的 stderr，用于引擎意外退出时提供定位信息。 */
   private startupStderr: string[] = [];
   private lastExitCode: number | null = null;
-  /** 引擎启动日志打印的带 token Web 地址（0.1.2 起 Web 面强制 token 鉴权）；未解析到时退回裸地址。 */
+  /** 本次引擎启动后报告的鉴权地址，包含系统实际分配的端口。 */
   private webUrl: string | null = null;
 
   constructor(options: HarnessManagerOptions = {}) {
     this.host = options.host || CONFIG.defaultHost;
-    this.port = options.port || CONFIG.defaultPort;
+    this.port = options.port ?? CONFIG.defaultPort;
     this.hasConsole = options.hasConsole ?? false;
   }
 
   getServiceUrl(): string {
-    return `http://${this.host}:${this.port}`;
+    return new URL(this.getWebUrl()).origin;
   }
 
   /** 仅用于就绪探测、官方页面登录与桥接鉴权，不可输出到日志。 */
   getWebUrl(): string {
-    return this.webUrl ?? this.getServiceUrl();
+    if (!this.webUrl) throw new Error("引擎尚未报告服务地址");
+    return this.webUrl;
   }
 
   resolveBinPath(): string {
@@ -295,13 +296,18 @@ export class HarnessManager {
     this.process = child;
 
     const stdout = createLineReader((line) => {
-      const match = line.match(/dsh (?:web|\w+): (http:\/\/\S+)/);
-      if (match) {
+      const match = line.trim().match(/^dsh web: (http:\/\/\S+)$/);
+      if (match && this.process === child && !this.stopRequested && !this.webUrl) {
         try {
           const url = new URL(match[1]);
           if (
-            url.origin === this.getServiceUrl() &&
-            url.searchParams.has("token")
+            url.protocol === "http:" &&
+            url.hostname === this.host &&
+            !url.username &&
+            !url.password &&
+            url.port !== "0" &&
+            (this.port === 0 || Number(url.port || 80) === this.port) &&
+            url.searchParams.get("token")
           ) {
             this.webUrl = url.href;
           }
@@ -353,7 +359,7 @@ export class HarnessManager {
     const isAddrInUse = this.startupStderr.some((line) =>
       /EADDRINUSE|address already in use/i.test(line),
     );
-    if (isAddrInUse) {
+    if (this.port !== 0 && isAddrInUse) {
       return `Harness 引擎启动失败：端口 ${this.port} 已被占用。可能已有青梧或 dsh 残留进程在后台运行，请关闭占用进程后重试。`;
     }
     const recentStderr = this.startupStderr.slice(-3).join("；");
@@ -372,10 +378,15 @@ export class HarnessManager {
         throw new Error(this.buildEarlyExitError());
       }
 
+      const webUrl = this.webUrl;
+      if (!webUrl) {
+        await new Promise((resolve) => setTimeout(resolve, intervalMs));
+        continue;
+      }
+
       const isReady = await new Promise<boolean>((resolve) => {
-        // 就绪探测：解析到带 token 的地址后用它（0.1.2 以 303 跳转应答，<400 即就绪）；
-        // 未解析到时探测裸地址（0.1.1 直接 200）。
-        const req = http.get(this.getWebUrl(), (res) => {
+        // 只探测本次子进程报告的实际端口，鉴权成功可能返回 303。
+        const req = http.get(webUrl, (res) => {
           if ((res.statusCode ?? 0) >= 200 && (res.statusCode ?? 0) < 400) {
             resolve(true);
           } else {
@@ -411,8 +422,9 @@ export class HarnessManager {
 
     const recentStderr = this.startupStderr.slice(-3).join("；");
     const detail = recentStderr ? ` (最近输出: ${recentStderr})` : "";
+    const address = this.webUrl ? this.getServiceUrl() : `http://${this.host}:${this.port}`;
     throw new Error(
-      `等待 Harness 服务就绪超时 (${timeoutMs}ms): ${this.getServiceUrl()}${detail}`,
+      `等待 Harness 服务就绪超时 (${timeoutMs}ms): ${address}${detail}`,
     );
   }
 

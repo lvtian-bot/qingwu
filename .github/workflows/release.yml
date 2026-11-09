@@ -32,6 +32,8 @@ jobs:
       - name: Build Windows installer
         run: npx electron-builder --win --publish never
 
+      - name: Packaged engine startup
+        run: node --test tests/packaged/startup.test.cjs
       - name: Windows installer regression
         run: npm run test:installer
 
