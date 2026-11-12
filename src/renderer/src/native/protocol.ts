@@ -57,8 +57,70 @@ export const Endpoints = {
   /** 清除全部已结束任务（宿主级，不指定 id）。 */
   scheduleDeleteInactive: 'schedule/deleteInactive',
   scheduleHistory: 'schedule/history',
+  jobList: 'job/list',
+  jobFollow: 'job/follow',
+  jobKill: 'job/kill',
   eventsResult: '$events/result',
 } as const;
+
+export type JobStatus = 'running' | 'stopping' | 'completed' | 'killed' | 'failed';
+
+export type JobChannel = 'stdout' | 'stderr' | 'log';
+
+export interface JobChunk {
+  at: number;
+  text: string;
+  channel?: JobChannel;
+  gapBefore?: true;
+}
+
+export interface JobRow {
+  id: string;
+  kind: string;
+  label: string;
+  owner?: string;
+  outputLimitBytes?: number;
+  status: JobStatus;
+  startedAt: number;
+  finishedAt?: number;
+  detail?: string;
+  progress?: string;
+  output: {
+    total: number;
+    earliest: number;
+    spillPaths?: string[];
+  };
+}
+
+export interface JobListRequest {
+  sessionId: string;
+}
+
+export interface JobListFrame {
+  type: 'rows';
+  jobs: JobRow[];
+}
+
+export interface JobKillRequest {
+  sessionId: string;
+  jobId: string;
+}
+
+export interface JobKillValue {
+  outcome: 'requested' | 'already-finished';
+}
+
+export interface JobFollowRequest {
+  sessionId?: string;
+  jobId: string;
+  from?: number;
+}
+
+export type JobFollowFrame =
+  | { type: 'opened'; job: JobRow; from: number }
+  | { type: 'output'; chunks: JobChunk[]; next: number; lossy?: true }
+  | { type: 'status'; job: JobRow };
+
 
 // ---------- workspaceFiles（引擎 workspace-files 插件的 Remote 命名空间） ----------
 

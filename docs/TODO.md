@@ -19,7 +19,7 @@
 
 **消费引擎已随包能力**
 
-- [ ] 后台任务面板：消费 `job/list`、`job/follow`、`job/kill`，会话头部展示后台任务（状态、耗时、可展开流式输出），对齐官方 jobs 视图
+- [x] 后台任务面板：消费 `job/list`、`job/follow`、`job/kill`，会话头部展示后台任务（状态、耗时、可展开流式输出），对齐官方 jobs 视图 ✅ 2026-11-12
 - [ ] 目标（/goal）呈现决策：`goal/change` 事件未消费、界面无呈现；评估补输入框上方常驻目标条（编辑/暂停/清除），或暂将 /goal 移出指令菜单
 - [ ] workflow 运行呈现：会话内 workflow 工具运行从未知工具 JSON 卡升级为阶段/成员展开视图
 - [ ] 会话置顶落引擎：置顶改用 `workspace/pinSession`/`unpinSession` 持久化到引擎数据，替代 localStorage 本地记忆，重装或换机不丢失

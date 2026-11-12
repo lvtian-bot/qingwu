@@ -47,6 +47,7 @@ import { SettingsPage } from "./SettingsPage";
 import { ScheduleTasksPage } from "./ScheduleTasksPage";
 import { useChatScroll, useChatScrollFollow } from "./useChatScroll";
 import { useComposerDrafts } from "./useComposerDrafts";
+import { JobListPopover } from "./JobListPopover";
 import { useEngineConnection } from "./useEngineConnection";
 import { useEngineStreams } from "./useEngineStreams";
 import { useModelSelection } from "./useModelSelection";
@@ -1075,6 +1076,7 @@ export function NativeApp({
               {/* 侧栏开关已上移标题栏菜单栏；左端留空占位，右端面板按钮才有落点 */}
               <div className="native-chat-header-left" />
               <div className="native-chat-header-right">
+                <JobListPopover sessionId={currentId} />
                 {panelToggleButton}
               </div>
             </div>
@@ -1143,6 +1145,7 @@ export function NativeApp({
                 <span className="native-chat-header-title">{currentTitle}</span>
               </div>
               <div className="native-chat-header-right">
+                <JobListPopover sessionId={currentId} />
                 {panelToggleButton}
               </div>
             </div>
