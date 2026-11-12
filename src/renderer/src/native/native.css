@@ -5244,6 +5244,23 @@ body.native-resizing {
   color: var(--settings-fg);
 }
 
+/* 账号登录通道：绿色状态点 + 已登录，与桌面版同一语义 */
+.native-provider-account-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  color: var(--native-ok);
+}
+
+.native-provider-account-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--native-ok);
+  flex: none;
+}
+
 .native-provider-field .native-provider-text-input,
 .native-provider-field .native-provider-field-select {
   width: 100%;

@@ -70,7 +70,6 @@ export interface ProviderDirectory {
   profileDirty: boolean;
   setDraftField: (key: string, value: unknown) => void;
   loadProviders: () => Promise<void>;
-  handleUnsetCredential: (ref: string) => Promise<void>;
   handleSaveCustom: (data: {
     route: string;
     displayName?: string;
@@ -81,6 +80,19 @@ export interface ProviderDirectory {
   }) => Promise<void>;
   handleDeleteProvider: (row: ProviderRow) => Promise<void>;
   handleSaveProvider: (row: ProviderRow) => Promise<void>;
+}
+
+/** DeepSeek 账号登录通道的引擎路由 id（与桌面版同一 id）。 */
+const ACCOUNT_PROVIDER = "deepseek-account";
+
+/**
+ * 已添加列表的排序权重：账号通道第一、内置 DeepSeek 第二，其余保持目录顺序。
+ * 与桌面版 ModelsSection 的排序规则一致。
+ */
+function providerRank(provider: string): number {
+  if (provider === ACCOUNT_PROVIDER) return 0;
+  if (provider === "deepseek-official") return 1;
+  return 2;
 }
 
 /** 自声明路由可选择的 API 协议；schema 不可用时回退到常见协议清单。 */
@@ -108,8 +120,14 @@ export function useAvailableProtocols(
 export function useProviderDirectory(options: {
   onRefreshCatalog?: () => void;
   externalRefreshTrigger?: number;
+  /**
+   * DeepSeek 账号通道是否已登录可用。与桌面版一致：以模型目录里该通道是否有
+   * 模型为准，未登录时整条通道不呈现，避免出现只能填密钥的伪供应商。
+   */
+  accountAvailable?: boolean;
 }): ProviderDirectory {
   const { onRefreshCatalog, externalRefreshTrigger } = options;
+  const accountAvailable = options.accountAvailable === true;
   const t = useT();
 
   const [providerRows, setProviderRows] = useState<ProviderRow[]>([]);
@@ -138,6 +156,9 @@ export function useProviderDirectory(options: {
   /** 目录加载代次：保存搜索凭据会触发外部刷新，两次加载可能重叠，
    * 只有最新一次的回执允许发布状态，防止旧回执把界面覆盖回旧凭据。 */
   const loadGenRef = useRef(0);
+  /** 账号通道可用性在默认选中里使用：loadProviders 的依赖不应随登录状态重建。 */
+  const accountAvailableRef = useRef(accountAvailable);
+  accountAvailableRef.current = accountAvailable;
 
   // 读取供应商目录并入凭据状态：目录 join → profile 的 apiKeyEnv → 一次批量凭据 describe
   const loadProviders = useCallback(async () => {
@@ -199,8 +220,14 @@ export function useProviderDirectory(options: {
         if (prev !== null && joined.some((row) => row.provider === prev)) {
           return prev;
         }
-        // 默认落在第一个已添加（已注册路由）的供应商，否则交给选择器
-        const firstAdded = joined.find((row) => row.active);
+        // 默认落在第一个已添加（已注册路由）的供应商，否则交给选择器；
+        // 未登录的账号通道不参与默认选中，避免详情区落在不可配置的通道上
+        const firstAdded = joined.find(
+          (row) =>
+            row.active &&
+            (row.provider !== ACCOUNT_PROVIDER ||
+              accountAvailableRef.current),
+        );
         return firstAdded?.provider ?? null;
       });
     } catch (e) {
@@ -218,30 +245,6 @@ export function useProviderDirectory(options: {
       void loadProviders();
     }
   }, [externalRefreshTrigger, loadProviders]);
-
-  // 清除 / 删除 API Key
-  const handleUnsetCredential = useCallback(
-    async (ref: string) => {
-      try {
-        setCredLoading(true);
-        setCredMessage(null);
-        await rpc<void>(Endpoints.credentialsUnset, { ref });
-        setKeyInputs((prev) => ({ ...prev, [ref]: "" }));
-        setCredMessage(t("settings.messages.credentialCleared", { ref }));
-        await loadProviders();
-        onRefreshCatalog?.();
-      } catch (e) {
-        setCredMessage(
-          t("settings.messages.clearFailed", {
-            message: e instanceof Error ? e.message : String(e),
-          }),
-        );
-      } finally {
-        setCredLoading(false);
-      }
-    },
-    [loadProviders, onRefreshCatalog, t],
-  );
 
   // 添加自定义服务商保存
   const handleSaveCustom = useCallback(
@@ -366,14 +369,26 @@ export function useProviderDirectory(options: {
   );
 
   // 已添加 = 引擎已注册路由，与聊天框模型选择器同一数据源
+  // 账号通道未登录时整条不呈现（桌面版同样按可用性过滤），其余按原目录顺序保留
+  const visibleRows = useMemo(
+    () =>
+      providerRows.filter(
+        (row) => row.provider !== ACCOUNT_PROVIDER || accountAvailable,
+      ),
+    [providerRows, accountAvailable],
+  );
+  // 已添加列表按桌面版权重排序：账号 → 内置 DeepSeek → 其余保持目录顺序
   const addedRows = useMemo(
-    () => providerRows.filter((row) => row.active),
-    [providerRows],
+    () =>
+      visibleRows
+        .filter((row) => row.active)
+        .sort((a, b) => providerRank(a.provider) - providerRank(b.provider)),
+    [visibleRows],
   );
   // 可选供应商：已检测到密钥的排前面，其余按展示名排序
   const availableRows = useMemo(
     () =>
-      providerRows
+      visibleRows
         .filter((row) => !row.active)
         .sort((a, b) => {
           if (a.credentialConfigured !== b.credentialConfigured) {
@@ -384,11 +399,11 @@ export function useProviderDirectory(options: {
             "zh",
           );
         }),
-    [providerRows],
+    [visibleRows],
   );
 
   const selectedRow =
-    providerRows.find((row) => row.provider === selectedProvider) ?? null;
+    visibleRows.find((row) => row.provider === selectedProvider) ?? null;
   const selectedIsAdded = selectedRow
     ? addedRows.some((row) => row.provider === selectedRow.provider)
     : false;
@@ -396,16 +411,27 @@ export function useProviderDirectory(options: {
     ? llmViews[selectedRow.settingsNs]
     : undefined;
 
+  // 账号通道从可用变为不可用（退出登录/目录刷新后无模型）时，选中回落到首个已添加供应商
+  useEffect(() => {
+    if (accountAvailable) return;
+    setSelectedProvider((prev) => {
+      if (prev !== ACCOUNT_PROVIDER) return prev;
+      const fallback = providerRows.find(
+        (row) => row.active && row.provider !== ACCOUNT_PROVIDER,
+      );
+      return fallback?.provider ?? null;
+    });
+  }, [accountAvailable, providerRows]);
+
   /**
-   * 是否允许删除：除核心 DeepSeek 提供商外，用户已添加配置（或自声明）的提供商均可删除移除，
-   * 删除后将清理凭据并从引擎路由注销，预设服务商将返回待选库。
+   * 是否允许删除：与桌面版一致，只看「这条配置是否由用户在配置层添加」——
+   * 内置供应商的 settingsPath 为空、不可删；用户添加的预设与自定义服务商可删，
+   * 删除时一并清理凭据（见 handleDeleteProvider）。
    */
   const isSelectedRemovable = Boolean(
     selectedRow &&
-    selectedRow.provider !== "deepseek" &&
-    selectedRow.provider !== "deepseek-official" &&
-    (selectedRow.settingsPath.length > 0 || selectedRow.declared) &&
-    (selectedIsAdded || selectedRow.declared),
+    selectedRow.settingsPath.length > 0 &&
+    (selectedIsAdded || selectedRow.declared === true),
   );
 
   // 草稿重建：供应商切换或写入落盘（修订号递增）时，以引擎用户段为基线重新开稿
@@ -537,7 +563,6 @@ export function useProviderDirectory(options: {
     profileDirty,
     setDraftField,
     loadProviders,
-    handleUnsetCredential,
     handleSaveCustom,
     handleDeleteProvider,
     handleSaveProvider,

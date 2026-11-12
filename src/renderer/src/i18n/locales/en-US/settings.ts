@@ -166,6 +166,9 @@ export const settings: typeof zhSettings = {
       "Works with OpenAI / Anthropic compatible endpoints, self-hosted gateways, or third-party APIs",
     allBuiltInAdded: "All built-in providers have been added. You can add a custom provider.",
     keyDetected: "Key detected",
+    accountSignedIn: "Signed in",
+    accountDesc:
+      "Uses the DeepSeek account already signed in on this device; the engine manages the login and credentials.",
     defaultModel: {
       label: "Default model for new sessions",
       desc: "New sessions without a specified model use this one; the choice is saved to engine settings and persists after reopening.",
@@ -195,7 +198,6 @@ export const settings: typeof zhSettings = {
       "Enter an API URL compatible with the current connection settings; leave empty to use the official default.",
     protocolUnset: "Not set (default)",
     save: "Save",
-    clearKey: "Clear key",
     deleteProvider: "Delete provider",
     catalog: "Model catalog",
     discoverTitle: "Fetch available models from the provider",
@@ -248,8 +250,6 @@ export const settings: typeof zhSettings = {
     hide: "Hide key",
   },
   messages: {
-    credentialCleared: "Credential {ref} cleared",
-    clearFailed: "Failed to clear: {message}",
     customAdded: "Custom provider \"{name}\" added",
     addFailed: "Failed to add: {message}",
     confirmDelete:

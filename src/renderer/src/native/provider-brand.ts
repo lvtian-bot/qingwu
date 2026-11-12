@@ -2,6 +2,8 @@
 const PROVIDER_NAMES: Record<string, string> = {
   deepseek: "DeepSeek",
   "deepseek-official": "DeepSeek",
+  /** 账号登录通道：与桌面版一致，读作「DeepSeek 账号」而不是「DeepSeek Account」。 */
+  "deepseek-account": "DeepSeek 账号",
   anthropic: "Anthropic",
   google: "Google Gemini",
   "google-vertex": "Google Vertex AI",

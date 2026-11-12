@@ -40,13 +40,14 @@ export function ProviderDetail(props: {
   onInputChange: (ref: string, value: string) => void;
   onToggleVisible: (ref: string) => void;
   onSave: () => void;
-  onUnset: (ref: string) => void;
   onDelete?: () => void;
 }) {
   const t = useT();
   const row = props.row;
   const ref = row.apiKeyEnv ?? deriveKeyRef(row.provider);
   const configured = row.credentialConfigured === true;
+  /** 账号登录通道：登录状态与凭据由引擎统一管理，详情区不做密钥配置。 */
+  const isAccount = row.provider === "deepseek-account";
   const family = familyOf(row.settingsNs);
   const fallback = valueAtPath(props.view?.value, row.settingsPath);
   const draftBaseURL = stringAt(props.draft, "baseURL") ?? "";
@@ -155,32 +156,44 @@ export function ProviderDetail(props: {
         </div>
       )}
 
-      <div className="native-provider-field">
-        <div className="native-provider-field-label">
-          <span>{t("settings.shared.apiKey")}</span>
+      {isAccount ? (
+        /* 账号通道：只呈现登录状态，不提供密钥与操作入口（与桌面版一致）。 */
+        <div className="native-provider-field">
+          <div className="native-provider-account-status">
+            <span className="native-provider-account-dot" aria-hidden="true" />
+            <span>{t("settings.models.accountSignedIn")}</span>
+          </div>
+          <div className="native-provider-card-desc">
+            {t("settings.models.accountDesc")}
+          </div>
         </div>
-        <div className="native-provider-input-wrap">
-          <input
-            type={props.visible ? "text" : "password"}
-            className="native-settings-input"
-            placeholder={
-              configured
-                ? t("settings.provider.apiKeySavedPlaceholder")
-                : t("settings.provider.apiKeyPlaceholder")
-            }
-            value={props.inputValue}
-            onChange={(e) => props.onInputChange(ref, e.target.value)}
-          />
-          <KeyVisibilityToggle
-            visible={props.visible}
-            onToggle={() => props.onToggleVisible(ref)}
-          />
+      ) : (
+        <div className="native-provider-field">
+          <div className="native-provider-field-label">
+            <span>{t("settings.shared.apiKey")}</span>
+          </div>
+          <div className="native-provider-input-wrap">
+            <input
+              type={props.visible ? "text" : "password"}
+              className="native-settings-input"
+              placeholder={
+                configured
+                  ? t("settings.provider.apiKeySavedPlaceholder")
+                  : t("settings.provider.apiKeyPlaceholder")
+              }
+              value={props.inputValue}
+              onChange={(e) => props.onInputChange(ref, e.target.value)}
+            />
+            <KeyVisibilityToggle
+              visible={props.visible}
+              onToggle={() => props.onToggleVisible(ref)}
+            />
+          </div>
+          <div className="native-provider-card-desc">
+            {t("settings.provider.apiKeyDesc")}
+          </div>
         </div>
-        <div className="native-provider-card-desc">
-          {t("settings.provider.apiKeyDesc")}
-        </div>
-      </div>
-
+      )}
       {/* 连接参数只属于用户自声明路由：内置服务商地址由适配器固定，不向用户暴露。 */}
       {row.declared === true && (
         <div className="native-provider-field">
@@ -228,36 +241,28 @@ export function ProviderDetail(props: {
         </div>
       )}
 
-      <div className="native-provider-card-action">
-        <button
-          type="button"
-          className="native-btn native-btn-primary"
-          disabled={props.loading || !props.canSave}
-          onClick={props.onSave}
-        >
-          {t("settings.provider.save")}
-        </button>
-        {configured && (
+      {!isAccount && (
+        <div className="native-provider-card-action">
           <button
             type="button"
-            className="native-btn native-btn-secondary"
-            disabled={props.loading}
-            onClick={() => props.onUnset(ref)}
+            className="native-btn native-btn-primary"
+            disabled={props.loading || !props.canSave}
+            onClick={props.onSave}
           >
-            {t("settings.provider.clearKey")}
+            {t("settings.provider.save")}
           </button>
-        )}
-        {props.onDelete && (
-          <button
-            type="button"
-            className="native-btn native-btn-danger"
-            disabled={props.loading}
-            onClick={props.onDelete}
-          >
-            {t("settings.provider.deleteProvider")}
-          </button>
-        )}
-      </div>
+          {props.onDelete && (
+            <button
+              type="button"
+              className="native-btn native-btn-danger"
+              disabled={props.loading}
+              onClick={props.onDelete}
+            >
+              {t("settings.provider.deleteProvider")}
+            </button>
+          )}
+        </div>
+      )}
 
       <div className="native-provider-models">
         <div className="native-provider-models-head">
