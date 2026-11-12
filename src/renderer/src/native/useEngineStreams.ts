@@ -28,6 +28,7 @@ import type {
   SessionEvent,
   SessionFollowFrame,
   SessionHistoryRecord,
+  SessionProjectionsSnapshot,
   SessionSummary,
   SkillDescriptor,
   SkillListResult,
@@ -44,6 +45,36 @@ const qingwu = window.qingwu;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+/**
+ * 把单会话完整投影里的上下文占用与构成补回列表行。
+ * 0.2.2 起会话列表摘要剔除了这两个投影（引擎标为不进摘要，官方改为打开会话时
+ * 单读完整投影），只读列表会让输入框占用环整块不渲染；这里只合并这两个键，
+ * 标题、权限、计划等其余字段仍以列表原值为准。
+ */
+function withContextProjections(
+  items: SessionSummary[],
+  sessionId: string | null,
+  snapshot: SessionProjectionsSnapshot | null,
+): SessionSummary[] {
+  const values = snapshot?.values;
+  if (!sessionId || !values) return items;
+  return items.map((item) =>
+    item.sessionId === sessionId
+      ? {
+          ...item,
+          projections: {
+            asOfSeq: item.projections?.asOfSeq ?? 0,
+            values: {
+              ...item.projections?.values,
+              contextPressure: values.contextPressure,
+              contextBreakdown: values.contextBreakdown,
+            },
+          },
+        }
+      : item,
+  );
 }
 
 interface EngineStreamsOptions {
@@ -134,17 +165,26 @@ export function useEngineStreams({
   const refreshTimerRef = useRef<number | undefined>(undefined);
 
   const refreshSessions = useCallback(async () => {
+    const sessionId = currentIdRef.current;
     try {
-      const listValue = await rpc<{ items: SessionSummary[] }>(
-        Endpoints.sessionList,
-        {
+      const [listValue, projections] = await Promise.all([
+        rpc<{ items: SessionSummary[] }>(Endpoints.sessionList, {
           _request: {},
-        },
-      );
-      setSessions(listValue.items);
+        }),
+        // 列表摘要不含上下文占用/构成，当前会话另读一次完整投影；
+        // 读失败只是不显示占用环，不能影响会话列表刷新本身。
+        sessionId
+          ? rpc<SessionProjectionsSnapshot | null>(
+              Endpoints.sessionProjections,
+              { request: { sessionId } },
+            ).catch(() => null)
+          : Promise.resolve(null),
+      ]);
+      const items = Array.isArray(listValue.items) ? listValue.items : [];
+      setSessions(withContextProjections(items, sessionId, projections));
       // 运行态以列表兜底对账：引擎的 api-session/status 只在 running↔idle
       // 跳变时发出，切换会话与断线重连都不会重放，光靠事件会长期停在旧值。
-      const current = listValue.items.find(
+      const current = items.find(
         (entry) => entry.sessionId === currentIdRef.current,
       );
       if (current) setRunning(current.running);
@@ -573,6 +613,8 @@ export function useEngineStreams({
     };
 
     openFollow();
+    // 切会话立即校一次列表与完整投影：占用环不必等下一条会话事件才出现。
+    void refreshSessions();
 
     const handleFollowItem = ({ streamId, endpoint, value }: DshStreamItem) => {
       if (
@@ -668,6 +710,7 @@ export function useEngineStreams({
     currentIdRef,
     appendEvent,
     refreshFromEvents,
+    refreshSessions,
     onSessionSwitched,
     setError,
     t,

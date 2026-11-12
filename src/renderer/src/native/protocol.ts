@@ -18,6 +18,7 @@ export const Endpoints = {
   sessionUpdateQueue: 'session/updateQueue',
   sessionPage: 'session/page',
   sessionFollow: 'session/follow',
+  sessionProjections: 'session/projections',
   sessionModelCatalog: 'session/modelCatalog',
   sessionSelectModel: 'session/selectModel',
   sessionRename: 'session/rename',
@@ -837,6 +838,21 @@ export interface UserQuestionAnswer {
 }
 
 // ---------- 会话摘要（session/list） ----------
+
+/**
+ * 单会话完整投影读取（session/projections）。
+ * 会话列表摘要只带摘要投影，上下文占用与构成本身被引擎标为不进摘要；
+ * 需要这两项的表面（输入框占用环）走这里单独读完整投影。
+ */
+export interface SessionProjectionsSnapshot {
+  kind: string;
+  asOfSeq?: number;
+  values?: {
+    contextPressure?: ContextPressureProjection;
+    contextBreakdown?: ContextBreakdownProjection;
+    [key: string]: unknown;
+  };
+}
 
 export interface PlanModeProjection {
   active: boolean;
