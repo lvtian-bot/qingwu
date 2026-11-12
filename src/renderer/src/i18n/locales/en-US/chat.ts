@@ -125,6 +125,19 @@ export const chat: typeof zhChat = {
   reasoning: {
     thinking: "Thinking",
   },
+  jobs: {
+    running: "{count} background jobs running",
+    idle: "{count} background jobs",
+    stop: "Stop",
+    stopFailed: "Stop failed",
+    status: {
+      running: "running",
+      stopping: "stopping",
+      completed: "completed",
+      killed: "killed",
+      failed: "failed",
+    },
+  },
   context: {
     used: "Context used",
     usedPercent: "Context used: {percent}%",

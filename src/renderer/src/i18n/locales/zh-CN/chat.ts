@@ -117,6 +117,19 @@ export const chat = {
   reasoning: {
     thinking: "思考",
   },
+  jobs: {
+    running: "{count} 个后台任务运行中",
+    idle: "{count} 个后台任务",
+    stop: "停止",
+    stopFailed: "停止失败",
+    status: {
+      running: "运行中",
+      stopping: "正在停止",
+      completed: "已完成",
+      killed: "已取消",
+      failed: "已失败",
+    },
+  },
   context: {
     used: "上下文已用",
     usedPercent: "上下文已用 {percent}%",

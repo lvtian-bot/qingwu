@@ -1145,6 +1145,7 @@ export function NativeApp({
                 <span className="native-chat-header-title">{currentTitle}</span>
               </div>
               <div className="native-chat-header-right">
+                <JobListPopover dshConnected={dshConnected} />
                 {panelToggleButton}
               </div>
             </div>
