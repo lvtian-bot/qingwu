@@ -57,6 +57,9 @@ export const Endpoints = {
   /** 清除全部已结束任务（宿主级，不指定 id）。 */
   scheduleDeleteInactive: 'schedule/deleteInactive',
   scheduleHistory: 'schedule/history',
+  jobList: 'job/list',
+  jobFollow: 'job/follow',
+  jobKill: 'job/kill',
   eventsResult: '$events/result',
 } as const;
 

@@ -1,0 +1,51 @@
+.native-job-list-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: var(--native-surface-2);
+  cursor: pointer;
+  border: none;
+  color: var(--native-fg);
+  font-size: 12px;
+}
+
+.native-job-list-trigger:hover {
+  background: var(--native-hover);
+}
+
+.native-job-list-popover {
+  position: absolute;
+  top: 40px;
+  right: 16px;
+  width: 300px;
+  background: var(--native-bg);
+  border: 1px solid var(--native-border);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  padding: 8px;
+  z-index: 100;
+}
+
+.native-job-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px;
+  border-bottom: 1px solid var(--native-border-subtle);
+}
+
+.native-job-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.native-job-label {
+  font-weight: 500;
+}
+
+.native-job-status {
+  font-size: 11px;
+  color: var(--native-muted);
+}
