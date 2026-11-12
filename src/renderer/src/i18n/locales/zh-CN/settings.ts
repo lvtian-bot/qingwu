@@ -165,6 +165,9 @@ export const settings = {
     addCustomHint: "支持 OpenAI / Anthropic 兼容端点、自建网关或第三方 API",
     allBuiltInAdded: "所有内置服务商都已添加，您可以添加自定义服务商",
     keyDetected: "已检测到密钥",
+    accountSignedIn: "已登录",
+    accountDesc:
+      "复用本机已登录的 DeepSeek 账号；登录状态与密钥由引擎凭据统一管理，不在此处配置。",
     defaultModel: {
       label: "新会话默认模型",
       desc: "未指定模型的新会话默认使用此模型；选择后写入引擎设置并在重开后保持。",
@@ -191,7 +194,6 @@ export const settings = {
     apiUrlDesc: "请填写与当前连接配置兼容的 API 地址；留空使用官方默认地址。",
     protocolUnset: "未选择（默认）",
     save: "保存",
-    clearKey: "清除密钥",
     deleteProvider: "删除此服务商",
     catalog: "模型目录",
     discoverTitle: "从服务商接口拉取可用模型",
@@ -242,8 +244,6 @@ export const settings = {
   },
   /** 引擎设置控制器与供应商目录操作的操作结果提示。 */
   messages: {
-    credentialCleared: "凭据 {ref} 已清除",
-    clearFailed: "清除失败: {message}",
     customAdded: "自定义服务商「{name}」添加成功",
     addFailed: "添加失败: {message}",
     confirmDelete: "确定要删除服务商「{name}」吗？相关配置与凭据将被移除。",

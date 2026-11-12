@@ -26,9 +26,18 @@ export function ModelsTab({
   credentialVersion?: number;
   dsh: DshSettingsController;
 }) {
+  // DeepSeek 账号通道是否已登录：与桌面版一致，以模型目录里该通道是否有模型为准
+  const accountAvailable = useMemo(
+    () =>
+      modelCatalog?.groups?.some(
+        (group) => group.id === "deepseek-account" && group.models.length > 0,
+      ) === true,
+    [modelCatalog],
+  );
   const dir = useProviderDirectory({
     onRefreshCatalog,
     externalRefreshTrigger: credentialVersion,
+    accountAvailable,
   });
   const availableProtocols = useAvailableProtocols(dir.llmViews);
   const t = useT();
@@ -61,7 +70,6 @@ export function ModelsTab({
     profileDirty,
     setDraftField,
     loadProviders,
-    handleUnsetCredential,
     handleSaveCustom,
     handleDeleteProvider,
     handleSaveProvider,
@@ -256,7 +264,6 @@ export function ModelsTab({
                 }))
               }
               onSave={() => void handleSaveProvider(selectedRow)}
-              onUnset={(ref) => void handleUnsetCredential(ref)}
               onDelete={
                 isSelectedRemovable
                   ? () => void handleDeleteProvider(selectedRow)
