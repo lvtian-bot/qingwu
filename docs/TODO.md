@@ -37,6 +37,8 @@
 
 ## Bug 修复
 
+- [x] 输入框上下文占用环不显示：引擎 0.2.2 起把 `contextPressure`／`contextBreakdown` 从会话列表摘要中剔除，界面只读列表导致环整块不渲染；改为切换会话与会话事件到达时经 `session/projections` 单读当前会话完整投影补回 ✅ 2026-11-12
+
 ## 暂不考虑
 
 - [ ] macOS / Linux 发行版
