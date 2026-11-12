@@ -198,7 +198,10 @@ export class WindowManager {
       if (this.wasMaximized && !win.isMaximized()) {
         win.maximize();
       }
+      // Force focus on Windows
+      win.setAlwaysOnTop(true);
       win.focus();
+      win.setAlwaysOnTop(false);
       win.webContents.focus();
     }
   }

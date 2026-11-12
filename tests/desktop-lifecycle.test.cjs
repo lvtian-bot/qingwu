@@ -354,6 +354,9 @@ test("菜单目标和焦点指向主窗口界面", () => {
     isMinimized: () => false,
     getContentSize: () => [1200, 800],
     isFullScreen: () => false,
+    isMaximized: () => false,
+    maximize: () => {},
+    setAlwaysOnTop: () => {},
     focus() {
       focused.push("window");
     },
