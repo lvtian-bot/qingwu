@@ -63,19 +63,33 @@ export const Endpoints = {
   eventsResult: '$events/result',
 } as const;
 
-export interface JobId { readonly id: string }
-export interface SessionId { readonly id: string }
+export type JobStatus = 'running' | 'stopping' | 'completed' | 'killed' | 'failed';
+
+export type JobChannel = 'stdout' | 'stderr' | 'log';
+
+export interface JobChunk {
+  at: number;
+  text: string;
+  channel?: JobChannel;
+  gapBefore?: true;
+}
 
 export interface JobRow {
   id: string;
   kind: string;
   label: string;
-  status: 'running' | 'stopping' | 'completed' | 'killed' | 'failed';
+  owner?: string;
+  outputLimitBytes?: number;
+  status: JobStatus;
   startedAt: number;
   finishedAt?: number;
   detail?: string;
   progress?: string;
-  output: { total: number, earliest: number };
+  output: {
+    total: number;
+    earliest: number;
+    spillPaths?: string[];
+  };
 }
 
 export interface JobListRequest {
@@ -95,6 +109,17 @@ export interface JobKillRequest {
 export interface JobKillValue {
   outcome: 'requested' | 'already-finished';
 }
+
+export interface JobFollowRequest {
+  sessionId?: string;
+  jobId: string;
+  from?: number;
+}
+
+export type JobFollowFrame =
+  | { type: 'opened'; job: JobRow; from: number }
+  | { type: 'output'; chunks: JobChunk[]; next: number; lossy?: true }
+  | { type: 'status'; job: JobRow };
 
 
 // ---------- workspaceFiles（引擎 workspace-files 插件的 Remote 命名空间） ----------

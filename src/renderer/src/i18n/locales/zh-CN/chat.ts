@@ -120,8 +120,18 @@ export const chat = {
   jobs: {
     running: "{count} 个后台任务运行中",
     idle: "{count} 个后台任务",
+    sectionLive: "进行中",
+    sectionSettled: "已结束 ({count})",
+    clear: "清空",
     stop: "停止",
+    confirmStop: "确认停止",
     stopFailed: "停止失败",
+    noOutput: "（暂无输出）",
+    outputGap: "……较早的输出已省略……",
+    outputError: "输出流中断：{error}",
+    durationSeconds: "{seconds}秒",
+    durationMinutes: "{minutes}分{seconds}秒",
+    durationHours: "{hours}小时{minutes}分",
     status: {
       running: "运行中",
       stopping: "正在停止",

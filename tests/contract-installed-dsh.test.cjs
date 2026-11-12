@@ -12,6 +12,7 @@ const virtualPath = path.join(__dirname, "contract-installed-dsh.virtual.ts");
 // JSON 动态内容（事件 data、assistant chunk、插件投影）不在静态类型覆盖范围内。
 const contract = `
 import type {} from '@deepseek-ai/dsh-api-session-controller/remote';
+import type {} from '@deepseek-ai/dsh-api-job-controller/remote';
 import type {} from '@deepseek-ai/dsh-api-workspace-controller/remote';
 import type {} from '@deepseek-ai/dsh-api-workspace-files/remote';
 import type {} from '@deepseek-ai/dsh-api-settings-controller/remote';
@@ -21,6 +22,7 @@ import type {} from '@deepseek-ai/dsh-schedule/remote';
 import type {} from '@deepseek-ai/dsh-permission-presets/remote';
 import type { TypertRemoteMap } from '@deepseek-ai/dsh-typert-protocol';
 import type * as S from '@deepseek-ai/dsh-api-session-controller/types';
+import type * as J from '@deepseek-ai/dsh-api-job-controller/types';
 import type { ModelSelectionProjection } from '@deepseek-ai/dsh-agent/types';
 import type * as Schedule from '@deepseek-ai/dsh-schedule/client';
 import type * as W from '@deepseek-ai/dsh-api-workspace-controller/types';
@@ -67,6 +69,10 @@ export type Skills = Assert<Fits<Mutable<S.SkillListValue>, UI.SkillListResult>>
 export type ScheduleEntry = Assert<Fits<Mutable<Schedule.ScheduleCatalogEntry>, UI.ScheduleCatalogEntry>>;
 export type ScheduleEdit = Assert<Fits<Mutable<Schedule.ScheduleEditResult>, UI.ScheduleEditResult>>;
 export type ScheduleHistory = Assert<Fits<Mutable<Schedule.ScheduleDeliveryHistoryResult>, UI.ScheduleDeliveryHistoryResult>>;
+export type JobView = Assert<Fits<Mutable<J.JobView>, UI.JobRow>>;
+export type JobListFrame = Assert<Fits<Mutable<J.JobListFrame>, UI.JobListFrame>>;
+export type JobFollowFrame = Assert<Fits<Mutable<J.JobFollowFrame>, UI.JobFollowFrame>>;
+export type JobKillValue = Assert<Fits<Mutable<J.JobKillValue>, UI.JobKillValue>>;
 `;
 
 function createContractProgram(source = contract) {
