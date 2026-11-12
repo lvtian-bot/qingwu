@@ -9,7 +9,20 @@ export interface TaskFinishedNotificationOptions {
   sessionId?: string;
 }
 
+/** 同时保留的活动通知上限：超出后丢弃最旧的一条，避免长期托盘运行时无限增长。 */
+const MAX_LIVE_NOTIFICATIONS = 16;
+
 export class NotificationManager {
+  /**
+   * 活动通知引用池。
+   *
+   * 系统通知显示后，点击回调挂在 Notification 实例上；若不持有引用，主进程
+   * 空闲时的垃圾回收会回收该实例，Windows 通知中心里的残留条目就再也点不动
+   * （应用在后台时最容易命中，前台因为回收晚而看起来正常）。因此必须持有到
+   * 通知被点击或关闭为止。
+   */
+  private live: Notification[] = [];
+
   constructor(private windowManager: WindowManager) {}
 
   show(options: TaskFinishedNotificationOptions): void {
@@ -40,7 +53,18 @@ export class NotificationManager {
       silent: false,
     });
 
+    this.live.push(notification);
+    while (this.live.length > MAX_LIVE_NOTIFICATIONS) {
+      this.live.shift();
+    }
+
+    const release = () => {
+      const index = this.live.indexOf(notification);
+      if (index >= 0) this.live.splice(index, 1);
+    };
+
     notification.on("click", () => {
+      release();
       this.windowManager.focus();
       if (options.sessionId) {
         const win = this.windowManager.mainWindow;
@@ -49,6 +73,11 @@ export class NotificationManager {
         }
       }
     });
+
+    // Windows 超时消失或用户手动关闭时释放引用；该事件不保证覆盖所有路径，
+    // 因此另有数量上限兜底。
+    notification.on("close", release);
+    notification.on("failed", release);
 
     notification.show();
   }
