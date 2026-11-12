@@ -63,6 +63,40 @@ export const Endpoints = {
   eventsResult: '$events/result',
 } as const;
 
+export interface JobId { readonly id: string }
+export interface SessionId { readonly id: string }
+
+export interface JobRow {
+  id: string;
+  kind: string;
+  label: string;
+  status: 'running' | 'stopping' | 'completed' | 'killed' | 'failed';
+  startedAt: number;
+  finishedAt?: number;
+  detail?: string;
+  progress?: string;
+  output: { total: number, earliest: number };
+}
+
+export interface JobListRequest {
+  sessionId: string;
+}
+
+export interface JobListFrame {
+  type: 'rows';
+  jobs: JobRow[];
+}
+
+export interface JobKillRequest {
+  sessionId: string;
+  jobId: string;
+}
+
+export interface JobKillValue {
+  outcome: 'requested' | 'already-finished';
+}
+
+
 // ---------- workspaceFiles（引擎 workspace-files 插件的 Remote 命名空间） ----------
 
 /**

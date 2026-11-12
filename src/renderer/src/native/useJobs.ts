@@ -1,60 +1,65 @@
 import { useCallback, useEffect, useState } from "react";
-import { Endpoints } from "./protocol";
+import { Endpoints, type JobRow, type JobListFrame } from "./protocol";
 import { rpc } from "./rpc";
-// dsh-jobs 的 wire 类型定义
-export interface JobRow {
-  id: string;
-  status: 'running' | 'stopping' | 'completed' | 'killed' | 'failed';
-  kind: string;
-  label: string;
-  detail?: string;
-  progress?: string;
-  startedAt: number;
-  finishedAt?: number;
-  output: { total: number };
-}
+const qingwu = window.qingwu;
 
 export interface JobsState {
   jobs: JobRow[];
   loading: boolean;
   loadError: string | null;
-  killJob: (jobId: string) => Promise<boolean>;
+  killJob: (sessionId: string, jobId: string) => Promise<boolean>;
 }
 
-export function useJobs(dshConnected: boolean | undefined): JobsState {
+export function useSessionJobs(sessionId: string | null): JobsState {
   const [jobs, setJobs] = useState<JobRow[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await rpc<JobRow[]>(Endpoints.jobList, {});
-      setJobs(data);
-      setLoadError(null);
-    } catch (err) {
-      setLoadError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
-    if (dshConnected === false) return;
-    refresh();
-    // 简单轮询刷新列表
-    const timer = setInterval(refresh, 2000);
-    return () => clearInterval(timer);
-  }, [dshConnected, refresh]);
-
-  const killJob = useCallback(async (jobId: string) => {
-    const result = await rpc<{ ok: boolean }>(Endpoints.jobKill, { jobId });
-    if (result.ok) {
-        await refresh();
-        return true;
+    if (!sessionId) {
+      setJobs([]);
+      setLoading(false);
+      return;
     }
-    return false;
-  }, [refresh]);
+
+    let disposed = false;
+    let streamId: string | null = null;
+
+    setLoading(true);
+    qingwu.dshStreamOpen(Endpoints.jobList, { request: { sessionId } })
+      .then((id) => {
+        if (disposed) {
+          qingwu.dshStreamCancel(id);
+          return;
+        }
+        streamId = id;
+      })
+      .catch((err) => {
+        if (!disposed) setLoadError(String(err));
+      });
+
+    const unsubscribe = qingwu.onDshStreamItem(({ streamId: id, endpoint, value }) => {
+      if (disposed || id !== streamId || endpoint !== Endpoints.jobList) return;
+      const frame = value as JobListFrame;
+      if (frame.type === 'rows') {
+        setJobs(frame.jobs);
+        setLoading(false);
+      }
+    });
+
+    return () => {
+      disposed = true;
+      if (streamId) qingwu.dshStreamCancel(streamId);
+      unsubscribe();
+    };
+  }, [sessionId]);
+
+  const killJob = useCallback(async (sessionId: string, jobId: string) => {
+    const result = await rpc<{ outcome: string }>(Endpoints.jobKill, {
+      request: { sessionId, jobId }
+    });
+    return result.outcome === 'requested';
+  }, []);
 
   return { jobs, loading, loadError, killJob };
 }
