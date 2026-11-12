@@ -171,3 +171,88 @@ test("完整投影读取失败只影响占用数据，不影响会话列表刷�
   assert.equal(session.projections.values.contextPressure, undefined);
   assert.deepEqual(h.errors, []);
 });
+
+test("切换会话后晚到的旧刷新不会覆盖新会话的上下文投影", async () => {
+  const h = hookHarness();
+  const currentIdRef = { current: "A" };
+  const pending = [];
+  global.window = {
+    qingwu: {
+      dshStreamOpen: () => new Promise(() => {}),
+      dshStreamCancel: () => {},
+      onDshStreamItem: () => () => {},
+    },
+  };
+  const { useEngineStreams } = loadTs(
+    "src/renderer/src/native/useEngineStreams.ts",
+    {
+      react: h.react,
+      "./ContextMeter": { movesContextMeter: () => false },
+      "./rpc": {
+        toErrMsg: (err) => err.message,
+        rpc(endpoint, payload) {
+          return new Promise((resolve) =>
+            pending.push({ endpoint, payload, resolve }),
+          );
+        },
+      },
+    },
+  );
+  const render = () =>
+    h.render(() =>
+      useEngineStreams({
+        currentId: currentIdRef.current,
+        currentIdRef,
+        setCurrentId: () => {},
+        setError: () => {},
+        onSessionSwitched: () => {},
+        onSessionRemoved: () => {},
+        capturePrependAnchor: () => {},
+      }),
+    );
+  const row = (sessionId) => ({
+    sessionId,
+    updatedAt: 1,
+    running: false,
+    blank: false,
+    projections: { asOfSeq: 1, values: {} },
+  });
+  const pressure = (tokens) => ({
+    pressureTokens: tokens,
+    projectedTokens: tokens,
+    contextWindow: 10000,
+  });
+
+  const listCalls = () =>
+    pending.filter((item) => item.endpoint === "session/list");
+  const projectionCalls = () =>
+    pending.filter((item) => item.endpoint === "session/projections");
+
+  render();
+  h.commit();
+  assert.equal(listCalls().length, 1); // A 的会话列表在途
+  assert.equal(projectionCalls().length, 1); // A 的完整投影在途
+
+  currentIdRef.current = "B";
+  render();
+  h.commit();
+  assert.equal(listCalls().length, 2); // B 的刷新也在途
+  assert.equal(projectionCalls().length, 2);
+
+  const [listA, listB] = listCalls();
+  const [projA, projB] = projectionCalls();
+
+  // B 先返回：新会话取得上下文投影。
+  listB.resolve({ items: [row("B")] });
+  projB.resolve({ kind: "sequenced", values: { contextPressure: pressure(800) } });
+  await tick();
+  // A 的旧刷新后返回：必须被丢弃，不能回退到 A 的列表并清掉 B 的投影。
+  listA.resolve({ items: [row("A")] });
+  projA.resolve({ kind: "sequenced", values: { contextPressure: pressure(100) } });
+  await tick();
+
+  const sessions = render().sessions;
+  assert.equal(sessions.length, 1);
+  assert.equal(sessions[0].sessionId, "B");
+  assert.deepEqual(sessions[0].projections.values.contextPressure, pressure(800));
+});

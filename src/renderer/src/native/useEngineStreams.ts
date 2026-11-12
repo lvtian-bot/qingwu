@@ -163,9 +163,12 @@ export function useEngineStreams({
   const olderRequestRef = useRef<object | null>(null);
   const eventsClientIdRef = useRef<string | null>(null);
   const refreshTimerRef = useRef<number | undefined>(undefined);
+  /** 列表刷新代际：切换会话后旧刷新的响应可能晚到，只允许最新一次写入。 */
+  const refreshGenerationRef = useRef(0);
 
   const refreshSessions = useCallback(async () => {
     const sessionId = currentIdRef.current;
+    const generation = ++refreshGenerationRef.current;
     try {
       const [listValue, projections] = await Promise.all([
         rpc<{ items: SessionSummary[] }>(Endpoints.sessionList, {
@@ -180,6 +183,9 @@ export function useEngineStreams({
             ).catch(() => null)
           : Promise.resolve(null),
       ]);
+      // 切到其他会话后，旧刷新的响应可能晚于新会话的刷新到达；
+      // 丢弃它，避免把新会话刚取得的上下文投影连同列表一起覆盖掉。
+      if (generation !== refreshGenerationRef.current) return;
       const items = Array.isArray(listValue.items) ? listValue.items : [];
       setSessions(withContextProjections(items, sessionId, projections));
       // 运行态以列表兜底对账：引擎的 api-session/status 只在 running↔idle
