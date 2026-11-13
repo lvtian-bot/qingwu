@@ -26,11 +26,13 @@ interface ReasoningRowProps {
   text: string;
   /** 是否仍在思考：决定摘要取最后一行、行内扫光与摘要对齐方向。 */
   running?: boolean;
+  /** 初始是否展开完整思考正文 */
+  initialOpen?: boolean;
 }
 
-export function ReasoningRow({ text, running = false }: ReasoningRowProps) {
+export function ReasoningRow({ text, running = false, initialOpen = false }: ReasoningRowProps) {
   const t = useT();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(initialOpen);
   const summary = (running ? latestLine(text) : firstLine(text)).replaceAll(
     "**",
     "",

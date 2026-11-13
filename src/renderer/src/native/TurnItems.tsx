@@ -505,9 +505,11 @@ export function TurnItems({
 }) {
   const [open, setOpen] = useState(false);
   const t = useT();
+    const isRunningTurn = !view.answer || !view.foldable;
+    const shouldAutoOpen = isRunningTurn && transcriptView === "detailed";
   const renderItem = (item: MarkedChatItem, showReasoning = true) => {
     if (item.kind === "tool") {
-      return <ToolCard key={item.key} tool={item.tool} cwd={cwd} />;
+      return <ToolCard key={item.key} tool={item.tool} cwd={cwd} initialOpen={shouldAutoOpen} />;
     }
     if (item.kind === "command" || item.kind === "compaction") {
       return <CommandItem key={item.key} item={item} />;
@@ -529,13 +531,13 @@ export function TurnItems({
       // 不包裹助手答复气泡外壳（.native-msg.assistant），与工具卡片保持统一行距与行高
       if (!item.text && !item.interrupted) {
         return showReasoning && item.reasoning ? (
-          <ReasoningRow key={item.key} text={item.reasoning} />
+          <ReasoningRow key={item.key} text={item.reasoning} initialOpen={shouldAutoOpen} />
         ) : null;
       }
       return (
         <div key={item.key} className="native-msg assistant">
           {showReasoning && item.reasoning && (
-            <ReasoningRow text={item.reasoning} />
+            <ReasoningRow text={item.reasoning} initialOpen={shouldAutoOpen} />
           )}
           <AssistantBody
             item={item}
@@ -624,7 +626,7 @@ export function TurnItems({
         </div>
       )}
       {/* 折叠行收起时思考由它代表，展开后答复里的思考行照常显示 */}
-      {renderItem(view.answer, transcriptView === "compact" ? false : open)}
+      {renderItem(view.answer, open)}
       {trailingItems.map((item) => renderItem(item))}
     </>
   );
