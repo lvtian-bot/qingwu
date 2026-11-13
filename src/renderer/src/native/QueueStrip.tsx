@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useT } from "../i18n";
 import type { QueuedItem } from "./events";
-import { Endpoints, type QueueAction, type SessionAttachmentResult } from "./protocol";
+import { Endpoints, type QueueAction, type SessionAttachmentRequest, type SessionAttachmentResult } from "./protocol";
 import { base64ToBlobUrl, type MessageImageItem } from "./images";
 import { rpc } from "./rpc";
 import {
@@ -24,6 +24,7 @@ function QueueImageThumb({
   sessionId?: string | null;
 }) {
   const t = useT();
+  const attachmentId = image.attachment?.attachmentId;
   const [src, setSrc] = useState<string | null>(image.url ?? null);
 
   useEffect(() => {
@@ -31,8 +32,9 @@ function QueueImageThumb({
       setSrc(image.url);
       return;
     }
-    if (!image.attachmentId || !sessionId) return;
-    const cacheKey = `${sessionId}:${image.attachmentId}`;
+    const attachment = image.attachment;
+    if (!attachment || !sessionId) return;
+    const cacheKey = `${sessionId}:${attachment.attachmentId}`;
     const cached = queueThumbCache.get(cacheKey);
     if (cached) {
       setSrc(cached);
@@ -40,12 +42,8 @@ function QueueImageThumb({
     }
 
     let active = true;
-    rpc<SessionAttachmentResult>(Endpoints.sessionAttachment, {
-      request: {
-        sessionId,
-        attachmentId: image.attachmentId,
-      },
-    })
+    const request: SessionAttachmentRequest = { sessionId, attachment };
+    rpc<SessionAttachmentResult>(Endpoints.sessionAttachment, { request })
       .then((res) => {
         if (!active) return;
         const blobUrl = base64ToBlobUrl(
@@ -60,7 +58,7 @@ function QueueImageThumb({
     return () => {
       active = false;
     };
-  }, [image.url, image.attachmentId, sessionId]);
+  }, [image.url, attachmentId, sessionId]);
 
   if (!src) return <span className="native-queue-thumb-placeholder" />;
   return (
@@ -153,7 +151,7 @@ export function QueueStrip({
                   <span className="native-queue-attachments">
                     {item.images.map((img, idx) => (
                       <QueueImageThumb
-                        key={img.id || img.attachmentId || idx}
+                        key={img.id || img.attachment?.attachmentId || idx}
                         image={img}
                         sessionId={sessionId}
                       />

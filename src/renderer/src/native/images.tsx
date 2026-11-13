@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useT } from "../i18n";
-import { Endpoints, type SessionAttachmentResult } from "./protocol";
+import { Endpoints, type ImageAttachmentRef, type SessionAttachmentRequest, type SessionAttachmentResult } from "./protocol";
 import { rpc } from "./rpc";
 
 /** 草稿中附加的图片项。 */
@@ -13,15 +13,11 @@ export interface DraftImage {
   base64?: string;
 }
 
-/** 消息（用户或队列）中展示的图片项。 */
+/** 消息（用户或队列）中展示的图片项：本地预览 URL 或引擎附件引用，二者取其一。 */
 export interface MessageImageItem {
   id?: string;
   url?: string;
-  attachmentId?: string;
-  mediaType?: string;
-  name?: string;
-  width?: number;
-  height?: number;
+  attachment?: ImageAttachmentRef;
 }
 
 const SUPPORTED_IMAGE_TYPES = new Set([
@@ -93,7 +89,7 @@ export function base64ToBlobUrl(base64: string, mediaType: string): string {
 /** 缓存已加载的持久化图片 Blob URL，避免重复调用 RPC */
 const attachmentUrlCache = new Map<string, string>();
 
-/** 消息内图片展示项：支持 blob 预览 URL 与宿主 attachmentId 按需异步加载。 */
+/** 消息内图片展示项：支持 blob 预览 URL 与宿主附件引用按需异步加载。 */
 export function MessageImageView({
   image,
   sessionId,
@@ -104,8 +100,9 @@ export function MessageImageView({
   onPreview?: (url: string) => void;
 }) {
   const t = useT();
+  const attachmentId = image.attachment?.attachmentId;
   const [src, setSrc] = useState<string | null>(image.url ?? null);
-  const [loading, setLoading] = useState(!image.url && !!image.attachmentId);
+  const [loading, setLoading] = useState(!image.url && !!attachmentId);
   const [error, setError] = useState(false);
 
   useEffect(() => {
@@ -114,9 +111,10 @@ export function MessageImageView({
       setLoading(false);
       return;
     }
-    if (!image.attachmentId || !sessionId) return;
+    const attachment = image.attachment;
+    if (!attachment || !sessionId) return;
 
-    const cacheKey = `${sessionId}:${image.attachmentId}`;
+    const cacheKey = `${sessionId}:${attachment.attachmentId}`;
     const cached = attachmentUrlCache.get(cacheKey);
     if (cached) {
       setSrc(cached);
@@ -128,12 +126,8 @@ export function MessageImageView({
     setLoading(true);
     setError(false);
 
-    rpc<SessionAttachmentResult>(Endpoints.sessionAttachment, {
-      request: {
-        sessionId,
-        attachmentId: image.attachmentId,
-      },
-    })
+    const request: SessionAttachmentRequest = { sessionId, attachment };
+    rpc<SessionAttachmentResult>(Endpoints.sessionAttachment, { request })
       .then((res) => {
         if (!active) return;
         const blobUrl = base64ToBlobUrl(
@@ -153,7 +147,7 @@ export function MessageImageView({
     return () => {
       active = false;
     };
-  }, [image.url, image.attachmentId, sessionId]);
+  }, [image.url, attachmentId, sessionId]);
 
   if (error) {
     return (

@@ -50,6 +50,9 @@ export type ModelSelection = Assert<Fits<ModelSelectionProjection, UI.ModelSelec
 export type Sessions = Assert<Fits<Mutable<Omit<S.SessionSummary, 'projections'>>, Omit<UI.SessionSummary, 'projections'>>>;
 export type SessionFields = Assert<Fits<keyof UI.SessionSummary, keyof S.SessionSummary>>;
 export type Attachments = Assert<Fits<Mutable<S.SessionAttachmentValue>, UI.SessionAttachmentResult>>;
+// 请求体同样要跟上游同形：引擎 0.2.2 起改收整条图片引用，只带 attachmentId 会被拒绝。
+export type AttachmentRequest = Assert<Fits<Mutable<S.SessionAttachmentRequest>, UI.SessionAttachmentRequest>>;
+export type AttachmentRequestFields = Assert<Fits<keyof UI.SessionAttachmentRequest, keyof S.SessionAttachmentRequest>>;
 export type Settings = Assert<Fits<SettingsDescribeValue, UI.SettingsDescribeValue>>;
 export type Workspace = Assert<Fits<Mutable<W.WorkspaceFollowFrame>, UI.WorkspaceFollowFrame>>;
 export type History = Assert<Fits<Mutable<S.SessionHistoryRecord>, UI.SessionHistoryRecord>>;

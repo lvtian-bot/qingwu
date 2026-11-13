@@ -557,7 +557,7 @@ export function TurnItems({
             <div className="native-msg-images">
               {item.images.map((img, idx) => (
                 <MessageImageView
-                  key={img.id || img.attachmentId || idx}
+                  key={img.id || img.attachment?.attachmentId || idx}
                   image={img}
                   sessionId={sessionId}
                   onPreview={onPreviewImage}
