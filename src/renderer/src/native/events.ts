@@ -594,14 +594,9 @@ function foldEventTurns(events: SessionEvent[]): TurnView[] {
           ) {
             const att = (block as { attachment?: ImageAttachmentRef })
               .attachment;
+            // 整条引用原样保留：回读时引擎按 ID、格式、字节数、宽高逐项核对。
             if (att && typeof att.attachmentId === "string") {
-              images.push({
-                attachmentId: att.attachmentId,
-                mediaType: att.mediaType,
-                name: att.name,
-                width: att.width,
-                height: att.height,
-              });
+              images.push({ attachment: att });
             }
           }
         }
@@ -920,14 +915,9 @@ export function foldQueue(events: SessionEvent[]): {
           ) {
             const att = (block as { attachment?: ImageAttachmentRef })
               .attachment;
+            // 整条引用原样保留：回读时引擎按 ID、格式、字节数、宽高逐项核对。
             if (att && typeof att.attachmentId === "string") {
-              images.push({
-                attachmentId: att.attachmentId,
-                mediaType: att.mediaType,
-                name: att.name,
-                width: att.width,
-                height: att.height,
-              });
+              images.push({ attachment: att });
             }
           }
         }

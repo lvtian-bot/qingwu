@@ -657,7 +657,6 @@ export function NativeApp({
       images: images.map((img) => ({
         id: img.id,
         url: img.previewUrl,
-        name: img.name,
       })),
       pending: true,
       target: echoTarget,
@@ -1197,7 +1196,7 @@ export function NativeApp({
                           <div className="native-msg-images">
                             {echo.images.map((img, idx) => (
                               <MessageImageView
-                                key={img.id || img.attachmentId || idx}
+                                key={img.id || img.attachment?.attachmentId || idx}
                                 image={img}
                                 sessionId={currentId}
                                 onPreview={handlePreviewImage}
