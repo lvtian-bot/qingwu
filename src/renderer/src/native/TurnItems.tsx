@@ -506,7 +506,9 @@ export function TurnItems({
   const [open, setOpen] = useState(false);
   const t = useT();
     const isRunningTurn = !view.answer || !view.foldable;
-    const shouldAutoOpen = isRunningTurn && transcriptView === "detailed";
+    const hideReasoningPreview = transcriptView === "compact";
+    const shouldAutoOpen =
+      transcriptView === "verbose" || (isRunningTurn && transcriptView === "detailed");
   const renderItem = (item: MarkedChatItem, showReasoning = true) => {
     if (item.kind === "tool") {
       return <ToolCard key={item.key} tool={item.tool} cwd={cwd} initialOpen={shouldAutoOpen} />;
@@ -531,13 +533,13 @@ export function TurnItems({
       // 不包裹助手答复气泡外壳（.native-msg.assistant），与工具卡片保持统一行距与行高
       if (!item.text && !item.interrupted) {
         return showReasoning && item.reasoning ? (
-          <ReasoningRow key={item.key} text={item.reasoning} initialOpen={shouldAutoOpen} />
+          <ReasoningRow key={item.key} text={item.reasoning} initialOpen={shouldAutoOpen} hidePreview={hideReasoningPreview} />
         ) : null;
       }
       return (
         <div key={item.key} className="native-msg assistant">
           {showReasoning && item.reasoning && (
-            <ReasoningRow text={item.reasoning} initialOpen={shouldAutoOpen} />
+            <ReasoningRow text={item.reasoning} initialOpen={shouldAutoOpen} hidePreview={hideReasoningPreview} />
           )}
           <AssistantBody
             item={item}

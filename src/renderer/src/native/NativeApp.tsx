@@ -1229,6 +1229,8 @@ export function NativeApp({
                     <ReasoningRow
                       text={liveReasoning}
                       running={reasoningActive}
+                      initialOpen={transcriptView === "verbose" || transcriptView === "detailed"}
+                      hidePreview={transcriptView === "compact"}
                     />
                   )}
                   {draft && (
@@ -1238,6 +1240,8 @@ export function NativeApp({
                         <ReasoningRow
                           text={liveReasoning}
                           running={reasoningActive}
+                          initialOpen={transcriptView === "verbose" || transcriptView === "detailed"}
+                          hidePreview={transcriptView === "compact"}
                         />
                       )}
                       <div className="native-msg-body">

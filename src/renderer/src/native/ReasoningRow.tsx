@@ -28,9 +28,16 @@ interface ReasoningRowProps {
   running?: boolean;
   /** 初始是否展开完整思考正文 */
   initialOpen?: boolean;
+  /** 是否隐藏思考首行文字预览（简洁模式下开启） */
+  hidePreview?: boolean;
 }
 
-export function ReasoningRow({ text, running = false, initialOpen = false }: ReasoningRowProps) {
+export function ReasoningRow({
+  text,
+  running = false,
+  initialOpen = false,
+  hidePreview = false,
+}: ReasoningRowProps) {
   const t = useT();
   const [open, setOpen] = useState(initialOpen);
   const summary = (running ? latestLine(text) : firstLine(text)).replaceAll(
@@ -60,7 +67,7 @@ export function ReasoningRow({ text, running = false, initialOpen = false }: Rea
           </span>
         </span>
         <span className="native-reasoning-title">{t("chat.reasoning.thinking")}</span>
-        {!open && (
+        {!open && !hidePreview && (
           <>
             <span className="native-reasoning-dot" aria-hidden="true" />
             <span
