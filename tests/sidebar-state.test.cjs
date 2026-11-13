@@ -88,11 +88,15 @@ function setup(options = {}) {
     let result;
     for (let pass = 0; pass < 10; pass++) {
       cursor = 0; dirty = false;
-      const sidebar = useSessionSidebar(env.sessions, env.workspaces, new Set());
+      const workspaceOfSession = new Map(env.workspaces.flatMap((ws) => ws.sessionIds.map((id) => [id, ws.workspaceId])));
+      const sidebar = useSessionSidebar(
+        env.sessions, env.workspaces, new Set(),
+        env.currentId ? workspaceOfSession.get(env.currentId) ?? null : null,
+      );
       const actions = useSessionActions({
         sessions: env.sessions, workspaces: env.workspaces, archivedSet: new Set(),
         currentId: env.currentId, activeWorkspaceId: env.activeWorkspaceId,
-        workspaceOfSession: new Map(env.workspaces.flatMap((ws) => ws.sessionIds.map((id) => [id, ws.workspaceId]))),
+        workspaceOfSession,
         refreshSessions: async () => {}, setError,
         setSessions: set("sessions"), setWorkspaces: set("workspaces"),
         setArchivedSessionIds: () => {}, setUnreadFinishedSessionIds: set("unread"),
@@ -145,27 +149,39 @@ test("项目标题与列表同步切换，收起时复位手动展示条数", ()
   assert.equal(h.sessions(state.view).length, 0);
 });
 
-test("当前会话所在项目与其他项目一样可切换并持久化", () => {
+test("进入项目会话时只展开一次，手动收起后不再弹开", () => {
   const h = setup({ currentId: "s1" });
   let state = h.render();
-  // 当前会话在 w1 里也照保存的偏好收起：不强制展开，也不禁用标题
+  // 保存的偏好是收起，进入 w1 的会话时自动展开一次，标题始终可点
   let row = h.rows(state.view)[0];
-  assert.equal(row.props.collapsed, true);
-  assert.equal(row.props.toggleDisabled, false);
-  assert.equal(h.sessions(state.view).length, 0);
-  // 点标题展开：写入偏好并露出该项目的会话行
-  row.props.onToggle();
-  state = h.render();
-  row = h.rows(state.view)[0];
   assert.equal(row.props.collapsed, false);
+  assert.equal(row.props.toggleDisabled, false);
   assert.equal(h.sessions(state.view).length, 1);
-  assert.deepEqual(h.saved(), ["w2"]);
-  // 再点一次收起：当前会话仍在这个项目里也不被特殊照顾
+  assert.deepEqual(h.saved(), ["w1", "w2"]);
+  assert.deepEqual(h.writes, []);
+  // 手动收起立刻生效，后续渲染不会又被自动展开顶回去
   row.props.onToggle();
   state = h.render();
   assert.equal(h.rows(state.view)[0].props.collapsed, true);
   assert.equal(h.sessions(state.view).length, 0);
-  assert.deepEqual(h.saved(), ["w2", "w1"]);
+  // 切到 w2 的会话再切回 w1：各自重新展开一次，保存的偏好不变
+  h.env.currentId = "s2";
+  state = h.render();
+  assert.equal(h.rows(state.view)[0].props.collapsed, true);
+  assert.equal(h.rows(state.view)[1].props.collapsed, false);
+  h.env.currentId = "s1";
+  state = h.render();
+  assert.equal(h.rows(state.view)[0].props.collapsed, false);
+  assert.equal(h.rows(state.view)[0].props.toggleDisabled, false);
+  assert.deepEqual(h.saved(), ["w1", "w2"]);
+  // 收起后重新点开：这时才写入偏好，删除收起标记
+  h.rows(state.view)[0].props.onToggle();
+  state = h.render();
+  assert.equal(h.rows(state.view)[0].props.collapsed, true);
+  h.rows(state.view)[0].props.onToggle();
+  state = h.render();
+  assert.equal(h.rows(state.view)[0].props.collapsed, false);
+  assert.deepEqual(h.saved(), ["w2"]);
 });
 
 test("搜索穿透项目及大分区，点击两个层级均不写入保存偏好", () => {

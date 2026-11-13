@@ -27,6 +27,8 @@ export function useSessionSidebar(
   sessions: SessionSummary[],
   workspaces: WorkspaceView[],
   archivedSet: Set<string>,
+  /** 当前会话所在项目：进入它的会话时自动展开一次，之后是否收起只听用户的。 */
+  currentWorkspaceId: string | null,
 ) {
   const t = useT();
   /** 侧栏置顶数据（本地持久化）。 */
@@ -103,13 +105,41 @@ export function useSessionSidebar(
     Map<string, number>
   >(new Map());
   /**
+   * 本次进入的会话所在项目：进入时自动展开一次，只作用于这一次进入。
+   * 用户随后点收起就照办，不再被顶回去，也不改写保存的偏好；换到别的项目再回来重新展开一次。
+   */
+  const [autoExpandedWorkspaceId, setAutoExpandedWorkspaceId] = useState<
+    string | null
+  >(currentWorkspaceId);
+  useEffect(() => {
+    setAutoExpandedWorkspaceId(currentWorkspaceId);
+  }, [currentWorkspaceId]);
+
+  /**
+   * 项目分组此刻实际怎么呈现——列表是否露出、标题图标与箭头、点标题的语义，
+   * 三处共用这一份判断，避免各算各的出现「标题展开、下面却没列表」这类矛盾。
+   * 搜索态一律呈现为展开（否则收起项目里的匹配会话会被藏掉）；非搜索态按保存的偏好，
+   * 再加上「进入会话时展开一次」这一个例外。
+   */
+  const isWorkspaceGroupCollapsed = useCallback(
+    (workspaceId: string) =>
+      !searching &&
+      collapsedWorkspaces.has(workspaceId) &&
+      autoExpandedWorkspaceId !== workspaceId,
+    [searching, collapsedWorkspaces, autoExpandedWorkspaceId],
+  );
+
+  /**
    * 折叠/展开项目分组（持久化）；折叠时同步复位该组会话展示条数，再点开回到默认条数。
-   * 所有项目一视同仁：当前会话所在项目照样能收起，正文不受侧栏影响；搜索态不写偏好。
+   * 手动点击永远生效：收起会同时清掉本次的一次性自动展开，不会马上被顶开；搜索态不写偏好。
    */
   const toggleWorkspaceGroup = useCallback(
     (workspaceId: string) => {
       if (searching) return;
-      const collapsing = !collapsedWorkspaces.has(workspaceId);
+      const collapsing = !isWorkspaceGroupCollapsed(workspaceId);
+      setAutoExpandedWorkspaceId((prev) =>
+        prev === workspaceId ? null : prev,
+      );
       setCollapsedWorkspaces((prev) => {
         const next = new Set(prev);
         if (collapsing) {
@@ -129,7 +159,7 @@ export function useSessionSidebar(
         });
       }
     },
-    [collapsedWorkspaces, searching],
+    [isWorkspaceGroupCollapsed, searching],
   );
 
   /** 新建/复用空白会话成功或删除项目成功后清除折叠标记。 */
@@ -239,17 +269,6 @@ export function useSessionSidebar(
       return wsSessions.length > 0;
     },
     [searchText],
-  );
-
-  /**
-   * 项目分组此刻实际怎么呈现——列表是否露出、标题图标与箭头、点标题的语义，
-   * 三处共用这一份判断，避免各算各的出现「标题展开、下面却没列表」这类矛盾。
-   * 搜索态一律呈现为展开（否则收起项目里的匹配会话会被藏掉）；非搜索态按保存的偏好。
-   */
-  const isWorkspaceGroupCollapsed = useCallback(
-    (workspaceId: string) =>
-      !searching && collapsedWorkspaces.has(workspaceId),
-    [searching, collapsedWorkspaces],
   );
 
   // 1. 置顶项目（保持置顶时间倒序）

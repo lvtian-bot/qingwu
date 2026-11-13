@@ -260,7 +260,12 @@ export function NativeApp({
     return map;
   }, [workspaces]);
 
-  const sidebar = useSessionSidebar(sessions, workspaces, archivedSet);
+  const sidebar = useSessionSidebar(
+    sessions,
+    workspaces,
+    archivedSet,
+    currentId ? workspaceOfSession.get(currentId) ?? null : null,
+  );
 
   const actions = useSessionActions({
     sessions,
