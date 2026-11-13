@@ -41,7 +41,7 @@ test('重连基线按原顺序还原思考、正文与工具参数增量', () =>
 });
 
 test('队列回放恢复编辑、删除与插话位置，保留图片并排除插件消息', () => {
-  const attachment = { attachmentId: 'image-1', mediaType: 'image/png', name: '示意图.png', width: 10, height: 20 };
+  const attachment = { attachmentId: 'image-1', mediaType: 'image/png', bytes: 1024, name: '示意图.png', width: 10, height: 20 };
   const queued = message('b', '修订后', { content: [{ type: 'text', text: '修订后' }, { type: 'image', attachment }] });
   const history = [
     splice('next-turn', 0, 0, [message('a', '第一条'), message('b', '第二条')]),
@@ -56,7 +56,8 @@ test('队列回放恢复编辑、删除与插话位置，保留图片并排除�
     { id: 'b', text: '修订后', placement: 'next-turn' },
     { id: 'c', text: '现在处理', placement: 'next-step' },
   ]);
-  assert.deepEqual(restored.queue[0].images, [attachment]);
+  // 引用必须整条保留：回读图片时引擎逐项核对字节数与尺寸，缺字段就会被判为损坏。
+  assert.deepEqual(restored.queue[0].images, [{ attachment }]);
   assert.deepEqual([...restored.rpcIds], ['request-b', 'request-c']);
   assert.deepEqual(history, before);
 });
@@ -83,7 +84,7 @@ test('排队与插话模式映射：普通提交归入 next-turn，插话提交�
 test('历史工具结果按调用标识合并，并保留用户附件、思考与中断正文', () => {
   const history = [
     event('turn/start', { turn: 7 }, 1),
-    event('user/message', message('a', '请检查', { content: [{ type: 'text', text: '请检查' }, { type: 'image', attachment: { attachmentId: 'pic' } }] }), 2),
+    event('user/message', message('a', '请检查', { content: [{ type: 'text', text: '请检查' }, { type: 'image', attachment: { attachmentId: 'pic', mediaType: 'image/png', bytes: 2048, width: 10, height: 20 } }] }), 2),
     event('tool/call', { callId: 'call-1', name: 'read', arguments: '{}', turn: 7 }, 3),
     event('tool/result', result('call-1', '文件内容'), 4),
     event('assistant/message', { turn: 7, interrupted: true, message: { content: [{ type: 'reasoning', text: '分析' }, { type: 'text', text: '部分回答' }] } }, 5),
@@ -92,7 +93,7 @@ test('历史工具结果按调用标识合并，并保留用户附件、思考�
   const [view] = foldChatItems(history);
   assert.equal(view.turn, 7);
   assert.deepEqual(view.items.map((item) => item.kind), ['user', 'tool', 'assistant']);
-  assert.equal(view.items[0].images[0].attachmentId, 'pic');
+  assert.deepEqual(view.items[0].images, [{ attachment: { attachmentId: 'pic', mediaType: 'image/png', bytes: 2048, width: 10, height: 20 } }]);
   assert.equal(view.items[1].tool.pending, false);
   assert.equal(view.items[1].tool.resultText, '文件内容');
   assert.equal(view.items[1].tool.resultTime, 4000);

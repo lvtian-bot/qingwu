@@ -1,5 +1,5 @@
 /**
- * 界面消费的 dsh 0.1.5-rc.2 wire 视图，不是完整上游协议。
+ * 界面消费的 dsh 0.2.2 wire 视图，不是完整上游协议。
  * 可选字段保留界面对缺失能力的容错语义；动态事件 data 与投影值仍须按消费处检查。
  * tests/contract-installed-dsh.test.cjs 使用已安装引擎的公开 controller /remote、
  * /types 出口检查端点参数名和关键返回形状。gateway 内部帧没有公开类型出口，
@@ -424,6 +424,12 @@ export interface ImageAttachmentRef {
 
 export interface ImageBlock {
   type: 'image';
+  attachment: ImageAttachmentRef;
+}
+
+/** 读取一张会话图片：引擎 0.2.2 起要求整条引用，按 ID、格式、字节数、宽高逐项核对存储内容。 */
+export interface SessionAttachmentRequest {
+  sessionId: string;
   attachment: ImageAttachmentRef;
 }
 
