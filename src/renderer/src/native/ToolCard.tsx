@@ -2,7 +2,7 @@
  * 语义化工具调用卡片：按 wire 工具名映射到专用视图（终端/文件/搜索/编辑 diff/
  * 任务清单），未知工具回退通用 JSON 视图。数据结构依据本机真实会话日志实测。
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { diffLines } from 'diff';
 import { useT } from '../i18n';
 import type {
@@ -122,10 +122,15 @@ interface CardShellProps {
   status: React.ReactNode;
   detail?: React.ReactNode;
   error?: boolean;
+  initialOpen?: boolean;
 }
 
-function CardShell({ icon, title, subtitle, status, detail, error }: CardShellProps) {
-  const [open, setOpen] = useState(false);
+function CardShell({ icon, title, subtitle, status, detail, error, initialOpen = false }: CardShellProps) {
+  const [open, setOpen] = useState(initialOpen);
+
+  useEffect(() => {
+    setOpen(initialOpen);
+  }, [initialOpen]);
   return (
     <div className={`native-tool-card${error ? ' error' : ''}`}>
       <button className="native-tool-head" onClick={() => setOpen((v) => !v)}>
@@ -195,12 +200,13 @@ function parseArgs<T>(tool: ToolItem): T | null {
   }
 }
 
-function PwshCard({ tool }: { tool: ToolItem }) {
+function PwshCard({ tool, initialOpen }: { tool: ToolItem; initialOpen?: boolean }) {
   const t = useT();
   const args = parseArgs<PwshArgs>(tool);
   const subtitle = args?.description?.trim() || args?.command || undefined;
   return (
     <CardShell
+      initialOpen={initialOpen}
       icon={ICONS.terminal}
       title={t('tools.cards.runCommand')}
       subtitle={subtitle}
@@ -217,7 +223,7 @@ function PwshCard({ tool }: { tool: ToolItem }) {
   );
 }
 
-function ReadCard({ tool, cwd }: { tool: ToolItem; cwd?: string }) {
+function ReadCard({ tool, cwd, initialOpen }: { tool: ToolItem; cwd?: string; initialOpen?: boolean }) {
   const t = useT();
   const args = parseArgs<ReadArgs>(tool);
   const filePath = args?.file_path ?? '';
@@ -227,6 +233,7 @@ function ReadCard({ tool, cwd }: { tool: ToolItem; cwd?: string }) {
   const target = filePath ? `${relPath(filePath, cwd)}${range}` : '';
   return (
     <CardShell
+      initialOpen={initialOpen}
       icon={ICONS.file}
       title={t('tools.cards.read')}
       subtitle={target}
@@ -237,12 +244,13 @@ function ReadCard({ tool, cwd }: { tool: ToolItem; cwd?: string }) {
   );
 }
 
-function ReadImageCard({ tool, cwd }: { tool: ToolItem; cwd?: string }) {
+function ReadImageCard({ tool, cwd, initialOpen }: { tool: ToolItem; cwd?: string; initialOpen?: boolean }) {
   const t = useT();
   const args = parseArgs<{ file_path?: string }>(tool);
   const filePath = args?.file_path ?? '';
   return (
     <CardShell
+      initialOpen={initialOpen}
       icon={ICONS.file}
       title={t('tools.cards.readImage')}
       subtitle={filePath ? relPath(filePath, cwd) : ''}
@@ -253,7 +261,7 @@ function ReadImageCard({ tool, cwd }: { tool: ToolItem; cwd?: string }) {
   );
 }
 
-function SearchCard({ tool, cwd, kind }: { tool: ToolItem; cwd?: string; kind: 'grep' | 'glob' }) {
+function SearchCard({ tool, cwd, kind, initialOpen }: { tool: ToolItem; cwd?: string; kind: 'grep' | 'glob'; initialOpen?: boolean }) {
   const t = useT();
   const args = parseArgs<PatternArgs>(tool);
   const title = kind === 'grep' ? t('tools.cards.search') : t('tools.cards.match');
@@ -262,6 +270,7 @@ function SearchCard({ tool, cwd, kind }: { tool: ToolItem; cwd?: string; kind: '
   const subtitle = pattern && path ? `${pattern}（${path}）` : pattern || path;
   return (
     <CardShell
+      initialOpen={initialOpen}
       icon={ICONS.search}
       title={title}
       subtitle={subtitle}
@@ -272,12 +281,13 @@ function SearchCard({ tool, cwd, kind }: { tool: ToolItem; cwd?: string; kind: '
   );
 }
 
-function EditCard({ tool, cwd }: { tool: ToolItem; cwd?: string }) {
+function EditCard({ tool, cwd, initialOpen }: { tool: ToolItem; cwd?: string; initialOpen?: boolean }) {
   const t = useT();
   const args = parseArgs<EditArgs>(tool);
   const filePath = args?.file_path ?? '';
   return (
     <CardShell
+      initialOpen={initialOpen}
       icon={ICONS.edit}
       title={t('tools.cards.edit')}
       subtitle={filePath ? relPath(filePath, cwd) : ''}
@@ -297,12 +307,13 @@ function EditCard({ tool, cwd }: { tool: ToolItem; cwd?: string }) {
   );
 }
 
-function WriteCard({ tool, cwd }: { tool: ToolItem; cwd?: string }) {
+function WriteCard({ tool, cwd, initialOpen }: { tool: ToolItem; cwd?: string; initialOpen?: boolean }) {
   const t = useT();
   const args = parseArgs<WriteArgs>(tool);
   const filePath = args?.file_path ?? '';
   return (
     <CardShell
+      initialOpen={initialOpen}
       icon={ICONS.write}
       title={t('tools.cards.write')}
       subtitle={filePath ? relPath(filePath, cwd) : ''}
@@ -319,7 +330,7 @@ function WriteCard({ tool, cwd }: { tool: ToolItem; cwd?: string }) {
   );
 }
 
-function PresentCard({ tool, cwd }: { tool: ToolItem; cwd?: string }) {
+function PresentCard({ tool, cwd, initialOpen }: { tool: ToolItem; cwd?: string; initialOpen?: boolean }) {
   const t = useT();
   const args = parseArgs<PresentArgs>(tool);
   const files = args?.files ?? [];
@@ -328,6 +339,7 @@ function PresentCard({ tool, cwd }: { tool: ToolItem; cwd?: string }) {
     : '';
   return (
     <CardShell
+      initialOpen={initialOpen}
       icon={ICONS.file}
       title={t('tools.cards.deliverable')}
       subtitle={subtitle}
@@ -338,7 +350,7 @@ function PresentCard({ tool, cwd }: { tool: ToolItem; cwd?: string }) {
   );
 }
 
-function WebCard({ tool, kind }: { tool: ToolItem; kind: 'search' | 'fetch' }) {
+function WebCard({ tool, kind, initialOpen }: { tool: ToolItem; kind: 'search' | 'fetch'; initialOpen?: boolean }) {
   const t = useT();
   const args = parseArgs<{ queries?: string[]; url?: string }>(tool);
   const title = kind === 'search' ? t('tools.cards.webSearch') : t('tools.cards.webFetch');
@@ -347,6 +359,7 @@ function WebCard({ tool, kind }: { tool: ToolItem; kind: 'search' | 'fetch' }) {
     : (args?.url ?? '');
   return (
     <CardShell
+      initialOpen={initialOpen}
       icon={ICONS.globe}
       title={title}
       subtitle={subtitle}
@@ -357,7 +370,7 @@ function WebCard({ tool, kind }: { tool: ToolItem; kind: 'search' | 'fetch' }) {
   );
 }
 
-function TodoCard({ tool }: { tool: ToolItem }) {
+function TodoCard({ tool, initialOpen }: { tool: ToolItem; initialOpen?: boolean }) {
   const t = useT();
   const args = parseArgs<TodoWriteArgs>(tool);
   const todos = args?.todos ?? [];
@@ -365,6 +378,7 @@ function TodoCard({ tool }: { tool: ToolItem }) {
   const done = todos.filter((t) => t.status === 'completed' || (t as { status: string }).status === 'done').length;
   return (
     <CardShell
+      initialOpen={initialOpen}
       icon={ICONS.list}
       title={t('tools.cards.updateTodo')}
       subtitle={`${t('tools.todo.items', { count: todos.length })} · ${t('tools.todo.done', { count: done })} · ${t('tools.todo.inProgress', { count: doing })}`}
@@ -389,7 +403,7 @@ function TodoCard({ tool }: { tool: ToolItem }) {
   );
 }
 
-function GenericCard({ tool }: { tool: ToolItem }) {
+function GenericCard({ tool, initialOpen }: { tool: ToolItem; initialOpen?: boolean }) {
   const pretty = useMemo(() => {
     try {
       return tool.arguments ? JSON.stringify(JSON.parse(tool.arguments), null, 2) : '';
@@ -399,6 +413,7 @@ function GenericCard({ tool }: { tool: ToolItem }) {
   }, [tool.arguments]);
   return (
     <CardShell
+      initialOpen={initialOpen}
       icon={ICONS.tool}
       title={tool.name}
       status={<StatusView tool={tool} />}
@@ -414,33 +429,33 @@ function GenericCard({ tool }: { tool: ToolItem }) {
 }
 
 /** 工具卡片入口：按工具名分派，未知回退通用视图。 */
-export function ToolCard({ tool, cwd }: { tool: ToolItem; cwd?: string }) {
+export function ToolCard({ tool, cwd, initialOpen }: { tool: ToolItem; cwd?: string; initialOpen?: boolean }) {
   switch (tool.name) {
     case 'pwsh':
     case 'bash':
     case 'shell':
-      return <PwshCard tool={tool} />;
+      return <PwshCard tool={tool} initialOpen={initialOpen} />;
     case 'read':
-      return <ReadCard tool={tool} cwd={cwd} />;
+      return <ReadCard tool={tool} cwd={cwd} initialOpen={initialOpen} />;
     case 'read_image':
-      return <ReadImageCard tool={tool} cwd={cwd} />;
+      return <ReadImageCard tool={tool} cwd={cwd} initialOpen={initialOpen} />;
     case 'web_search':
-      return <WebCard tool={tool} kind="search" />;
+      return <WebCard tool={tool} kind="search" initialOpen={initialOpen} />;
     case 'web_fetch':
-      return <WebCard tool={tool} kind="fetch" />;
+      return <WebCard tool={tool} kind="fetch" initialOpen={initialOpen} />;
     case 'grep':
-      return <SearchCard tool={tool} cwd={cwd} kind="grep" />;
+      return <SearchCard tool={tool} cwd={cwd} kind="grep" initialOpen={initialOpen} />;
     case 'glob':
-      return <SearchCard tool={tool} cwd={cwd} kind="glob" />;
+      return <SearchCard tool={tool} cwd={cwd} kind="glob" initialOpen={initialOpen} />;
     case 'edit':
-      return <EditCard tool={tool} cwd={cwd} />;
+      return <EditCard tool={tool} cwd={cwd} initialOpen={initialOpen} />;
     case 'write':
-      return <WriteCard tool={tool} cwd={cwd} />;
+      return <WriteCard tool={tool} cwd={cwd} initialOpen={initialOpen} />;
     case 'present':
-      return <PresentCard tool={tool} cwd={cwd} />;
+      return <PresentCard tool={tool} cwd={cwd} initialOpen={initialOpen} />;
     case 'todo_write':
-      return <TodoCard tool={tool} />;
+      return <TodoCard tool={tool} initialOpen={initialOpen} />;
     default:
-      return <GenericCard tool={tool} />;
+      return <GenericCard tool={tool} initialOpen={initialOpen} />;
   }
 }

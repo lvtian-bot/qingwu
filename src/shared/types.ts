@@ -24,13 +24,28 @@ export interface UpdateState {
 /** 聊天区内容列宽档位：narrow 紧凑（默认）、medium 适中、wide 宽敞。 */
 export type ChatWidth = 'narrow' | 'medium' | 'wide';
 
+/** 工作步骤展示档位：standard 标准（默认）、compact 简洁、detailed 详细、verbose 完全展开。对齐 DSH 官方 ui-chat.transcriptView 规范。 */
+export type TranscriptViewMode = 'standard' | 'compact' | 'detailed' | 'verbose';
+
+export const TRANSCRIPT_VIEW_MODES: readonly TranscriptViewMode[] = [
+  'standard',
+  'compact',
+  'detailed',
+  'verbose',
+];
+
 export const CHAT_WIDTHS: readonly ChatWidth[] = ['narrow', 'medium', 'wide'];
 
 /** 青梧应用级配置（存储于 dsh profile 目录 app-settings.json，与引擎配置同住 ~/.dsh）。 */
 export interface AppSettings {
   /** 窗口关闭行为：true 为最小化到托盘，false 为直接退出。 */
   closeToTray: boolean;
-  /** 是否折叠回合执行过程与工具调用（默认 false：平铺展开；开启时折叠为单行摘要）。 */
+  /**
+   * 工作步骤展示模式（对齐 DSH 官方 ui-chat.transcriptView 规范，默认 standard 标准模式）。
+   * standard：收起过程摘要（推荐）；compact：简洁模式；detailed：详细模式；verbose：完全展开。
+   */
+  transcriptView?: TranscriptViewMode;
+  /** @deprecated 历史布尔字段，已被 transcriptView 替代，保留用于旧配置读取兼容 */
   collapseProcess?: boolean;
   /** 聊天区内容列宽档位（默认 narrow 紧凑）。 */
   chatWidth?: ChatWidth;

@@ -6,7 +6,7 @@
  * 让文字贴着「刚想到哪」；思考结束后取第一行、超出右侧省略号，让整轮
  * 思考收成一句稳定的话。两处都会先去 ** 标记，避免折行行首出现裸星号。
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useT } from "../i18n";
 import { ChevronDownIcon, ThinkIcon } from "./native-icons";
 
@@ -26,11 +26,24 @@ interface ReasoningRowProps {
   text: string;
   /** 是否仍在思考：决定摘要取最后一行、行内扫光与摘要对齐方向。 */
   running?: boolean;
+  /** 初始是否展开完整思考正文 */
+  initialOpen?: boolean;
+  /** 是否隐藏思考首行文字预览（简洁模式下开启） */
+  hidePreview?: boolean;
 }
 
-export function ReasoningRow({ text, running = false }: ReasoningRowProps) {
+export function ReasoningRow({
+  text,
+  running = false,
+  initialOpen = false,
+  hidePreview = false,
+}: ReasoningRowProps) {
   const t = useT();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(initialOpen);
+
+  useEffect(() => {
+    setOpen(initialOpen);
+  }, [initialOpen]);
   const summary = (running ? latestLine(text) : firstLine(text)).replaceAll(
     "**",
     "",
@@ -58,7 +71,7 @@ export function ReasoningRow({ text, running = false }: ReasoningRowProps) {
           </span>
         </span>
         <span className="native-reasoning-title">{t("chat.reasoning.thinking")}</span>
-        {!open && (
+        {!open && !hidePreview && (
           <>
             <span className="native-reasoning-dot" aria-hidden="true" />
             <span

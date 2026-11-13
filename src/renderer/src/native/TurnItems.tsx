@@ -15,6 +15,7 @@ import { MessageImageView } from "./images";
 import { Markdown } from "./markdown";
 import { ChevronDownIcon } from "./native-icons";
 import { ReasoningRow } from "./ReasoningRow";
+import type { TranscriptViewMode } from "../../../shared/types";
 import { ToolCard } from "./ToolCard";
 
 /** 毫秒 → 「3m 55s」/「42s」。 */
@@ -481,7 +482,7 @@ export function TurnItems({
   view,
   cwd,
   sessionId,
-  collapseProcess = false,
+  transcriptView = "standard",
   alwaysShowActions = false,
   onPreviewImage,
   onFork,
@@ -491,7 +492,7 @@ export function TurnItems({
   view: TurnView;
   cwd?: string;
   sessionId?: string | null;
-  collapseProcess?: boolean;
+  transcriptView?: TranscriptViewMode;
   /** 最新一轮的操作栏常驻显示（历史轮次悬停浮现），由调用方按轮次位置传入。 */
   alwaysShowActions?: boolean;
   onPreviewImage?: (url: string) => void;
@@ -504,9 +505,13 @@ export function TurnItems({
 }) {
   const [open, setOpen] = useState(false);
   const t = useT();
+    const isRunningTurn = !view.answer || !view.foldable;
+    const hideReasoningPreview = transcriptView === "compact";
+    const shouldAutoOpen =
+      transcriptView === "verbose" || (isRunningTurn && transcriptView === "detailed");
   const renderItem = (item: MarkedChatItem, showReasoning = true) => {
     if (item.kind === "tool") {
-      return <ToolCard key={item.key} tool={item.tool} cwd={cwd} />;
+      return <ToolCard key={item.key} tool={item.tool} cwd={cwd} initialOpen={shouldAutoOpen} />;
     }
     if (item.kind === "command" || item.kind === "compaction") {
       return <CommandItem key={item.key} item={item} />;
@@ -528,13 +533,13 @@ export function TurnItems({
       // 不包裹助手答复气泡外壳（.native-msg.assistant），与工具卡片保持统一行距与行高
       if (!item.text && !item.interrupted) {
         return showReasoning && item.reasoning ? (
-          <ReasoningRow key={item.key} text={item.reasoning} />
+          <ReasoningRow key={item.key} text={item.reasoning} initialOpen={shouldAutoOpen} hidePreview={hideReasoningPreview} />
         ) : null;
       }
       return (
         <div key={item.key} className="native-msg assistant">
           {showReasoning && item.reasoning && (
-            <ReasoningRow text={item.reasoning} />
+            <ReasoningRow text={item.reasoning} initialOpen={shouldAutoOpen} hidePreview={hideReasoningPreview} />
           )}
           <AssistantBody
             item={item}
@@ -582,8 +587,8 @@ export function TurnItems({
     );
   };
 
-  // 未开启折叠设置、或没收束完整一轮（运行中、或整轮没有答复）时照旧逐条显示，不折叠
-  if (!collapseProcess || !view.foldable || !view.answer) {
+  // 完全展开模式（verbose）、或未收束完整一轮（运行中、或整轮没有答复）时照旧逐条显示，不折叠
+  if (transcriptView === "verbose" || !view.foldable || !view.answer) {
     return (
       <>
         {view.items.map((item) => renderItem(item))}

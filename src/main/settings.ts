@@ -1,7 +1,7 @@
 import { app } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
-import { CHAT_WIDTHS, type AppSettings, type ChatWidth } from '../shared/types';
+import { CHAT_WIDTHS, TRANSCRIPT_VIEW_MODES, type AppSettings, type ChatWidth, type TranscriptViewMode } from '../shared/types';
 import { UI_LANGUAGES, type UiLanguage } from '../shared/i18n-core';
 import { resolveQingwuProfileDir } from './dsh-paths';
 
@@ -23,6 +23,7 @@ class SettingsManager {
     this.settings = {
       closeToTray: true,
       collapseProcess: false,
+      transcriptView: 'standard',
       chatWidth: 'narrow',
       notifyOnTaskFinished: true,
       uiLanguage: 'auto',
@@ -75,6 +76,17 @@ class SettingsManager {
         const parsed: unknown = JSON.parse(raw);
         if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
           this.settings = { ...this.settings, ...(parsed as Partial<AppSettings>) };
+          const rawParsed = parsed as Record<string, unknown>;
+          if (
+            typeof rawParsed.transcriptView === 'string' &&
+            TRANSCRIPT_VIEW_MODES.includes(rawParsed.transcriptView as TranscriptViewMode)
+          ) {
+            this.settings.transcriptView = rawParsed.transcriptView as TranscriptViewMode;
+          } else if (typeof rawParsed.collapseProcess === 'boolean') {
+            this.settings.transcriptView = rawParsed.collapseProcess ? 'standard' : 'verbose';
+          } else {
+            this.settings.transcriptView = 'standard';
+          }
           if (!CHAT_WIDTHS.includes(this.settings.chatWidth as ChatWidth)) {
             this.settings.chatWidth = 'narrow';
           }

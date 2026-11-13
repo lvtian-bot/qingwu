@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import type { AppSettings } from "../../../shared/types";
+import type { AppSettings, TranscriptViewMode } from "../../../shared/types";
 import type { UiLanguage } from "../../../shared/i18n-core";
 import { useT } from "../i18n";
 import { SettingsRow, SettingsSwitch } from "./settings-ui";
@@ -11,6 +11,7 @@ export function GeneralTab({ dsh }: { dsh: DshSettingsController }) {
   const [appSettings, setAppSettings] = useState<AppSettings>({
     closeToTray: true,
     collapseProcess: false,
+    transcriptView: "standard",
     chatWidth: "narrow",
   });
 
@@ -118,16 +119,23 @@ export function GeneralTab({ dsh }: { dsh: DshSettingsController }) {
         </SettingsRow>
 
         <SettingsRow
-          label={t("settings.general.collapseProcess.label")}
-          desc={t("settings.general.collapseProcess.desc")}
+          label={t("settings.general.transcriptView.label")}
+          desc={t("settings.general.transcriptView.desc")}
         >
-          <SettingsSwitch
-            checked={Boolean(appSettings.collapseProcess)}
-            onChange={(next) =>
-              void handleUpdateAppSetting({ collapseProcess: next })
+          <select
+            className="native-settings-select"
+            value={appSettings.transcriptView ?? "standard"}
+            onChange={(e) =>
+              void handleUpdateAppSetting({
+                transcriptView: e.target.value as TranscriptViewMode,
+              })
             }
-            label={t("settings.general.collapseProcess.label")}
-          />
+          >
+            <option value="standard">{t("settings.general.transcriptView.standard")}</option>
+            <option value="detailed">{t("settings.general.transcriptView.detailed")}</option>
+            <option value="compact">{t("settings.general.transcriptView.compact")}</option>
+            <option value="verbose">{t("settings.general.transcriptView.verbose")}</option>
+          </select>
         </SettingsRow>
 
         <SettingsRow

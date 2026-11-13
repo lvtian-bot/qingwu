@@ -98,9 +98,50 @@ test("无旧配置且未设置 DSH_HOME 时用默认值并写入用户主目录 
     const all = h.settings.getAll();
     assert.equal(all.closeToTray, true);
     assert.equal(all.notifyOnTaskFinished, true);
+    assert.equal(all.transcriptView, "standard");
     h.settings.set("collapseProcess", true);
     const expected = path.join(h.home, ".dsh", "profiles", "qingwu", "app-settings.json");
     assert.equal(JSON.parse(fs.readFileSync(expected, "utf8")).collapseProcess, true);
+  } finally {
+    cleanupDirsWithEnv([userData], previousDshHome);
+  }
+});
+
+test("transcriptView 默认 standard，支持四档，非法值回落，旧布尔值平滑迁移", () => {
+  const previousDshHome = process.env.DSH_HOME;
+  const userData = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "qingwu-ud-")), "qingwu");
+  try {
+    // 1. 无配置时默认 standard
+    const h1 = setup({ userData, legacySettings: null });
+    assert.equal(h1.settings.get("transcriptView"), "standard");
+
+    // 2. 正常设置各合法档位
+    for (const mode of ["compact", "detailed", "verbose", "standard"]) {
+      h1.settings.set("transcriptView", mode);
+      assert.equal(h1.settings.get("transcriptView"), mode);
+    }
+
+    // 3. 非法值加载时回落到 standard
+    const configPath = path.join(h1.profileDir, "app-settings.json");
+    fs.writeFileSync(configPath, JSON.stringify({ transcriptView: "invalid_mode" }), "utf8");
+    const fresh1 = loadTs("src/main/settings.ts", {
+      electron: { app: { getPath: (name) => (name === "userData" ? userData : h1.home) } },
+    }).settings;
+    assert.equal(fresh1.get("transcriptView"), "standard");
+
+    // 4. 旧布尔配置迁移：collapseProcess: true -> standard
+    fs.writeFileSync(configPath, JSON.stringify({ collapseProcess: true }), "utf8");
+    const fresh2 = loadTs("src/main/settings.ts", {
+      electron: { app: { getPath: (name) => (name === "userData" ? userData : h1.home) } },
+    }).settings;
+    assert.equal(fresh2.get("transcriptView"), "standard");
+
+    // 5. 旧布尔配置迁移：collapseProcess: false -> verbose
+    fs.writeFileSync(configPath, JSON.stringify({ collapseProcess: false }), "utf8");
+    const fresh3 = loadTs("src/main/settings.ts", {
+      electron: { app: { getPath: (name) => (name === "userData" ? userData : h1.home) } },
+    }).settings;
+    assert.equal(fresh3.get("transcriptView"), "verbose");
   } finally {
     cleanupDirsWithEnv([userData], previousDshHome);
   }
