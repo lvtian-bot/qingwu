@@ -88,7 +88,7 @@ function setup(options = {}) {
     let result;
     for (let pass = 0; pass < 10; pass++) {
       cursor = 0; dirty = false;
-      const sidebar = useSessionSidebar(env.sessions, env.workspaces, new Set(), env.currentId);
+      const sidebar = useSessionSidebar(env.sessions, env.workspaces, new Set());
       const actions = useSessionActions({
         sessions: env.sessions, workspaces: env.workspaces, archivedSet: new Set(),
         currentId: env.currentId, activeWorkspaceId: env.activeWorkspaceId,
@@ -145,19 +145,27 @@ test("项目标题与列表同步切换，收起时复位手动展示条数", ()
   assert.equal(h.sessions(state.view).length, 0);
 });
 
-test("当前项目临时展开且禁用标题切换，离开后恢复保存的收起偏好", () => {
+test("当前会话所在项目与其他项目一样可切换并持久化", () => {
   const h = setup({ currentId: "s1" });
   let state = h.render();
-  const row = h.rows(state.view)[0];
-  assert.equal(row.props.collapsed, false);
-  assert.equal(row.props.toggleDisabled, true);
+  // 当前会话在 w1 里也照保存的偏好收起：不强制展开，也不禁用标题
+  let row = h.rows(state.view)[0];
+  assert.equal(row.props.collapsed, true);
+  assert.equal(row.props.toggleDisabled, false);
+  assert.equal(h.sessions(state.view).length, 0);
+  // 点标题展开：写入偏好并露出该项目的会话行
   row.props.onToggle();
-  assert.deepEqual(h.saved(), ["w1", "w2"]);
-  assert.deepEqual(h.writes, []);
-  h.env.currentId = "s2";
+  state = h.render();
+  row = h.rows(state.view)[0];
+  assert.equal(row.props.collapsed, false);
+  assert.equal(h.sessions(state.view).length, 1);
+  assert.deepEqual(h.saved(), ["w2"]);
+  // 再点一次收起：当前会话仍在这个项目里也不被特殊照顾
+  row.props.onToggle();
   state = h.render();
   assert.equal(h.rows(state.view)[0].props.collapsed, true);
-  assert.equal(h.rows(state.view)[1].props.collapsed, false);
+  assert.equal(h.sessions(state.view).length, 0);
+  assert.deepEqual(h.saved(), ["w2", "w1"]);
 });
 
 test("搜索穿透项目及大分区，点击两个层级均不写入保存偏好", () => {
