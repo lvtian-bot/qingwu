@@ -2,7 +2,7 @@
  * 语义化工具调用卡片：按 wire 工具名映射到专用视图（终端/文件/搜索/编辑 diff/
  * 任务清单），未知工具回退通用 JSON 视图。数据结构依据本机真实会话日志实测。
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { diffLines } from 'diff';
 import { useT } from '../i18n';
 import type {
@@ -127,6 +127,10 @@ interface CardShellProps {
 
 function CardShell({ icon, title, subtitle, status, detail, error, initialOpen = false }: CardShellProps) {
   const [open, setOpen] = useState(initialOpen);
+
+  useEffect(() => {
+    setOpen(initialOpen);
+  }, [initialOpen]);
   return (
     <div className={`native-tool-card${error ? ' error' : ''}`}>
       <button className="native-tool-head" onClick={() => setOpen((v) => !v)}>

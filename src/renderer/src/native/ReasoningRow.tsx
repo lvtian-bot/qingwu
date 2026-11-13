@@ -6,7 +6,7 @@
  * 让文字贴着「刚想到哪」；思考结束后取第一行、超出右侧省略号，让整轮
  * 思考收成一句稳定的话。两处都会先去 ** 标记，避免折行行首出现裸星号。
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useT } from "../i18n";
 import { ChevronDownIcon, ThinkIcon } from "./native-icons";
 
@@ -40,6 +40,10 @@ export function ReasoningRow({
 }: ReasoningRowProps) {
   const t = useT();
   const [open, setOpen] = useState(initialOpen);
+
+  useEffect(() => {
+    setOpen(initialOpen);
+  }, [initialOpen]);
   const summary = (running ? latestLine(text) : firstLine(text)).replaceAll(
     "**",
     "",
