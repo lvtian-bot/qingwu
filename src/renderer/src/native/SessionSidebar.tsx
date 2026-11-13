@@ -27,7 +27,8 @@ export function useSessionSidebar(
   sessions: SessionSummary[],
   workspaces: WorkspaceView[],
   archivedSet: Set<string>,
-  currentId: string | null,
+  /** 当前会话所在项目：进入它的会话时自动展开一次，之后是否收起只听用户的。 */
+  currentWorkspaceId: string | null,
 ) {
   const t = useT();
   /** 侧栏置顶数据（本地持久化）。 */
@@ -103,40 +104,42 @@ export function useSessionSidebar(
   const [sessionVisibleByGroup, setSessionVisibleByGroup] = useState<
     Map<string, number>
   >(new Map());
-  const currentWorkspaceId = useMemo(
-    () =>
-      workspaces.find((ws) => currentId && ws.sessionIds.includes(currentId))
-        ?.workspaceId ?? null,
-    [workspaces, currentId],
-  );
-
-  /** 搜索及当前会话所在项目强制展开，点击标题不改变保存的偏好。 */
-  const isWorkspaceGroupLocked = useCallback(
-    (workspaceId: string) => searching || workspaceId === currentWorkspaceId,
-    [searching, currentWorkspaceId],
-  );
+  /**
+   * 本次进入的会话所在项目：进入时自动展开一次，只作用于这一次进入。
+   * 用户随后点收起就照办，不再被顶回去，也不改写保存的偏好；换到别的项目再回来重新展开一次。
+   */
+  const [autoExpandedWorkspaceId, setAutoExpandedWorkspaceId] = useState<
+    string | null
+  >(currentWorkspaceId);
+  useEffect(() => {
+    setAutoExpandedWorkspaceId(currentWorkspaceId);
+  }, [currentWorkspaceId]);
 
   /**
-   * 已折叠项目 + 必须保持可见的项目（当前会话所在项目），统一暴露为折叠状态。
-   * 与官方一致：用户上次把某项目收起来了，但当前正在浏览它里面的会话时仍保持展开。
+   * 项目分组此刻实际怎么呈现——列表是否露出、标题图标与箭头、点标题的语义，
+   * 三处共用这一份判断，避免各算各的出现「标题展开、下面却没列表」这类矛盾。
+   * 搜索态一律呈现为展开（否则收起项目里的匹配会话会被藏掉）；非搜索态按保存的偏好，
+   * 再加上「进入会话时展开一次」这一个例外。
    */
-  const collapsedWorkspaceIds = useMemo(() => {
-    if (!currentWorkspaceId || !collapsedWorkspaces.has(currentWorkspaceId)) {
-      return collapsedWorkspaces;
-    }
-    const next = new Set(collapsedWorkspaces);
-    next.delete(currentWorkspaceId);
-    return next;
-  }, [collapsedWorkspaces, currentWorkspaceId]);
+  const isWorkspaceGroupCollapsed = useCallback(
+    (workspaceId: string) =>
+      !searching &&
+      collapsedWorkspaces.has(workspaceId) &&
+      autoExpandedWorkspaceId !== workspaceId,
+    [searching, collapsedWorkspaces, autoExpandedWorkspaceId],
+  );
 
   /**
    * 折叠/展开项目分组（持久化）；折叠时同步复位该组会话展示条数，再点开回到默认条数。
-   * 搜索及当前会话所在项目强制展开，标题切换禁用，不暗中改写保存的偏好。
+   * 手动点击永远生效：收起会同时清掉本次的一次性自动展开，不会马上被顶开；搜索态不写偏好。
    */
   const toggleWorkspaceGroup = useCallback(
     (workspaceId: string) => {
-      if (isWorkspaceGroupLocked(workspaceId)) return;
-      const collapsing = !collapsedWorkspaceIds.has(workspaceId);
+      if (searching) return;
+      const collapsing = !isWorkspaceGroupCollapsed(workspaceId);
+      setAutoExpandedWorkspaceId((prev) =>
+        prev === workspaceId ? null : prev,
+      );
       setCollapsedWorkspaces((prev) => {
         const next = new Set(prev);
         if (collapsing) {
@@ -156,7 +159,7 @@ export function useSessionSidebar(
         });
       }
     },
-    [collapsedWorkspaceIds, isWorkspaceGroupLocked],
+    [isWorkspaceGroupCollapsed, searching],
   );
 
   /** 新建/复用空白会话成功或删除项目成功后清除折叠标记。 */
@@ -268,18 +271,6 @@ export function useSessionSidebar(
     [searchText],
   );
 
-  /**
-   * 项目分组此刻实际怎么呈现——列表是否露出、标题图标与箭头、点标题的语义，
-   * 三处共用这一份判断，避免各算各的出现「标题展开、下面却没列表」这类矛盾。
-   * 搜索态一律呈现为展开（否则收起项目里的匹配会话会被藏掉）；
-   * 非搜索态按生效的收起状态（collapsedWorkspaceIds 已剔除当前会话所在项目）。
-   */
-  const isWorkspaceGroupCollapsed = useCallback(
-    (workspaceId: string) =>
-      !searching && collapsedWorkspaceIds.has(workspaceId),
-    [searching, collapsedWorkspaceIds],
-  );
-
   // 1. 置顶项目（保持置顶时间倒序）
   const pinnedWorkspaces = useMemo(() => {
     const wsMap = new Map(workspaces.map((w) => [w.workspaceId, w]));
@@ -326,7 +317,6 @@ export function useSessionSidebar(
     getWorkspaceSessions,
     isWorkspaceListed,
     isWorkspaceGroupCollapsed,
-    isWorkspaceGroupLocked,
     pinnedWorkspaces,
     pinnedSessionsList,
     normalWorkspaces,
@@ -396,7 +386,6 @@ export function SessionSidebar({
     getWorkspaceSessions,
     isWorkspaceListed,
     isWorkspaceGroupCollapsed,
-    isWorkspaceGroupLocked,
     pinnedWorkspaces,
     pinnedSessionsList,
     normalWorkspaces,
@@ -558,8 +547,8 @@ export function SessionSidebar({
   };
 
   /**
-   * 打开项目内的会话。会话行能点到就意味着它已经展示出来，这里不改变折叠记录：
-   * 当前会话所在项目可能只是临时展开，用户离开后仍应按之前收起的偏好收回。
+   * 打开项目内的会话。会话行能点到就意味着它已经展示出来，这里不改变折叠记录；
+   * 收起与否始终只由用户点标题决定。
    */
   const openWorkspaceSession = (_workspaceId: string, sessionId: string) => {
     openSession(sessionId);
@@ -769,7 +758,7 @@ export function SessionSidebar({
                         <WorkspaceRow
                           workspace={ws}
                           collapsed={isWorkspaceGroupCollapsed(ws.workspaceId)}
-                          toggleDisabled={isWorkspaceGroupLocked(ws.workspaceId)}
+                          toggleDisabled={searching}
                           pinned={true}
                           canMoveUp={canReorder && index > 0}
                           canMoveDown={
@@ -903,7 +892,7 @@ export function SessionSidebar({
                       <WorkspaceRow
                         workspace={ws}
                         collapsed={isWorkspaceGroupCollapsed(ws.workspaceId)}
-                        toggleDisabled={isWorkspaceGroupLocked(ws.workspaceId)}
+                        toggleDisabled={searching}
                         pinned={false}
                         canMoveUp={canReorder && index > 0}
                         canMoveDown={

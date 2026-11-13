@@ -264,7 +264,7 @@ export function NativeApp({
     sessions,
     workspaces,
     archivedSet,
-    currentId,
+    currentId ? workspaceOfSession.get(currentId) ?? null : null,
   );
 
   const actions = useSessionActions({
