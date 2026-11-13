@@ -15,6 +15,7 @@ import { MessageImageView } from "./images";
 import { Markdown } from "./markdown";
 import { ChevronDownIcon } from "./native-icons";
 import { ReasoningRow } from "./ReasoningRow";
+import type { TranscriptViewMode } from "../../../shared/types";
 import { ToolCard } from "./ToolCard";
 
 /** 毫秒 → 「3m 55s」/「42s」。 */
@@ -481,7 +482,7 @@ export function TurnItems({
   view,
   cwd,
   sessionId,
-  collapseProcess = false,
+  transcriptView = "standard",
   alwaysShowActions = false,
   onPreviewImage,
   onFork,
@@ -491,7 +492,7 @@ export function TurnItems({
   view: TurnView;
   cwd?: string;
   sessionId?: string | null;
-  collapseProcess?: boolean;
+  transcriptView?: TranscriptViewMode;
   /** 最新一轮的操作栏常驻显示（历史轮次悬停浮现），由调用方按轮次位置传入。 */
   alwaysShowActions?: boolean;
   onPreviewImage?: (url: string) => void;
@@ -582,8 +583,8 @@ export function TurnItems({
     );
   };
 
-  // 未开启折叠设置、或没收束完整一轮（运行中、或整轮没有答复）时照旧逐条显示，不折叠
-  if (!collapseProcess || !view.foldable || !view.answer) {
+  // 完全展开模式（verbose）、或未收束完整一轮（运行中、或整轮没有答复）时照旧逐条显示，不折叠
+  if (transcriptView === "verbose" || !view.foldable || !view.answer) {
     return (
       <>
         {view.items.map((item) => renderItem(item))}
@@ -623,7 +624,7 @@ export function TurnItems({
         </div>
       )}
       {/* 折叠行收起时思考由它代表，展开后答复里的思考行照常显示 */}
-      {renderItem(view.answer, open)}
+      {renderItem(view.answer, transcriptView === "compact" ? false : open)}
       {trailingItems.map((item) => renderItem(item))}
     </>
   );

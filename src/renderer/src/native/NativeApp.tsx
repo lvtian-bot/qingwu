@@ -1,6 +1,6 @@
 /** 界面编排：组合引擎流、草稿、滚动、模型选择与侧栏操作 hooks，负责任务发送与决策回执。 */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ChatWidth } from "../../../shared/types";
+import { TRANSCRIPT_VIEW_MODES, type ChatWidth, type TranscriptViewMode } from "../../../shared/types";
 import { useT } from "../i18n";
 import { Markdown } from "./markdown";
 import "./native.css";
@@ -73,8 +73,8 @@ export function NativeApp({
   const [settingsOpen, setSettingsOpen] = useState(false);
   /** 定时任务页显隐状态（与设置页互斥：同一时间只打开一个全页面板） */
   const [scheduleOpen, setScheduleOpen] = useState(false);
-  /** 是否折叠回合执行过程与工具调用（应用设置项，默认 false：平铺展开） */
-  const [collapseProcess, setCollapseProcess] = useState(false);
+  /** 工作步骤展示模式（应用设置项，对齐 DSH 官方 ui-chat.transcriptView 规范，默认 standard 标准模式） */
+  const [transcriptView, setTranscriptView] = useState<TranscriptViewMode>("standard");
   /** 聊天区内容列宽档位（应用设置项，默认紧凑） */
   const [chatWidth, setChatWidth] = useState<ChatWidth>("narrow");
   /** 最近活跃工作区（对齐官方 New Session 语义：新会话落在这里）。 */
@@ -113,7 +113,12 @@ export function NativeApp({
         .getAppSettings()
         .then((s) => {
           if (s) {
-            setCollapseProcess(Boolean(s.collapseProcess));
+            const mode = s.transcriptView && TRANSCRIPT_VIEW_MODES.includes(s.transcriptView)
+              ? s.transcriptView
+              : s.collapseProcess
+              ? "standard"
+              : "standard";
+            setTranscriptView(mode);
             setChatWidth(s.chatWidth ?? "narrow");
           }
         })
@@ -121,7 +126,12 @@ export function NativeApp({
     }
     if (window.qingwu?.onAppSettingsChanged) {
       return window.qingwu.onAppSettingsChanged((s) => {
-        setCollapseProcess(Boolean(s.collapseProcess));
+        const mode = s.transcriptView && TRANSCRIPT_VIEW_MODES.includes(s.transcriptView)
+          ? s.transcriptView
+          : s.collapseProcess
+          ? "standard"
+          : "standard";
+        setTranscriptView(mode);
         setChatWidth(s.chatWidth ?? "narrow");
       });
     }
@@ -1177,7 +1187,7 @@ export function NativeApp({
                       view={view}
                       cwd={currentCwd}
                       sessionId={currentId}
-                      collapseProcess={collapseProcess}
+                      transcriptView={transcriptView}
                       alwaysShowActions={index === items.length - 1}
                       onPreviewImage={handlePreviewImage}
                       onFork={

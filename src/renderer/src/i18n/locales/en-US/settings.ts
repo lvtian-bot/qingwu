@@ -73,6 +73,14 @@ export const settings: typeof zhSettings = {
       label: "Minimize to system tray",
       desc: "Keeps the app in the system tray after closing the window so background sessions continue; when turned off, clicking the close button quits Qingwu.",
     },
+    transcriptView: {
+      label: "Working steps display",
+      desc: "Controls the level of detail shown for reasoning and tool calls; Standard is the recommended default.",
+      standard: "Standard (collapse process summary, recommended)",
+      compact: "Compact (minimal summary, hide reasoning preview)",
+      detailed: "Detailed (stream full process, collapse upon completion)",
+      verbose: "Verbose (always show all steps expanded)",
+    },
     collapseProcess: {
       label: "Collapse process and tool calls",
       desc: "After a conversation turn completes, collapse thinking and tool calls into a one-line summary; off by default, showing everything expanded.",
