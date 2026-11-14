@@ -31,7 +31,6 @@ export const Endpoints = {
   credentialsUnset: 'credentials/unset',
   llmListProviders: 'llm/listProviders',
   llmListConfigurableProviders: 'llm/listConfigurableProviders',
-  llmDiscoverModels: 'llm/discoverModels',
   settingsDescribe: 'settings/describe',
   settingsMutate: 'settings/mutate',
   settingsOpenSettingsDocument: 'settings/openSettingsDocument',
@@ -336,22 +335,6 @@ export interface ConfigurableProviderEntry {
   error?: string;
 }
 
-/** llm/discoverModels 查询参数：探针 endpoint、协议与可选即时凭据。 */
-export interface LlmModelDiscoveryRequest {
-  provider?: string;
-  baseURL?: string;
-  api?: string;
-  apiKey?: string;
-}
-
-/** llm/discoverModels 返回的候选模型条目。 */
-export interface LlmDiscoveredModel {
-  id: string;
-  name?: string;
-  contextWindow?: number;
-  maxTokens?: number;
-  inputModalities?: readonly string[];
-}
 
 // ---------- 设置命名空间（settings/describe、settings/mutate） ----------
 

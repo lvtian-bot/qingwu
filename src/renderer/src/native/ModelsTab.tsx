@@ -1,15 +1,11 @@
 import { useMemo } from "react";
 import { useT } from "../i18n";
-import { CustomProviderCreate } from "./CustomProviderCreate";
 import { ProviderDetail } from "./ProviderDetail";
 import type { ModelCatalog } from "./protocol";
 import { providerDisplayName } from "./provider-brand";
 import { deriveKeyRef } from "./settings-domain";
 import type { DshSettingsController } from "./useDshSettings";
-import {
-  useAvailableProtocols,
-  useProviderDirectory,
-} from "./useProviderDirectory";
+import { useProviderDirectory } from "./useProviderDirectory";
 
 /** 模型设置分区：供应商目录与凭据管理 + 新会话默认模型。 */
 export function ModelsTab({
@@ -38,10 +34,8 @@ export function ModelsTab({
     externalRefreshTrigger: credentialVersion,
     accountAvailable,
   });
-  const availableProtocols = useAvailableProtocols(dir.llmViews);
   const t = useT();
   const {
-    providerRows,
     addedRows,
     availableRows,
     selectedProvider,
@@ -52,9 +46,6 @@ export function ModelsTab({
     selectedView,
     isSelectedRemovable,
     addingProvider,
-    setAddingProvider,
-    isAddingCustom,
-    setIsAddingCustom,
     isAddingFlow,
     startAddingFlow,
     exitAddingFlow,
@@ -69,7 +60,6 @@ export function ModelsTab({
     profileDirty,
     setDraftField,
     loadProviders,
-    handleSaveCustom,
     handleDeleteProvider,
     handleSaveProvider,
   } = dir;
@@ -141,8 +131,7 @@ export function ModelsTab({
               type="button"
               className={`native-provider-nav-item ${
                 selectedProvider === row.provider &&
-                !addingProvider &&
-                !isAddingCustom
+                !addingProvider
                   ? "active"
                   : ""
               }`}
@@ -195,19 +184,7 @@ export function ModelsTab({
               </span>
             </div>
           )}
-          {isAddingCustom ? (
-            <CustomProviderCreate
-              existingRoutes={providerRows.map((r) => r.provider)}
-              protocols={availableProtocols}
-              writable={settingsWritable}
-              loading={credLoading}
-              onSave={handleSaveCustom}
-              onCancel={() => {
-                setIsAddingCustom(false);
-                setAddingProvider(true);
-              }}
-            />
-          ) : selectedRow && (selectedIsAdded || addingProvider) ? (
+          {selectedRow && (selectedIsAdded || addingProvider) ? (
             <ProviderDetail
               row={selectedRow}
               adding={addingProvider && !selectedIsAdded}
@@ -292,25 +269,6 @@ export function ModelsTab({
                   );
                 })
               )}
-              {/* 自定义入口是少数派选项，排在内置服务商之后 */}
-              <button
-                type="button"
-                className="native-provider-card native-provider-card-custom"
-                onClick={() => {
-                  setIsAddingCustom(true);
-                  setSelectedProvider(null);
-                }}
-                title={t("settings.models.addCustom")}
-              >
-                <span className="native-provider-card-body">
-                  <span className="native-provider-card-name">
-                    + {t("settings.models.addCustom")}
-                  </span>
-                  <span className="native-provider-picker-hint">
-                    {t("settings.models.addCustomHint")}
-                  </span>
-                </span>
-              </button>
             </div>
           )}
         </div>

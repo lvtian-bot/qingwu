@@ -1,6 +1,5 @@
 import {
   type ConfigurableProviderEntry,
-  type LlmDiscoveredModel,
   type RegisteredProvider,
   type SettingsNamespaceView,
   type SettingsPathOp,
@@ -238,49 +237,3 @@ export function isHttpUrl(value: string): boolean {
   }
 }
 
-/** 接口拉取的候选并入现有模型清单（按 ID 去重，返回合并后的完整清单）。 */
-export function mergeCandidateModels(
-  existing: CustomModelEntry[],
-  chosen: LlmDiscoveredModel[],
-): CustomModelEntry[] {
-  const merged = [...existing];
-  const ids = new Set(existing.map((m) => m.id));
-  for (const c of chosen) {
-    if (ids.has(c.id)) continue;
-    ids.add(c.id);
-    merged.push({
-      id: c.id,
-      name: c.name && c.name !== c.id ? c.name : undefined,
-    });
-  }
-  return merged;
-}
-
-/** 手动添加模型到清单；ID 重复时返回错误文案。入参应为已去除首尾空白的值。不传 t 时按中文兜底。 */
-export function appendManualModel(
-  existing: CustomModelEntry[],
-  id: string,
-  name: string,
-  reasoning: boolean,
-  t?: Translate,
-): { ok: true; models: CustomModelEntry[] } | { ok: false; error: string } {
-  if (existing.some((m) => m.id === id)) {
-    return {
-      ok: false,
-      error: t
-        ? t("settings.provider.duplicateModelId", { id })
-        : `模型 ID「${id}」已在列表中`,
-    };
-  }
-  return {
-    ok: true,
-    models: [
-      ...existing,
-      {
-        id,
-        name: name || undefined,
-        reasoning: reasoning || undefined,
-      },
-    ],
-  };
-}
