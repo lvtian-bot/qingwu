@@ -8,6 +8,9 @@ export const chat: typeof zhChat = {
   panel: {
     open: "Open panel",
   },
+  header: {
+    renameHint: "Click to rename",
+  },
   workspace: {
     ungrouped: "Ungrouped",
     select: "Select workspace",

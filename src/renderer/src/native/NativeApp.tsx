@@ -27,6 +27,7 @@ import { ChevronDownIcon } from "./native-icons";
 import { TodoPanel } from "./TodoPanel";
 import { usePanelWidth } from "./usePanelWidth";
 import { ChatComposer } from "./ChatComposer";
+import { ChatTitle } from "./ChatTitle";
 import { ConnectionBanner } from "./ConnectionBanner";
 import { fileToBase64, LightboxModal, MessageImageView } from "./images";
 import {
@@ -467,6 +468,16 @@ export function NativeApp({
     () => sessions.find((s) => s.sessionId === currentId) ?? null,
     [sessions, currentId],
   );
+
+  /** 当前会话所属项目（标题面包屑的项目段，也是项目段点击新建会话的目标）。 */
+  const currentWorkspace = useMemo(() => {
+    const workspaceId = currentId
+      ? workspaceOfSession.get(currentId) ?? null
+      : null;
+    return workspaceId
+      ? workspaces.find((w) => w.workspaceId === workspaceId) ?? null
+      : null;
+  }, [currentId, workspaceOfSession, workspaces]);
 
   /**
    * 是否渲染新会话引导页（居中问候 + 居中输入框）：
@@ -966,6 +977,13 @@ export function NativeApp({
     },
     [createSessionIn],
   );
+  /** 标题面包屑的项目段：在该项目下新建会话并切过去，失败照常上报。 */
+  const openNewSessionInProject = useCallback(() => {
+    if (!currentWorkspace) return;
+    void createSessionExitTasks(currentWorkspace.workspaceId).catch((err) =>
+      setError(err instanceof Error ? err.message : String(err)),
+    );
+  }, [currentWorkspace, createSessionExitTasks, setError]);
   const newSessionExitTasks = useCallback(async () => {
     setScheduleOpen(false);
     return handleNewSession();
@@ -1138,20 +1156,19 @@ export function NativeApp({
           <>
             <div className="native-chat-header">
               <div className="native-chat-header-left">
-                <svg
-                  viewBox="0 0 24 24"
-                  width="16"
-                  height="16"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                >
-                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2Z" />
-                </svg>
-                <span className="native-chat-header-title">{currentTitle}</span>
+                {currentId && (
+                  <ChatTitle
+                    key={currentId}
+                    projectTitle={currentWorkspace?.title ?? null}
+                    title={currentTitle}
+                    onNewSessionInProject={
+                      currentWorkspace ? openNewSessionInProject : undefined
+                    }
+                    onRename={(title) =>
+                      void handleSessionRename(currentId, title)
+                    }
+                  />
+                )}
               </div>
               <div className="native-chat-header-right">
                 <JobListPopover sessionId={currentId} />

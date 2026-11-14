@@ -6,6 +6,10 @@ export const chat = {
   panel: {
     open: "打开面板",
   },
+  /** 会话页标题（ChatTitle） */
+  header: {
+    renameHint: "点击重命名",
+  },
   workspace: {
     ungrouped: "未分组",
     select: "选择工作区",
