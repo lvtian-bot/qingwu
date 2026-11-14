@@ -107,28 +107,30 @@ export function ShortcutsTab() {
       </div>
 
       {groups.map((group) => (
-        <div key={group.groupKey} className="native-settings-card">
+        <div key={group.groupKey} className="native-settings-section">
           <div className="native-settings-section-title">
             {t(group.groupKey)}
           </div>
-          <div className="native-shortcuts-list">
-            {group.items.map((item) => (
-              <div key={item.id} className="native-shortcut-row">
-                <span className="native-shortcut-name">
-                  {t(item.labelKey)}
-                </span>
-                <div className="native-shortcut-keys">
-                  {item.keys.map((k, index) => (
-                    <span key={index} className="native-shortcut-key-wrap">
-                      <kbd className="native-shortcut-kbd">{k}</kbd>
-                      {index < item.keys.length - 1 && (
-                        <span className="native-shortcut-plus">+</span>
-                      )}
-                    </span>
-                  ))}
+          <div className="native-settings-card">
+            <div className="native-shortcuts-list">
+              {group.items.map((item) => (
+                <div key={item.id} className="native-shortcut-row">
+                  <span className="native-shortcut-name">
+                    {t(item.labelKey)}
+                  </span>
+                  <div className="native-shortcut-keys">
+                    {item.keys.map((k, index) => (
+                      <span key={index} className="native-shortcut-key-wrap">
+                        <kbd className="native-shortcut-kbd">{k}</kbd>
+                        {index < item.keys.length - 1 && (
+                          <span className="native-shortcut-plus">+</span>
+                        )}
+                      </span>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </div>
       ))}
