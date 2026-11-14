@@ -23,11 +23,9 @@ import {
   familyOf,
   joinProviderDirectory,
   pathOps,
-  schemaUnionChoices,
   stringAt,
   userSubtreeAt,
   valueAtPath,
-  type CustomModelEntry,
   type ProviderRow,
 } from "./settings-domain";
 
@@ -50,9 +48,6 @@ export interface ProviderDirectory {
   /** 添加流程进行中：详情区展示「可选供应商」选择器或被选中的未配置供应商。 */
   addingProvider: boolean;
   setAddingProvider: (next: boolean) => void;
-  /** 自定义服务商添加进行中。 */
-  isAddingCustom: boolean;
-  setIsAddingCustom: (next: boolean) => void;
   isAddingFlow: boolean;
   startAddingFlow: () => void;
   exitAddingFlow: () => void;
@@ -70,14 +65,6 @@ export interface ProviderDirectory {
   profileDirty: boolean;
   setDraftField: (key: string, value: unknown) => void;
   loadProviders: () => Promise<void>;
-  handleSaveCustom: (data: {
-    route: string;
-    displayName?: string;
-    api: string;
-    baseURL: string;
-    apiKey?: string;
-    models: CustomModelEntry[];
-  }) => Promise<void>;
   handleDeleteProvider: (row: ProviderRow) => Promise<void>;
   handleSaveProvider: (row: ProviderRow) => Promise<void>;
 }
@@ -93,28 +80,6 @@ function providerRank(provider: string): number {
   if (provider === ACCOUNT_PROVIDER) return 0;
   if (provider === "deepseek-official") return 1;
   return 2;
-}
-
-/** 自声明路由可选择的 API 协议；schema 不可用时回退到常见协议清单。 */
-export function useAvailableProtocols(
-  llmViews: Record<string, SettingsNamespaceView>,
-): string[] {
-  return useMemo(() => {
-    const piAi = llmViews["llm-pi-ai"];
-    const choices = schemaUnionChoices(piAi?.schema, [
-      "providers",
-      "\u0000probe",
-      "api",
-    ]);
-    return choices.length > 0
-      ? choices
-      : [
-          "openai-completions",
-          "anthropic-messages",
-          "google-generative-ai",
-          "mistral-chat",
-        ];
-  }, [llmViews]);
 }
 
 export function useProviderDirectory(options: {
@@ -133,7 +98,6 @@ export function useProviderDirectory(options: {
   const [providerRows, setProviderRows] = useState<ProviderRow[]>([]);
   const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
   const [addingProvider, setAddingProvider] = useState(false);
-  const [isAddingCustom, setIsAddingCustom] = useState(false);
   const [keyInputs, setKeyInputs] = useState<Record<string, string>>({});
   const [keyVisible, setKeyVisible] = useState<Record<string, boolean>>({});
   const [credLoading, setCredLoading] = useState(false);
@@ -245,73 +209,6 @@ export function useProviderDirectory(options: {
       void loadProviders();
     }
   }, [externalRefreshTrigger, loadProviders]);
-
-  // 添加自定义服务商保存
-  const handleSaveCustom = useCallback(
-    async (data: {
-      route: string;
-      displayName?: string;
-      api: string;
-      baseURL: string;
-      apiKey?: string;
-      models: CustomModelEntry[];
-    }) => {
-      try {
-        setCredLoading(true);
-        setCredMessage(null);
-        const keyRef = deriveKeyRef(data.route);
-        const storesKey = (data.apiKey ?? "").trim().length > 0;
-        const profile = {
-          ...(data.displayName ? { displayName: data.displayName } : {}),
-          ...(storesKey ? { apiKeyEnv: keyRef } : {}),
-          api: data.api,
-          baseURL: data.baseURL.trim(),
-          models: data.models.map((m) => ({
-            id: m.id,
-            ...(m.name && m.name !== m.id ? { name: m.name } : {}),
-            ...(m.reasoning ? { reasoning: true } : {}),
-          })),
-        };
-        const piAiView = llmViews["llm-pi-ai"];
-        await rpc(Endpoints.settingsMutate, {
-          ns: "llm-pi-ai",
-          ops: [
-            {
-              op: "set",
-              path: ["providers", data.route],
-              value: profile,
-            },
-          ],
-          expectedRevision: piAiView?.revision,
-        });
-        if (storesKey) {
-          await rpc<void>(Endpoints.credentialsSet, {
-            ref: keyRef,
-            value: data.apiKey!.trim(),
-          });
-        }
-        setCredMessage(
-          t("settings.messages.customAdded", {
-            name: data.displayName || data.route,
-          }),
-        );
-        await loadProviders();
-        onRefreshCatalog?.();
-        setIsAddingCustom(false);
-        setAddingProvider(false);
-        setSelectedProvider(data.route);
-      } catch (err) {
-        setCredMessage(
-          t("settings.messages.addFailed", {
-            message: err instanceof Error ? err.message : String(err),
-          }),
-        );
-      } finally {
-        setCredLoading(false);
-      }
-    },
-    [llmViews, loadProviders, onRefreshCatalog, t],
-  );
 
   // 删除服务商（包括自定义服务商与用户添加的预设服务商）
   const handleDeleteProvider = useCallback(
@@ -515,21 +412,18 @@ export function useProviderDirectory(options: {
   );
 
   // 添加供应商流程：进入与退出（退出时回落到第一个已添加供应商）
-  const isAddingFlow = addingProvider || isAddingCustom;
+  const isAddingFlow = addingProvider;
   const startAddingFlow = useCallback(() => {
     setAddingProvider(true);
-    setIsAddingCustom(false);
     setSelectedProvider(null);
   }, []);
   const exitAddingFlow = useCallback(() => {
     setAddingProvider(false);
-    setIsAddingCustom(false);
     setSelectedProvider(addedRows[0]?.provider ?? null);
   }, [addedRows]);
 
   const selectProvider = useCallback((provider: string) => {
     setAddingProvider(false);
-    setIsAddingCustom(false);
     setSelectedProvider(provider);
   }, []);
 
@@ -546,8 +440,6 @@ export function useProviderDirectory(options: {
     isSelectedRemovable,
     addingProvider,
     setAddingProvider,
-    isAddingCustom,
-    setIsAddingCustom,
     isAddingFlow,
     startAddingFlow,
     exitAddingFlow,
@@ -563,7 +455,6 @@ export function useProviderDirectory(options: {
     profileDirty,
     setDraftField,
     loadProviders,
-    handleSaveCustom,
     handleDeleteProvider,
     handleSaveProvider,
   };

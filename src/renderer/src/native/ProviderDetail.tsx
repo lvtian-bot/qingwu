@@ -1,24 +1,19 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useT } from "../i18n";
-import { CandidateModelPicker } from "./CandidateModelPicker";
 import {
-  type LlmDiscoveredModel,
   type ModelCatalogModel,
   type SettingsNamespaceView,
 } from "./protocol";
 import {
-  appendManualModel,
   deriveKeyRef,
   familyOf,
-  mergeCandidateModels,
   schemaUnionChoices,
   stringAt,
   valueAtPath,
   type CustomModelEntry,
   type ProviderRow,
 } from "./settings-domain";
-import { KeyVisibilityToggle, ModelAddRow, ModelItemRow } from "./settings-ui";
-import { useModelDiscovery } from "./useModelDiscovery";
+import { KeyVisibilityToggle, ModelItemRow } from "./settings-ui";
 
 /** 供应商详情区：密钥 + 连接参数（API 地址/协议）+ 模型目录。 */
 export function ProviderDetail(props: {
@@ -84,51 +79,6 @@ export function ProviderDetail(props: {
     }));
   }, [props.draft.models, fallback, props.models]);
 
-  const [manualModelId, setManualModelId] = useState("");
-  const [manualModelName, setManualModelName] = useState("");
-  const [manualModelReasoning, setManualModelReasoning] = useState(false);
-  const discovery = useModelDiscovery();
-
-  const effectiveBaseURL =
-    draftBaseURL || (stringAt(fallback, "baseURL") ?? "");
-
-  const handleDiscoverInDetail = () =>
-    void discovery.discover({
-      settingsNs: row.settingsNs || "llm-pi-ai",
-      request: {
-        baseURL: effectiveBaseURL,
-        api: effectiveApi,
-        ...(props.inputValue.trim() ? { apiKey: props.inputValue.trim() } : {}),
-      },
-      invalidUrlMessage: t("settings.provider.invalidApiUrl"),
-    });
-
-  const handleAddCandidatesInDetail = (chosen: LlmDiscoveredModel[]) => {
-    props.onDraftField("models", mergeCandidateModels(declaredModels, chosen));
-    discovery.closeCandidates();
-  };
-
-  const handleAddManualInDetail = () => {
-    const id = manualModelId.trim();
-    if (!id) return;
-    const result = appendManualModel(
-      declaredModels,
-      id,
-      manualModelName.trim(),
-      manualModelReasoning,
-      t,
-    );
-    if (!result.ok) {
-      discovery.setFetchError(result.error);
-      return;
-    }
-    props.onDraftField("models", result.models);
-    setManualModelId("");
-    setManualModelName("");
-    setManualModelReasoning(false);
-    discovery.setFetchError(null);
-  };
-
   const handleRemoveModelInDetail = (id: string) => {
     props.onDraftField(
       "models",
@@ -138,13 +88,6 @@ export function ProviderDetail(props: {
 
   return (
     <div className="native-provider-detail">
-      {discovery.candidates && (
-        <CandidateModelPicker
-          candidates={discovery.candidates}
-          onAdd={handleAddCandidatesInDetail}
-          onClose={discovery.closeCandidates}
-        />
-      )}
       <div className="native-provider-head">
         <span className="native-provider-title">{row.displayName}</span>
         <span className="native-provider-ref-code">{row.provider}</span>
@@ -274,32 +217,7 @@ export function ProviderDetail(props: {
               count: row.declared ? declaredModels.length : props.models.length,
             })}
           </span>
-          {row.declared && (
-            <div className="native-model-actions-head">
-              <button
-                type="button"
-                className="native-btn native-btn-secondary native-btn-sm"
-                disabled={
-                  discovery.fetching || props.loading || !effectiveBaseURL
-                }
-                onClick={handleDiscoverInDetail}
-                title={
-                  effectiveBaseURL
-                    ? t("settings.provider.discoverTitle")
-                    : t("settings.provider.discoverNeedUrlTitle")
-                }
-              >
-                {discovery.fetching
-                  ? t("settings.shared.discovering")
-                  : t("settings.shared.discover")}
-              </button>
-            </div>
-          )}
         </div>
-
-        {discovery.fetchError && (
-          <div className="native-provider-error">{discovery.fetchError}</div>
-        )}
 
         {row.declared ? (
           declaredModels.length === 0 ? (
@@ -342,18 +260,6 @@ export function ProviderDetail(props: {
               )}
             </div>
           ))
-        )}
-
-        {row.declared && (
-          <ModelAddRow
-            idValue={manualModelId}
-            nameValue={manualModelName}
-            reasoning={manualModelReasoning}
-            onIdChange={setManualModelId}
-            onNameChange={setManualModelName}
-            onReasoningChange={setManualModelReasoning}
-            onAdd={handleAddManualInDetail}
-          />
         )}
       </div>
     </div>
