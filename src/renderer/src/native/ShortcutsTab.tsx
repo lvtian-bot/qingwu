@@ -1,6 +1,4 @@
 import { useT } from "../i18n";
-import { SettingsSwitch } from "./settings-ui";
-import { useState } from "react";
 
 interface ShortcutItem {
   id: string;
@@ -13,11 +11,11 @@ interface ShortcutGroup {
   items: ShortcutItem[];
 }
 
-/** 键盘快捷键分区：按业务分块速查与开关（参照成熟桌面标杆规范）。 */
+/** 键盘快捷键分区：按业务分块速查（纯静态参考表，对齐真实注册键位）。 */
 export function ShortcutsTab() {
   const t = useT();
 
-  // 快捷键定义分组
+  // 严格对齐青梧目前真实支持的快捷键
   const groups: ShortcutGroup[] = [
     {
       groupKey: "settings.shortcuts.groupInput",
@@ -35,32 +33,22 @@ export function ShortcutsTab() {
         {
           id: "stopGeneration",
           labelKey: "settings.shortcuts.stopGeneration",
-          keys: ["Esc"],
+          keys: ["Esc", "Esc"],
+        },
+        {
+          id: "mentionFile",
+          labelKey: "settings.shortcuts.mentionFile",
+          keys: ["@"],
+        },
+        {
+          id: "slashCommand",
+          labelKey: "settings.shortcuts.slashCommand",
+          keys: ["/"],
         },
       ],
     },
     {
-      groupKey: "settings.shortcuts.groupChat",
-      items: [
-        {
-          id: "newChat",
-          labelKey: "settings.shortcuts.newChat",
-          keys: ["Ctrl", "N"],
-        },
-        {
-          id: "focusInput",
-          labelKey: "settings.shortcuts.focusInput",
-          keys: ["Ctrl", "L"],
-        },
-        {
-          id: "archiveChat",
-          labelKey: "settings.shortcuts.archiveChat",
-          keys: ["Ctrl", "Shift", "A"],
-        },
-      ],
-    },
-    {
-      groupKey: "settings.shortcuts.groupApp",
+      groupKey: "settings.shortcuts.groupNavigation",
       items: [
         {
           id: "openSettings",
@@ -68,15 +56,20 @@ export function ShortcutsTab() {
           keys: ["Ctrl", ","],
         },
         {
-          id: "toggleSidebar",
-          labelKey: "settings.shortcuts.toggleSidebar",
-          keys: ["Ctrl", "B"],
+          id: "workspaceFiles",
+          labelKey: "settings.shortcuts.workspaceFiles",
+          keys: ["Ctrl", "P"],
         },
         {
-          id: "closeWindow",
-          labelKey: "settings.shortcuts.closeWindow",
-          keys: ["Ctrl", "W"],
+          id: "openTerminal",
+          labelKey: "settings.shortcuts.openTerminal",
+          keys: ["Ctrl", "`"],
         },
+      ],
+    },
+    {
+      groupKey: "settings.shortcuts.groupApp",
+      items: [
         {
           id: "zoomIn",
           labelKey: "settings.shortcuts.zoomIn",
@@ -92,19 +85,19 @@ export function ShortcutsTab() {
           labelKey: "settings.shortcuts.zoomReset",
           keys: ["Ctrl", "0"],
         },
+        {
+          id: "toggleFullScreen",
+          labelKey: "settings.shortcuts.toggleFullScreen",
+          keys: ["F11"],
+        },
+        {
+          id: "quit",
+          labelKey: "settings.shortcuts.quit",
+          keys: ["Alt", "F4"],
+        },
       ],
     },
   ];
-
-  // 快捷键启用状态（本地响应态）
-  const [enabledMap, setEnabledMap] = useState<Record<string, boolean>>({});
-
-  const toggleShortcut = (id: string) => {
-    setEnabledMap((prev) => ({
-      ...prev,
-      [id]: prev[id] === undefined ? false : !prev[id],
-    }));
-  };
 
   return (
     <>
@@ -119,33 +112,23 @@ export function ShortcutsTab() {
             {t(group.groupKey)}
           </div>
           <div className="native-shortcuts-list">
-            {group.items.map((item) => {
-              const isEnabled = enabledMap[item.id] ?? true;
-              return (
-                <div key={item.id} className="native-shortcut-row">
-                  <div className="native-shortcut-left">
-                    <SettingsSwitch
-                      checked={isEnabled}
-                      onChange={() => toggleShortcut(item.id)}
-                      label={t(item.labelKey)}
-                    />
-                    <span className="native-shortcut-name">
-                      {t(item.labelKey)}
+            {group.items.map((item) => (
+              <div key={item.id} className="native-shortcut-row">
+                <span className="native-shortcut-name">
+                  {t(item.labelKey)}
+                </span>
+                <div className="native-shortcut-keys">
+                  {item.keys.map((k, index) => (
+                    <span key={index} className="native-shortcut-key-wrap">
+                      <kbd className="native-shortcut-kbd">{k}</kbd>
+                      {index < item.keys.length - 1 && (
+                        <span className="native-shortcut-plus">+</span>
+                      )}
                     </span>
-                  </div>
-                  <div className="native-shortcut-keys">
-                    {item.keys.map((k, index) => (
-                      <span key={index} className="native-shortcut-key-wrap">
-                        <kbd className="native-shortcut-kbd">{k}</kbd>
-                        {index < item.keys.length - 1 && (
-                          <span className="native-shortcut-plus">+</span>
-                        )}
-                      </span>
-                    ))}
-                  </div>
+                  ))}
                 </div>
-              );
-            })}
+              </div>
+            ))}
           </div>
         </div>
       ))}
