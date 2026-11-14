@@ -126,7 +126,6 @@ export const chat = {
     thinking: "思考",
   },
   jobs: {
-    running: "{count} 个后台任务运行中",
     idle: "{count} 个后台任务",
     sectionLive: "进行中",
     sectionSettled: "已结束 ({count})",

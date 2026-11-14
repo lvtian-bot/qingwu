@@ -133,7 +133,6 @@ export const chat: typeof zhChat = {
     thinking: "Thinking",
   },
   jobs: {
-    running: "{count} background jobs running",
     idle: "{count} background jobs",
     sectionLive: "Running",
     sectionSettled: "Finished ({count})",

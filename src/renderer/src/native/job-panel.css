@@ -4,30 +4,102 @@
   align-items: center;
 }
 
+/* 触发器：按官方 28px 最小高度、12px 字号、三级前景色，无底色无阴影 */
 .native-job-list-trigger {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 8px;
-  background: var(--native-surface-2);
-  color: var(--native-fg);
-  border: none;
+  gap: 4px;
+  min-height: 28px;
+  padding: 3px 2px;
+  border: 0;
   border-radius: 6px;
-  cursor: pointer;
+  background: transparent;
+  color: var(--native-muted);
   font-size: 12px;
   line-height: 18px;
+  cursor: pointer;
 }
 
 .native-job-list-trigger:hover {
-  background: var(--native-hover);
+  color: var(--native-sidebar-fg);
 }
 
-.native-job-live-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--native-ok);
+/* 14px 图标位：空闲显示官方 layers 图标，运行中换成官方呼吸转圈 */
+.native-job-activity {
+  display: inline-flex;
   flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+}
+
+.native-job-count {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  /* 固定一位到两位数的宽度，任务数在运行中/总数之间切换时不再左右跳 */
+  min-width: 7em;
+}
+
+.native-job-spinner {
+  flex: none;
+}
+
+.native-job-spinner-motion {
+  transform-origin: center;
+  animation: native-job-spinner-spin 1.5s linear infinite;
+}
+
+.native-job-spinner-track,
+.native-job-spinner-arc {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.native-job-spinner-track {
+  opacity: 0.25;
+}
+
+.native-job-spinner-arc {
+  stroke-dasharray: 12 150;
+  animation: native-job-spinner-dash 1.5s ease-in-out infinite;
+}
+
+@keyframes native-job-spinner-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes native-job-spinner-dash {
+  0% {
+    stroke-dasharray: 12 150;
+    stroke-dashoffset: 0;
+  }
+
+  50% {
+    stroke-dasharray: 24 150;
+    stroke-dashoffset: -6;
+  }
+
+  100% {
+    stroke-dasharray: 12 150;
+    stroke-dashoffset: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .native-job-spinner-motion,
+  .native-job-spinner-arc {
+    animation: none;
+  }
+
+  .native-job-spinner-arc {
+    stroke-dasharray: 18 150;
+    stroke-dashoffset: -3;
+  }
 }
 
 .native-job-list-popover {
