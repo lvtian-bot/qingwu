@@ -1,7 +1,7 @@
 import { app } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
-import { CHAT_WIDTHS, TRANSCRIPT_VIEW_MODES, type AppSettings, type ChatWidth, type TranscriptViewMode } from '../shared/types';
+import { CHAT_WIDTHS, THEME_MODES, TRANSCRIPT_VIEW_MODES, type AppSettings, type ChatWidth, type ThemeMode, type TranscriptViewMode } from '../shared/types';
 import { UI_LANGUAGES, type UiLanguage } from '../shared/i18n-core';
 import { resolveQingwuProfileDir } from './dsh-paths';
 
@@ -26,7 +26,10 @@ class SettingsManager {
       transcriptView: 'standard',
       chatWidth: 'narrow',
       notifyOnTaskFinished: true,
+      notifyOnPending: true,
+      notifySound: true,
       uiLanguage: 'auto',
+      theme: 'auto',
     };
     this.listeners = new Set();
     this.loaded = false;
@@ -93,8 +96,17 @@ class SettingsManager {
           if (typeof this.settings.notifyOnTaskFinished !== 'boolean') {
             this.settings.notifyOnTaskFinished = true;
           }
+          if (typeof this.settings.notifyOnPending !== 'boolean') {
+            this.settings.notifyOnPending = true;
+          }
+          if (typeof this.settings.notifySound !== 'boolean') {
+            this.settings.notifySound = true;
+          }
           if (!UI_LANGUAGES.includes(this.settings.uiLanguage as UiLanguage)) {
             this.settings.uiLanguage = 'auto';
+          }
+          if (!THEME_MODES.includes(this.settings.theme as ThemeMode)) {
+            this.settings.theme = 'auto';
           }
         }
       }

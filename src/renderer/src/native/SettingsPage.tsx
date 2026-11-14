@@ -9,8 +9,10 @@ import type { PanelWidth } from "./usePanelWidth";
 import { useDshSettings } from "./useDshSettings";
 import { ModelsTab } from "./ModelsTab";
 import { GeneralTab } from "./GeneralTab";
+import { AppearanceTab } from "./AppearanceTab";
+import { NotificationsTab } from "./NotificationsTab";
+import { ShortcutsTab } from "./ShortcutsTab";
 import { ArchivedSessionsTab } from "./ArchivedSessionsTab";
-import { PermissionsTab } from "./PermissionsTab";
 import { WebSearchTab } from "./WebSearchTab";
 import { SkillsTab } from "./SkillsTab";
 import { InstructionsTab } from "./InstructionsTab";
@@ -39,11 +41,13 @@ export interface SettingsPageProps {
 }
 
 type TabKey =
-  | "models"
   | "general"
-  | "webSearch"
+  | "appearance"
+  | "notifications"
+  | "shortcuts"
   | "archivedSessions"
-  | "permissions"
+  | "models"
+  | "webSearch"
   | "skills"
   | "instructions";
 
@@ -53,7 +57,7 @@ const NAV_GROUPS: {
   items: { key: TabKey; labelKey: string; icon: ReactNode }[];
 }[] = [
   {
-    titleKey: "settings.nav.basic",
+    titleKey: "settings.nav.generalGroup",
     items: [
       {
         key: "general",
@@ -65,6 +69,47 @@ const NAV_GROUPS: {
           </svg>
         ),
       },
+      {
+        key: "appearance",
+        labelKey: "settings.nav.appearance",
+        icon: (
+          <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
+            <path d="M8 15A7 7 0 1 0 8 1v14zm0 1A8 8 0 1 1 8 0a8 8 0 0 1 0 16z" />
+          </svg>
+        ),
+      },
+      {
+        key: "notifications",
+        labelKey: "settings.nav.notifications",
+        icon: (
+          <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
+            <path d="M8 16a2 2 0 0 0 2-2H6a2 2 0 0 0 2 2zm.995-14.901a1 1 0 1 0-1.99 0A5.002 5.002 0 0 0 3 6c0 1.098-.5 6-2 7h14c-1.5-1-2-5.902-2-7 0-2.42-1.72-4.44-4.005-4.901z" />
+          </svg>
+        ),
+      },
+      {
+        key: "shortcuts",
+        labelKey: "settings.nav.shortcuts",
+        icon: (
+          <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
+            <path d="M14 3H2a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zM2 4h12a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1zm2 2h1v1H4V6zm2 0h1v1H6V6zm2 0h1v1H8V6zm2 0h1v1h-1V6zm2 0h1v1h-1V6zM3 8h1v1H3V8zm2 0h1v1H5V8zm2 0h1v1H7V8zm2 0h1v1H9V8zm2 0h1v1h-1V8zm2 0h1v1h-1V8zM4 10h8v1H4v-1z" />
+          </svg>
+        ),
+      },
+      {
+        key: "archivedSessions",
+        labelKey: "settings.nav.archivedSessions",
+        icon: (
+          <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
+            <path d="M0 2a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1v7.5a2.5 2.5 0 0 1-2.5 2.5h-9A2.5 2.5 0 0 1 1 12.5V5a1 1 0 0 1-1-1V2zm2 3v7.5A1.5 1.5 0 0 0 3.5 14h9a1.5 1.5 0 0 0 1.5-1.5V5H2zm13-3H1v2h14V2zM5 7.5a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 0 1h-5a.5.5 0 0 1-.5-.5z" />
+          </svg>
+        ),
+      },
+    ],
+  },
+  {
+    titleKey: "settings.nav.capabilitiesGroup",
+    items: [
       {
         key: "models",
         labelKey: "settings.nav.models",
@@ -80,37 +125,6 @@ const NAV_GROUPS: {
         icon: (
           <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
             <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z" />
-          </svg>
-        ),
-      },
-    ],
-  },
-  {
-    titleKey: "settings.nav.agent",
-    items: [
-      {
-        key: "permissions",
-        labelKey: "settings.nav.permissions",
-        icon: (
-          <svg
-            viewBox="0 0 16 16"
-            width="16"
-            height="16"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.3"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <rect x="3" y="7" width="10" height="7.5" rx="1.5" />
-            <path d="M5.5 7V4.5a2.5 2.5 0 0 1 5 0V7" />
-            <circle
-              cx="8"
-              cy="10.5"
-              r="0.75"
-              fill="currentColor"
-              stroke="none"
-            />
           </svg>
         ),
       },
@@ -150,20 +164,6 @@ const NAV_GROUPS: {
           >
             <path d="M11.1 2.4a1.9 1.9 0 0 1 2.7 2.7L5.4 13.5l-3.5.7.7-3.5z" />
             <path d="M9.6 3.9l2.7 2.7" />
-          </svg>
-        ),
-      },
-    ],
-  },
-  {
-    titleKey: "settings.nav.archived",
-    items: [
-      {
-        key: "archivedSessions",
-        labelKey: "settings.nav.archivedSessions",
-        icon: (
-          <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
-            <path d="M0 2a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1v7.5a2.5 2.5 0 0 1-2.5 2.5h-9A2.5 2.5 0 0 1 1 12.5V5a1 1 0 0 1-1-1V2zm2 3v7.5A1.5 1.5 0 0 0 3.5 14h9a1.5 1.5 0 0 0 1.5-1.5V5H2zm13-3H1v2h14V2zM5 7.5a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 0 1h-5a.5.5 0 0 1-.5-.5z" />
           </svg>
         ),
       },
@@ -338,24 +338,33 @@ export function SettingsPage({
           </div>
         )}
 
-        {/* 模型设置 */}
-        <div className="native-settings-panel" style={panelStyle("models")}>
-          <ModelsTab
-            modelCatalog={modelCatalog}
-            onRefreshCatalog={handleModelCredentialChange}
-            credentialVersion={credentialVersion}
-            dsh={dsh}
-          />
-        </div>
-
-        {/* 联网搜索 */}
-        <div className="native-settings-panel" style={panelStyle("webSearch")}>
-          <WebSearchTab controller={webSearch} />
-        </div>
-
         {/* 常规 */}
         <div className="native-settings-panel" style={panelStyle("general")}>
-          <GeneralTab dsh={dsh} />
+          <GeneralTab dsh={dsh} modelCatalog={modelCatalog} />
+        </div>
+
+        {/* 外观 */}
+        <div
+          className="native-settings-panel"
+          style={panelStyle("appearance")}
+        >
+          <AppearanceTab />
+        </div>
+
+        {/* 通知 */}
+        <div
+          className="native-settings-panel"
+          style={panelStyle("notifications")}
+        >
+          <NotificationsTab />
+        </div>
+
+        {/* 快捷键 */}
+        <div
+          className="native-settings-panel"
+          style={panelStyle("shortcuts")}
+        >
+          <ShortcutsTab />
         </div>
 
         {/* 已归档会话 */}
@@ -373,12 +382,19 @@ export function SettingsPage({
           />
         </div>
 
-        {/* 权限 */}
-        <div
-          className="native-settings-panel"
-          style={panelStyle("permissions")}
-        >
-          <PermissionsTab dsh={dsh} />
+        {/* 模型设置 */}
+        <div className="native-settings-panel" style={panelStyle("models")}>
+          <ModelsTab
+            modelCatalog={modelCatalog}
+            onRefreshCatalog={handleModelCredentialChange}
+            credentialVersion={credentialVersion}
+            dsh={dsh}
+          />
+        </div>
+
+        {/* 联网搜索 */}
+        <div className="native-settings-panel" style={panelStyle("webSearch")}>
+          <WebSearchTab controller={webSearch} />
         </div>
 
         {/* 技能 */}

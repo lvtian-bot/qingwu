@@ -95,9 +95,32 @@ test("NotificationManager: 根据应用设置与系统支持状态发送通知�
     body: "不应发送",
   });
   assert.equal(createdNotification, null, "关闭配置后不应创建通知");
-
-  // 3. 当系统不支持通知时，不应抛出异常也不发送通知
   currentSettings.notifyOnTaskFinished = true;
+
+  // 4. 等待确认与提问通知按 notifyOnPending 开关与 silent 控制
+  createdNotification = null;
+  currentSettings.notifyOnPending = false;
+  manager.show({
+    title: "等待审批确认",
+    body: "命令执行需要确认",
+    type: "pending",
+  });
+  assert.equal(createdNotification, null, "关闭 notifyOnPending 后不应弹出 pending 通知");
+
+  createdNotification = null;
+  currentSettings.notifyOnPending = true;
+  currentSettings.notifySound = false;
+  manager.show({
+    title: "等待审批确认",
+    body: "命令执行需要确认",
+    type: "pending",
+  });
+  assert.ok(createdNotification, "开启 notifyOnPending 后应弹出 pending 通知");
+  assert.equal(createdNotification.options.silent, true, "notifySound 为 false 时应开启静音");
+
+  // 5. 当系统不支持通知时，不应抛出异常也不发送通知
+  createdNotification = null;
+  currentSettings.notifySound = true;
   MockNotification.supported = false;
   manager.show({
     title: "任务执行完成",

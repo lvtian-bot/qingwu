@@ -98,6 +98,9 @@ test("无旧配置且未设置 DSH_HOME 时用默认值并写入用户主目录 
     const all = h.settings.getAll();
     assert.equal(all.closeToTray, true);
     assert.equal(all.notifyOnTaskFinished, true);
+    assert.equal(all.notifyOnPending, true);
+    assert.equal(all.notifySound, true);
+    assert.equal(all.theme, "auto");
     assert.equal(all.transcriptView, "standard");
     h.settings.set("collapseProcess", true);
     const expected = path.join(h.home, ".dsh", "profiles", "qingwu", "app-settings.json");
@@ -142,6 +145,37 @@ test("transcriptView 默认 standard，支持四档，非法值回落，旧布�
       electron: { app: { getPath: (name) => (name === "userData" ? userData : h1.home) } },
     }).settings;
     assert.equal(fresh3.get("transcriptView"), "verbose");
+  } finally {
+    cleanupDirsWithEnv([userData], previousDshHome);
+  }
+});
+
+test("theme、notifyOnPending 与 notifySound 合法设置生效，非法值回落默认", () => {
+  const previousDshHome = process.env.DSH_HOME;
+  const userData = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "qingwu-ud-")), "qingwu");
+  try {
+    const h = setup({ userData, legacySettings: null });
+    for (const theme of ["light", "dark", "auto"]) {
+      h.settings.set("theme", theme);
+      assert.equal(h.settings.get("theme"), theme);
+    }
+    h.settings.set("notifyOnPending", false);
+    assert.equal(h.settings.get("notifyOnPending"), false);
+    h.settings.set("notifySound", false);
+    assert.equal(h.settings.get("notifySound"), false);
+
+    const configPath = path.join(h.profileDir, "app-settings.json");
+    fs.writeFileSync(
+      configPath,
+      JSON.stringify({ theme: "neon", notifyOnPending: "invalid", notifySound: null }),
+      "utf8",
+    );
+    const fresh = loadTs("src/main/settings.ts", {
+      electron: { app: { getPath: (name) => (name === "userData" ? userData : h.home) } },
+    }).settings;
+    assert.equal(fresh.get("theme"), "auto");
+    assert.equal(fresh.get("notifyOnPending"), true);
+    assert.equal(fresh.get("notifySound"), true);
   } finally {
     cleanupDirsWithEnv([userData], previousDshHome);
   }

@@ -379,6 +379,19 @@ export function useEngineStreams({
         const sessionId = frame.agentId ?? "";
         if (frame.event === "approval/request") {
           const request = (frame.request ?? {}) as ApprovalRequestPayload;
+          const isAppFocused =
+            typeof document !== "undefined" && document.hasFocus();
+          if (!isAppFocused) {
+            void window.qingwu?.showNotification?.({
+              type: "pending",
+              title: t("chat.notify.pendingTitle"),
+              body:
+                request.reason ||
+                request.toolName ||
+                t("chat.notify.pendingBody"),
+              sessionId,
+            });
+          }
           setApprovals((prev) =>
             prev.some((a) => a.eventId === frame.eventId)
               ? prev
@@ -394,6 +407,18 @@ export function useEngineStreams({
           );
         } else if (frame.event === "user-questions/request") {
           const request = (frame.request ?? {}) as UserQuestionsRequestPayload;
+          const isAppFocused =
+            typeof document !== "undefined" && document.hasFocus();
+          if (!isAppFocused) {
+            void window.qingwu?.showNotification?.({
+              type: "pending",
+              title: t("chat.notify.questionTitle"),
+              body:
+                request.questions?.[0]?.question ||
+                t("chat.notify.questionBody"),
+              sessionId,
+            });
+          }
           setQuestions((prev) =>
             prev.some((q) => q.eventId === frame.eventId)
               ? prev

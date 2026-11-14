@@ -1,7 +1,7 @@
 import "./paths";
 import fs from "node:fs";
 import path from "node:path";
-import { app, clipboard, dialog, ipcMain, shell } from "electron";
+import { app, clipboard, dialog, ipcMain, nativeTheme, shell } from "electron";
 import type { IpcMainInvokeEvent } from "electron";
 import { acquireHiddenConsole } from "./console";
 import { HarnessManager } from "./harness";
@@ -219,6 +219,14 @@ if (!gotTheLock) {
     dshBridge.reconnect?.();
   });
 
+  const applyThemeSource = (theme?: import("../shared/types").ThemeMode) => {
+    if (typeof nativeTheme === "undefined" || !nativeTheme) return;
+    if (theme === "dark") nativeTheme.themeSource = "dark";
+    else if (theme === "light") nativeTheme.themeSource = "light";
+    else nativeTheme.themeSource = "system";
+  };
+  applyThemeSource(settings.get("theme"));
+
   ipcMain.handle("appSettings:get", () => settings.getAll());
   ipcMain.handle(
     "appSettings:set",
@@ -234,6 +242,8 @@ if (!gotTheLock) {
     if (key === "uiLanguage") {
       trayManager.updateContextMenu();
       setupAboutPanel();
+    } else if (key === "theme") {
+      applyThemeSource(all.theme);
     }
   });
   const handleOpenProfileFolder = async () => {

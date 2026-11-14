@@ -1,12 +1,19 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AppSettings, TranscriptViewMode } from "../../../shared/types";
 import type { UiLanguage } from "../../../shared/i18n-core";
 import { useT } from "../i18n";
+import type { ModelCatalog } from "./protocol";
 import { SettingsRow, SettingsSwitch } from "./settings-ui";
 import type { DshSettingsController } from "./useDshSettings";
 
-/** 常规分区：青梧应用级设置（界面、窗口与配置文件入口）。 */
-export function GeneralTab({ dsh }: { dsh: DshSettingsController }) {
+/** 常规分区：新会话默认规则（模型与权限）+ 青梧应用级常规行为。 */
+export function GeneralTab({
+  dsh,
+  modelCatalog,
+}: {
+  dsh: DshSettingsController;
+  modelCatalog?: ModelCatalog | null;
+}) {
   const t = useT();
   const [appSettings, setAppSettings] = useState<AppSettings>({
     closeToTray: true,
@@ -14,6 +21,17 @@ export function GeneralTab({ dsh }: { dsh: DshSettingsController }) {
     transcriptView: "standard",
     chatWidth: "narrow",
   });
+
+  // 平铺可用模型选项（用于新会话默认模型选择）
+  const modelOptions = useMemo(() => {
+    if (!modelCatalog?.groups) return [];
+    return modelCatalog.groups.flatMap((g) =>
+      g.models.map((m) => ({
+        id: `${g.id}/${m.id}`,
+        label: `${g.name} - ${m.name}`,
+      })),
+    );
+  }, [modelCatalog]);
 
   // 读取本地应用设置
   const loadAppSettings = useCallback(async () => {
@@ -66,7 +84,66 @@ export function GeneralTab({ dsh }: { dsh: DshSettingsController }) {
         </p>
       </div>
 
+      {dsh.settingsMessage && (
+        <div className="native-settings-alert">{dsh.settingsMessage}</div>
+      )}
+
+      {/* 分类一：新会话默认规则（置顶核心偏好，对齐 Codex 规范） */}
       <div className="native-settings-card">
+        <div className="native-settings-section-title">
+          {t("settings.general.defaultRulesTitle")}
+        </div>
+
+        {modelOptions.length > 0 && (
+          <SettingsRow
+            label={t("settings.general.defaultModel.label")}
+            desc={t("settings.general.defaultModel.desc")}
+          >
+            <select
+              className="native-settings-select"
+              value={dsh.defaultModelKey}
+              onChange={(e) => void dsh.saveDefaultModel(e.target.value)}
+            >
+              <option value="">
+                {t("settings.general.defaultModel.followEngine")}
+              </option>
+              {modelOptions.map((opt) => (
+                <option key={opt.id} value={opt.id}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </SettingsRow>
+        )}
+
+        <SettingsRow
+          label={t("settings.general.defaultPreset.label")}
+          desc={t("settings.general.defaultPreset.desc")}
+        >
+          <select
+            className="native-settings-select"
+            value={dsh.defaultPreset}
+            onChange={(e) => void dsh.saveDefaultPreset(e.target.value)}
+          >
+            <option value="workspace-write">
+              {t("settings.general.defaultPreset.workspaceWrite")}
+            </option>
+            <option value="read-only">
+              {t("settings.general.defaultPreset.readOnly")}
+            </option>
+            <option value="danger-full-access">
+              {t("settings.general.defaultPreset.fullAccess")}
+            </option>
+          </select>
+        </SettingsRow>
+      </div>
+
+      {/* 分类二：常规行为 */}
+      <div className="native-settings-card">
+        <div className="native-settings-section-title">
+          {t("settings.general.behaviorTitle")}
+        </div>
+
         <SettingsRow
           label={t("settings.general.language.label")}
           desc={t("settings.general.language.desc")}
@@ -83,25 +160,6 @@ export function GeneralTab({ dsh }: { dsh: DshSettingsController }) {
             <option value="auto">{t("settings.general.language.auto")}</option>
             <option value="zh-CN">简体中文</option>
             <option value="en-US">English</option>
-          </select>
-        </SettingsRow>
-
-        <SettingsRow
-          label={t("settings.general.chatWidth.label")}
-          desc={t("settings.general.chatWidth.desc")}
-        >
-          <select
-            className="native-settings-select"
-            value={appSettings.chatWidth ?? "narrow"}
-            onChange={(e) =>
-              void handleUpdateAppSetting({
-                chatWidth: e.target.value as AppSettings["chatWidth"],
-              })
-            }
-          >
-            <option value="narrow">{t("settings.general.chatWidth.narrow")}</option>
-            <option value="medium">{t("settings.general.chatWidth.medium")}</option>
-            <option value="wide">{t("settings.general.chatWidth.wide")}</option>
           </select>
         </SettingsRow>
 
@@ -131,24 +189,19 @@ export function GeneralTab({ dsh }: { dsh: DshSettingsController }) {
               })
             }
           >
-            <option value="standard">{t("settings.general.transcriptView.standard")}</option>
-            <option value="detailed">{t("settings.general.transcriptView.detailed")}</option>
-            <option value="compact">{t("settings.general.transcriptView.compact")}</option>
-            <option value="verbose">{t("settings.general.transcriptView.verbose")}</option>
+            <option value="standard">
+              {t("settings.general.transcriptView.standard")}
+            </option>
+            <option value="detailed">
+              {t("settings.general.transcriptView.detailed")}
+            </option>
+            <option value="compact">
+              {t("settings.general.transcriptView.compact")}
+            </option>
+            <option value="verbose">
+              {t("settings.general.transcriptView.verbose")}
+            </option>
           </select>
-        </SettingsRow>
-
-        <SettingsRow
-          label={t("settings.general.notifyOnTaskFinished.label")}
-          desc={t("settings.general.notifyOnTaskFinished.desc")}
-        >
-          <SettingsSwitch
-            checked={appSettings.notifyOnTaskFinished ?? true}
-            onChange={(next) =>
-              void handleUpdateAppSetting({ notifyOnTaskFinished: next })
-            }
-            label={t("settings.general.notifyOnTaskFinished.label")}
-          />
         </SettingsRow>
 
         <SettingsRow
