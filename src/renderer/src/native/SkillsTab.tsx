@@ -167,12 +167,6 @@ export function SkillsTab({ workspaces, visible }: SkillsTabProps) {
               );
               return (
                 <div className="native-settings-skill-project-panel">
-                  <div
-                    className="native-settings-skill-folder-label"
-                    title={project.path}
-                  >
-                    {project.path}
-                  </div>
                   {filled.length > 0 ? (
                     filled.map((folder) => (
                       <div
@@ -183,7 +177,7 @@ export function SkillsTab({ workspaces, visible }: SkillsTabProps) {
                           className="native-settings-skill-folder-label"
                           title={folder.path}
                         >
-                          {folder.label}
+                          {folder.path}
                         </div>
                         <SkillGrid skills={folder.skills} />
                       </div>

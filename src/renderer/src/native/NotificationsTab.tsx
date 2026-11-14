@@ -52,66 +52,73 @@ export function NotificationsTab() {
       </div>
 
       {/* 分类一：通知触发规则 */}
-      <div className="native-settings-card">
+      <div className="native-settings-section">
         <div className="native-settings-section-title">
           {t("settings.notifications.rulesTitle")}
         </div>
-
-        <SettingsRow
-          label={t("settings.notifications.taskFinished.label")}
-          desc={t("settings.notifications.taskFinished.desc")}
-        >
-          <SettingsSwitch
-            checked={appSettings.notifyOnTaskFinished ?? true}
-            onChange={(next) =>
-              void handleUpdateAppSetting({ notifyOnTaskFinished: next })
-            }
+        <div className="native-settings-card">
+          <SettingsRow
             label={t("settings.notifications.taskFinished.label")}
-          />
-        </SettingsRow>
+            desc={t("settings.notifications.taskFinished.desc")}
+          >
+            <SettingsSwitch
+              checked={appSettings.notifyOnTaskFinished ?? true}
+              onChange={(next) =>
+                void handleUpdateAppSetting({ notifyOnTaskFinished: next })
+              }
+              label={t("settings.notifications.taskFinished.label")}
+            />
+          </SettingsRow>
 
-        <SettingsRow
-          label={t("settings.notifications.pending.label")}
-          desc={t("settings.notifications.pending.desc")}
-        >
-          <SettingsSwitch
-            checked={appSettings.notifyOnPending ?? true}
-            onChange={(next) =>
-              void handleUpdateAppSetting({ notifyOnPending: next })
-            }
+          <SettingsRow
             label={t("settings.notifications.pending.label")}
-          />
-        </SettingsRow>
+            desc={t("settings.notifications.pending.desc")}
+          >
+            <SettingsSwitch
+              checked={appSettings.notifyOnPending ?? true}
+              onChange={(next) =>
+                void handleUpdateAppSetting({ notifyOnPending: next })
+              }
+              label={t("settings.notifications.pending.label")}
+            />
+          </SettingsRow>
+        </div>
       </div>
 
       {/* 分类二：提示音 */}
-      <div className="native-settings-card">
+      <div className="native-settings-section">
         <div className="native-settings-section-title">
           {t("settings.notifications.soundTitle")}
         </div>
-
-        <SettingsRow
-          label={t("settings.notifications.sound.label")}
-          desc={t("settings.notifications.sound.desc")}
-        >
-          <SettingsSwitch
-            checked={appSettings.notifySound ?? true}
-            onChange={(next) =>
-              void handleUpdateAppSetting({ notifySound: next })
-            }
+        <div className="native-settings-card">
+          <SettingsRow
             label={t("settings.notifications.sound.label")}
-          />
-        </SettingsRow>
+            desc={t("settings.notifications.sound.desc")}
+          >
+            <SettingsSwitch
+              checked={appSettings.notifySound ?? true}
+              onChange={(next) =>
+                void handleUpdateAppSetting({ notifySound: next })
+              }
+              label={t("settings.notifications.sound.label")}
+            />
+          </SettingsRow>
+        </div>
       </div>
 
       {/* 分类三：免打扰说明卡片 */}
-      <div className="native-settings-card native-settings-card-subtle">
+      <div className="native-settings-section">
         <div className="native-settings-section-title">
           {t("settings.notifications.hintTitle")}
         </div>
-        <p className="native-settings-card-desc" style={{ marginTop: "6px", lineHeight: "1.6" }}>
-          {t("settings.notifications.hint")}
-        </p>
+        <div className="native-settings-card native-settings-card-subtle">
+          <p
+            className="native-settings-card-desc"
+            style={{ lineHeight: "1.6", margin: 0 }}
+          >
+            {t("settings.notifications.hint")}
+          </p>
+        </div>
       </div>
     </>
   );

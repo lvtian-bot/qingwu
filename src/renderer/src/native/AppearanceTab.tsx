@@ -58,55 +58,57 @@ export function AppearanceTab() {
       </div>
 
       {/* 分类一：色彩主题 */}
-      <div className="native-settings-card">
+      <div className="native-settings-section">
         <div className="native-settings-section-title">
           {t("settings.appearance.themeTitle")}
         </div>
-
-        <SettingsRow
-          label={t("settings.appearance.theme.label")}
-          desc={t("settings.appearance.theme.desc")}
-        >
-          <select
-            className="native-settings-select"
-            value={appSettings.theme ?? "auto"}
-            onChange={(e) =>
-              void handleUpdateAppSetting({
-                theme: e.target.value as ThemeMode,
-              })
-            }
+        <div className="native-settings-card">
+          <SettingsRow
+            label={t("settings.appearance.theme.label")}
+            desc={t("settings.appearance.theme.desc")}
           >
-            <option value="auto">{t("settings.appearance.theme.auto")}</option>
-            <option value="light">{t("settings.appearance.theme.light")}</option>
-            <option value="dark">{t("settings.appearance.theme.dark")}</option>
-          </select>
-        </SettingsRow>
+            <select
+              className="native-settings-select"
+              value={appSettings.theme ?? "auto"}
+              onChange={(e) =>
+                void handleUpdateAppSetting({
+                  theme: e.target.value as ThemeMode,
+                })
+              }
+            >
+              <option value="auto">{t("settings.appearance.theme.auto")}</option>
+              <option value="light">{t("settings.appearance.theme.light")}</option>
+              <option value="dark">{t("settings.appearance.theme.dark")}</option>
+            </select>
+          </SettingsRow>
+        </div>
       </div>
 
       {/* 分类二：排版与布局 */}
-      <div className="native-settings-card">
+      <div className="native-settings-section">
         <div className="native-settings-section-title">
           {t("settings.appearance.layoutTitle")}
         </div>
-
-        <SettingsRow
-          label={t("settings.appearance.chatWidth.label")}
-          desc={t("settings.appearance.chatWidth.desc")}
-        >
-          <select
-            className="native-settings-select"
-            value={appSettings.chatWidth ?? "narrow"}
-            onChange={(e) =>
-              void handleUpdateAppSetting({
-                chatWidth: e.target.value as ChatWidth,
-              })
-            }
+        <div className="native-settings-card">
+          <SettingsRow
+            label={t("settings.appearance.chatWidth.label")}
+            desc={t("settings.appearance.chatWidth.desc")}
           >
-            <option value="narrow">{t("settings.appearance.chatWidth.narrow")}</option>
-            <option value="medium">{t("settings.appearance.chatWidth.medium")}</option>
-            <option value="wide">{t("settings.appearance.chatWidth.wide")}</option>
-          </select>
-        </SettingsRow>
+            <select
+              className="native-settings-select"
+              value={appSettings.chatWidth ?? "narrow"}
+              onChange={(e) =>
+                void handleUpdateAppSetting({
+                  chatWidth: e.target.value as ChatWidth,
+                })
+              }
+            >
+              <option value="narrow">{t("settings.appearance.chatWidth.narrow")}</option>
+              <option value="medium">{t("settings.appearance.chatWidth.medium")}</option>
+              <option value="wide">{t("settings.appearance.chatWidth.wide")}</option>
+            </select>
+          </SettingsRow>
+        </div>
       </div>
     </>
   );

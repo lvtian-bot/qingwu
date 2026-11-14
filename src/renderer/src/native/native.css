@@ -4978,6 +4978,16 @@ body.native-resizing {
   font-size: 13px;
 }
 
+.native-settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.native-settings-section + .native-settings-section {
+  margin-top: 8px;
+}
+
 .native-settings-card {
   border: 1px solid var(--settings-border);
   border-radius: 12px;
@@ -4986,24 +4996,16 @@ body.native-resizing {
 }
 
 .native-settings-section-title {
-  padding: 16px 24px 8px;
+  padding: 0 2px;
   font-size: 13px;
   font-weight: 600;
   color: var(--settings-fg);
   letter-spacing: -0.01em;
 }
 
-.native-settings-section-title + .native-settings-row {
-  border-top: none;
-}
-
 .native-settings-card-subtle {
   padding: 16px 24px;
   background: var(--native-sidebar-hover);
-}
-
-.native-settings-card-subtle .native-settings-section-title {
-  padding: 0 0 4px 0;
 }
 
 /* 快捷键列表 */
@@ -5018,6 +5020,9 @@ body.native-resizing {
   justify-content: space-between;
   padding: 14px 24px;
   gap: 16px;
+}
+
+.native-shortcut-row + .native-shortcut-row {
   border-top: 1px solid var(--settings-border);
 }
 
