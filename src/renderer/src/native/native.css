@@ -84,6 +84,8 @@ textarea {
   --native-sidebar-active: rgba(0, 0, 0, 0.05);
   /* 侧栏正文用柔灰不用主文黑（Codex 侧栏实测 ≈#3a3c3f），减轻整栏压迫感 */
   --native-sidebar-fg: #3a3c3f;
+  /* 会话页标题（项目 / 会话名）：比正文黑轻、比次要说明重，不抢正文视觉重心 */
+  --native-title-fg: #3a3c3f;
   /* 右侧面板与会话区同底色，仅以左缘一条细线区分 */
   --native-surface: #f6f6f7;
   --native-surface-2: #ececee;
@@ -136,6 +138,7 @@ textarea {
     --native-sidebar-hover: rgba(255, 255, 255, 0.035);
     --native-sidebar-active: rgba(255, 255, 255, 0.05);
     --native-sidebar-fg: #d4d6d9;
+    --native-title-fg: #d4d6d9;
     --native-surface: #1a1a1d;
     --native-surface-2: #232326;
     --native-hover: #1a1a1d;
@@ -965,8 +968,9 @@ textarea {
   border: none;
   border-radius: 6px;
   background: transparent;
-  color: var(--native-muted);
+  color: var(--native-title-fg);
   font-size: 14px;
+  font-weight: 500;
   text-align: left;
   white-space: nowrap;
   overflow: hidden;
@@ -976,12 +980,11 @@ textarea {
 
 .native-chat-project:hover {
   background: var(--native-hover);
-  color: var(--native-fg);
 }
 
 .native-chat-title-sep {
   flex-shrink: 0;
-  color: var(--native-muted);
+  color: var(--native-title-fg);
   user-select: none;
 }
 
@@ -991,7 +994,7 @@ textarea {
   border: none;
   border-radius: 6px;
   background: transparent;
-  color: var(--native-fg);
+  color: var(--native-title-fg);
   font-size: 14px;
   font-weight: 500;
   text-align: left;
@@ -1024,6 +1027,11 @@ textarea {
   display: flex;
   align-items: center;
   gap: 4px;
+}
+
+/* 顶栏右侧面板按钮与标题同色；后台任务触发器按官方使用三级前景色，单独定义 */
+.native-chat-header .native-icon-btn {
+  color: var(--native-title-fg);
 }
 
 .native-icon-btn {

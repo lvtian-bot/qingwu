@@ -12,6 +12,53 @@ function isObservableJob(job: JobRow): boolean {
   return isLiveJob(job) || job.output.total > 0;
 }
 
+/** 官方 layers-outline 图标：16px 网格、1px 描边的三层图形，按 14px 渲染。 */
+function JobLayersIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="14"
+      height="14"
+      fill="none"
+      strokeWidth="1"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path
+        d="M8.481371 2.304371 a1.159971 1.159971 0 0 0-.962742 0 L2.547971 4.566371 a.580029 .580029 0 0 0 0 1.0614 l4.9764 2.267829 a1.159971 1.159971 0 0 0 .962829 0 l4.9764-2.262 a.580029 .580029 0 0 0 0-1.0614Z"
+        stroke="currentColor"
+      />
+      <path
+        d="M2.199971 8 a.580029 .580029 0 0 0 .336429 .527829 l4.987971 2.267742 a1.159971 1.159971 0 0 0 .957 0 l4.9764-2.262 A.580029 .580029 0 0 0 13.800029 8"
+        stroke="currentColor"
+      />
+      <path
+        d="M2.199971 10.899971 a.580029 .580029 0 0 0 .336429 .527829 l4.987971 2.267829 a1.159971 1.159971 0 0 0 .957 0 l4.9764-2.262 A.580029 .580029 0 0 0 13.800029 10.899971"
+        stroke="currentColor"
+      />
+    </svg>
+  );
+}
+
+/** 官方运行中状态点：1.5s 旋转 + 呼吸弧线，按 StateDot ongoing 原样复刻。 */
+function JobSpinner() {
+  return (
+    <svg
+      className="native-job-spinner"
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+    >
+      <g className="native-job-spinner-motion">
+        <circle className="native-job-spinner-track" cx="12" cy="12" r="9.5" />
+        <circle className="native-job-spinner-arc" cx="12" cy="12" r="9.5" />
+      </g>
+    </svg>
+  );
+}
+
 export function JobListPopover({ sessionId }: { sessionId: string | null }) {
   const t = useT();
   const { jobs, killJob } = useSessionJobs(sessionId);
@@ -161,6 +208,10 @@ export function JobListPopover({ sessionId }: { sessionId: string | null }) {
 
   if (visibleCount === 0) return null;
 
+  const countLabel = t("chat.jobs.idle", {
+    count: ongoing.length > 0 ? ongoing.length : visibleCount,
+  });
+
   const renderRow = (job: JobRow, isSettled: boolean) => {
     const killState = killStates[job.id];
     const expanded = expandedRow?.id === job.id;
@@ -241,12 +292,16 @@ export function JobListPopover({ sessionId }: { sessionId: string | null }) {
           setOpen((prev) => !prev);
         }}
       >
-        {ongoing.length > 0 && <span className="native-job-live-dot" />}
-        <span>
-          {ongoing.length > 0
-            ? t("chat.jobs.running", { count: ongoing.length })
-            : t("chat.jobs.idle", { count: visibleCount })}
-        </span>
+        {ongoing.length > 0 ? (
+          <span className="native-job-activity" aria-hidden="true">
+            <JobSpinner />
+          </span>
+        ) : (
+          <span className="native-job-activity" aria-hidden="true">
+            <JobLayersIcon />
+          </span>
+        )}
+        <span className="native-job-count">{countLabel}</span>
       </button>
 
       {open && (
