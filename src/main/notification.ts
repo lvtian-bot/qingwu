@@ -7,6 +7,7 @@ export interface TaskFinishedNotificationOptions {
   title?: string;
   body: string;
   sessionId?: string;
+  type?: 'taskFinished' | 'pending';
 }
 
 /** 同时保留的活动通知上限：超出后丢弃最旧的一条，避免长期托盘运行时无限增长。 */
@@ -26,7 +27,11 @@ export class NotificationManager {
   constructor(private windowManager: WindowManager) {}
 
   show(options: TaskFinishedNotificationOptions): void {
-    if (settings.get("notifyOnTaskFinished") === false) {
+    const type = options.type ?? 'taskFinished';
+    if (type === 'taskFinished' && settings.get("notifyOnTaskFinished") === false) {
+      return;
+    }
+    if (type === 'pending' && settings.get("notifyOnPending") === false) {
       return;
     }
     if (!Notification.isSupported()) {
@@ -50,7 +55,7 @@ export class NotificationManager {
       title: options.title || tr("notify.taskFinished"),
       body: options.body,
       icon,
-      silent: false,
+      silent: settings.get("notifySound") === false,
     });
 
     this.live.push(notification);

@@ -40,6 +40,10 @@ export const chat: typeof zhChat = {
   notify: {
     title: "Task completed",
     body: "'{title}' has finished running",
+    pendingTitle: "Confirmation required",
+    pendingBody: "Agent is waiting for your authorization",
+    questionTitle: "Question from agent",
+    questionBody: "Agent is waiting for your answer",
   },
   turns: {
     thought: "Thought",

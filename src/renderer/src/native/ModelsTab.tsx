@@ -5,7 +5,6 @@ import { ProviderDetail } from "./ProviderDetail";
 import type { ModelCatalog } from "./protocol";
 import { providerDisplayName } from "./provider-brand";
 import { deriveKeyRef } from "./settings-domain";
-import { SettingsRow } from "./settings-ui";
 import type { DshSettingsController } from "./useDshSettings";
 import {
   useAvailableProtocols,
@@ -74,17 +73,6 @@ export function ModelsTab({
     handleDeleteProvider,
     handleSaveProvider,
   } = dir;
-
-  // 平铺可用模型选项
-  const modelOptions = useMemo(() => {
-    if (!modelCatalog?.groups) return [];
-    return modelCatalog.groups.flatMap((g) =>
-      g.models.map((m) => ({
-        id: `${g.id}/${m.id}`,
-        label: `${g.name} - ${m.name}`,
-      })),
-    );
-  }, [modelCatalog]);
 
   return (
     <>
@@ -327,31 +315,6 @@ export function ModelsTab({
           )}
         </div>
       </div>
-
-      {/* 新会话默认模型（引擎 agent-default-model 命名空间） */}
-      {modelOptions.length > 0 && (
-        <div className="native-settings-card">
-          <SettingsRow
-            label={t("settings.models.defaultModel.label")}
-            desc={t("settings.models.defaultModel.desc")}
-          >
-            <select
-              className="native-settings-select"
-              value={dsh.defaultModelKey}
-              onChange={(e) => void dsh.saveDefaultModel(e.target.value)}
-            >
-              <option value="">
-                {t("settings.models.defaultModel.followEngine")}
-              </option>
-              {modelOptions.map((opt) => (
-                <option key={opt.id} value={opt.id}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </SettingsRow>
-        </div>
-      )}
     </>
   );
 }

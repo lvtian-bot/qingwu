@@ -35,6 +35,10 @@ export const chat = {
   notify: {
     title: "任务执行完成",
     body: "「{title}」任务已执行完成",
+    pendingTitle: "等待操作确认",
+    pendingBody: "智能体正在等待您的操作授权",
+    questionTitle: "智能体向您提问",
+    questionBody: "智能体正在等待您的回答",
   },
   turns: {
     thought: "已思考",

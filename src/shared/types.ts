@@ -36,6 +36,10 @@ export const TRANSCRIPT_VIEW_MODES: readonly TranscriptViewMode[] = [
 
 export const CHAT_WIDTHS: readonly ChatWidth[] = ['narrow', 'medium', 'wide'];
 
+/** 主题模式：auto 跟随系统、light 浅色模式、dark 深色模式。 */
+export type ThemeMode = 'auto' | 'light' | 'dark';
+export const THEME_MODES: readonly ThemeMode[] = ['auto', 'light', 'dark'];
+
 /** 青梧应用级配置（存储于 dsh profile 目录 app-settings.json，与引擎配置同住 ~/.dsh）。 */
 export interface AppSettings {
   /** 窗口关闭行为：true 为最小化到托盘，false 为直接退出。 */
@@ -51,8 +55,14 @@ export interface AppSettings {
   chatWidth?: ChatWidth;
   /** 任务执行结束时是否发送桌面通知（默认 true：开启）。 */
   notifyOnTaskFinished?: boolean;
+  /** 智能体等待确认/审批/提问时是否发送桌面通知（默认 true：开启）。 */
+  notifyOnPending?: boolean;
+  /** 通知时是否播放系统提示音（默认 true：开启）。 */
+  notifySound?: boolean;
   /** 界面语言（默认 auto：跟随系统，zh 开头为简体中文，其余英文）。 */
   uiLanguage?: UiLanguage;
+  /** 外观主题（默认 auto：跟随系统）。 */
+  theme?: ThemeMode;
 }
 
 /** dsh RPC 业务错误（对齐 typert RemoteError 的线上形态）。 */
@@ -253,6 +263,7 @@ export interface QingwuApi {
     title?: string;
     body: string;
     sessionId?: string;
+    type?: 'taskFinished' | 'pending';
   }) => Promise<void>;
   /** 监听用户点击桌面通知后跳转到指定会话的事件。 */
   onNotificationNavigate: (listener: (sessionId: string) => void) => () => void;

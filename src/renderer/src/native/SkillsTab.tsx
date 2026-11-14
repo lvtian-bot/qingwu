@@ -107,19 +107,27 @@ export function SkillsTab({ workspaces, visible }: SkillsTabProps) {
         <div className="native-settings-toolbar">
           <button
             type="button"
-            className="native-btn native-btn-secondary"
-            onClick={handleOpenFolder}
+            className="native-provider-refresh"
+            disabled={loading}
+            onClick={() => void load()}
+            title={t("settings.skills.refreshTitle")}
+            aria-label={t("settings.skills.refreshTitle")}
           >
-            {t("settings.skills.openFolder")}
+            <svg
+              viewBox="0 0 16 16"
+              width="14"
+              height="14"
+              fill="currentColor"
+            >
+              <path d="M13.65 2.35a8 8 0 1 0 2.28 6.42c.04-.34-.25-.62-.59-.62-.31 0-.56.25-.6.56a6.8 6.8 0 1 1-1.79-5.06L10.5 5.1a.5.5 0 0 0 .36.86h4.1a.5.5 0 0 0 .5-.5v-4.1a.5.5 0 0 0-.86-.36l-.95.95z" />
+            </svg>
           </button>
           <button
             type="button"
             className="native-btn native-btn-secondary"
-            disabled={loading}
-            onClick={() => void load()}
-            title={t("settings.skills.refresh")}
+            onClick={handleOpenFolder}
           >
-            {t("settings.skills.refresh")}
+            {t("settings.skills.openFolder")}
           </button>
         </div>
       </div>

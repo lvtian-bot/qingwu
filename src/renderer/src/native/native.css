@@ -4985,6 +4985,90 @@ body.native-resizing {
   overflow: hidden;
 }
 
+.native-settings-section-title {
+  padding: 16px 24px 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--settings-fg);
+  letter-spacing: -0.01em;
+}
+
+.native-settings-section-title + .native-settings-row {
+  border-top: none;
+}
+
+.native-settings-card-subtle {
+  padding: 16px 24px;
+  background: var(--native-sidebar-hover);
+}
+
+.native-settings-card-subtle .native-settings-section-title {
+  padding: 0 0 4px 0;
+}
+
+/* 快捷键列表 */
+.native-shortcuts-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.native-shortcut-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 24px;
+  gap: 16px;
+  border-top: 1px solid var(--settings-border);
+}
+
+.native-shortcut-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+}
+
+.native-shortcut-name {
+  font-size: 13px;
+  color: var(--settings-fg);
+}
+
+.native-shortcut-keys {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.native-shortcut-key-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.native-shortcut-kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 7px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--settings-fg);
+  background: var(--native-surface, #f6f6f7);
+  border: 1px solid var(--settings-border);
+  border-bottom-width: 2px;
+  border-radius: 6px;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.04);
+}
+
+.native-shortcut-plus {
+  font-size: 12px;
+  color: var(--settings-muted);
+}
+
 .native-settings-row {
   display: flex;
   align-items: center;
