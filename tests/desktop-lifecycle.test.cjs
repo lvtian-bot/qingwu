@@ -3,6 +3,9 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { EventEmitter } = require("node:events");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
 const { PassThrough } = require("node:stream");
 const { loadTs } = require("./helpers/load-ts.cjs");
 
@@ -121,7 +124,14 @@ test("分块启动地址和中文不丢失，完整行和无换行尾部均脱�
   );
 });
 
+function createTestDirectory(t) {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "qingwu-desktop-lifecycle-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  return directory;
+}
+
 function harnessFixture(t, { respond = true } = {}) {
+  const directory = createTestDirectory(t);
   const logs = [];
   for (const method of ["log", "warn", "error"]) {
     t.mock.method(console, method, (...args) => logs.push(args.join(" ")));
@@ -145,8 +155,8 @@ function harnessFixture(t, { respond = true } = {}) {
     electron: {
       app: {
         isPackaged: false,
-        getAppPath: () => "D:/fixture",
-        getPath: () => "D:/fixture",
+        getAppPath: () => directory,
+        getPath: () => directory,
       },
     },
     "node:fs": { existsSync: () => true },
@@ -368,12 +378,13 @@ test("菜单目标和焦点指向主窗口界面", () => {
 });
 
 test("主入口设置统一的 AppUserModelId 并先提供托盘退出入口，启动期间退出后不创建窗口，无托盘也可重新打开重试", async (t) => {
+  const userDataDirectory = createTestDirectory(t);
   const calls = [];
   let completeStart;
   let attempts = 0;
   let registeredAppUserModelId;
   const app = new EventEmitter();
-  app.getPath = () => "D:/fixture";
+  app.getPath = () => userDataDirectory;
   app.getLocale = () => "zh-CN";
   app.requestSingleInstanceLock = () => true;
   app.setAppUserModelId = (id) => {
